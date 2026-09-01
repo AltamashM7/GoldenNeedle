@@ -1,6 +1,14 @@
 # Planned V1 Motion Engine
 
-Status: **PLANNED V1; NOT YET IMPLEMENTED.** No webcam pipeline, MediaPipe integration, provider, skeleton, calibration, filtering, reconstruction, retargeting, or locomotion runtime exists yet.
+Status: **PHASE 1 SPIKE IMPLEMENTED; USER QA PENDING.** The isolated webcam and CPU MediaPipe Pose Landmarker spike exists. The canonical skeleton, calibration, filtering, reconstruction, retargeting, and locomotion runtime remain unimplemented.
+
+## Phase 1 spike boundary
+
+- `MediaPipePoseProvider` owns the WebCamTexture capture, MediaPipe Tasks API integration, CPU configuration, cadence limiting, async result callback, and per-landmark trust classification.
+- `PoseObservation` is a small spike-only observation type. It is not the final engine-owned canonical skeleton and must not become a gameplay contract.
+- `PoseTrackingSpikePresenter` is a diagnostic consumer that draws the camera texture, trusted landmarks/connections, unavailable landmarks, and runtime statistics.
+- The current Windows integration uses the repository-local MediaPipeUnityPlugin `0.16.3` CPU prebuilt runtime and a local Pose Landmarker Lite model. Windows support is documented as experimental by the plugin, so the Orchestrator should treat the USER’s physical QA as the acceptance authority.
+- The spike accepts partial bodies through per-landmark trust. Missing or untrusted lower-body landmarks do not invalidate trusted upper-body observations.
 
 ## Camera
 

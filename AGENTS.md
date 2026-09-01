@@ -20,6 +20,8 @@ Golden Needle is a Unity 6.5 / URP gamified embodied-fitness application for Sma
 ## Product and performance constraints
 
 - CPU-first operation without a required dedicated GPU is a product requirement.
+- An ordinary integrated laptop webcam is a supported baseline input device; an external, depth, or dedicated tracking camera must not be required.
+- Partial-body tracking is valid: upper-body landmarks may remain usable when the lower body is outside the frame, with trust evaluated per landmark rather than by rejecting the entire pose.
 - Avoid expensive processing, unnecessary frame copies, and unbounded queues unless the cost is justified and measured.
 - Do not casually add packages. MediaPipe and future runtime tooling require explicit authorization. The installed Unity Pipeline/MCP integration is development-only and must never become a shipped runtime dependency.
 
@@ -52,4 +54,4 @@ Golden Needle is a Unity 6.5 / URP gamified embodied-fitness application for Sma
 - Distinguish implementation completion from USER acceptance.
 - Never merge a PR without explicit USER approval.
 
-The current durable project snapshot, architecture, decisions, roadmap, and handoff are maintained in the [`Docs/`](Docs/) directory. The project is currently in Phase 0 foundation work; do not begin a later phase without an explicit task.
+The current durable project snapshot, architecture, decisions, roadmap, and handoff are maintained in the [`Docs/`](Docs/) directory. The project is currently in the Phase 1 pose-tracking spike with USER QA pending; do not begin Phase 2 without an explicit task and Orchestrator direction.

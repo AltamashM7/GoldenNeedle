@@ -65,19 +65,23 @@ Web Sol Orchestrator
 
 ## Current phase
 
-**Phase 0 foundation and development tooling.** The repository contains Unity/URP baseline assets, a template/sample scene, durable documentation, and the official `com.unity.pipeline` package. It does not contain the runtime webcam, pose, avatar-control, Hub, course, or final presentation systems.
+**Phase 1 minimal webcam and CPU pose-tracking spike — USER ACCEPTED.** Verdict: **PASS WITH NOTES**. The repository contains the isolated `PoseTrackingSpike` scene, a repository-local MediaPipeUnityPlugin `0.16.3` CPU runtime subset, a local Pose Landmarker Lite model, and the provider/presenter implementation. It does not contain the canonical skeleton, avatar-control, calibration, locomotion, Hub, course, or final presentation systems.
 
 ## Tooling state
 
 The official Unity Codex plugin `unity@unity-agent-plugin` (`0.1.0-beta`) is installed and enabled in user-level Codex configuration. The official Unity CLI (`1.0.0-beta.5`) and Unity Pipeline package (`com.unity.pipeline` `0.5.0-exp.1`) are installed. Codex MCP is configured for this project with `unity mcp --project-path ...`.
 
-Live verification passed: the MCP server initialized as `unity-mcp 1.0.0-beta.5`, exposed 142 tools, and executed the read-only `editor_status` tool against the running Golden Needle Editor. It reported Unity `6000.5.0f1`, project path, `ready`, not compiling, and Play Mode stopped. Unity CLI's separate discovery/status probe still reports no reachable instance even though the authenticated Pipeline/MCP server works; treat the authenticated MCP path as authoritative and investigate the CLI probe if it affects future work.
+Live verification passed: the MCP server initialized as `unity-mcp 1.0.0-beta.5`, exposed 142 tools, and executed editor status, compile, console, hierarchy, Play Mode, and screenshot checks against the running Golden Needle Editor. The final smoke test reported Unity `6000.5.0f1`, no compilation errors, integrated `HP TrueVision HD Camera` at `640x480`, CPU Pose Landmarker initialization, a live inference request, and an asynchronous result callback. The final Editor state was returned to `ready` with Play Mode stopped. USER physical/visual QA is complete and accepted as **PASS WITH NOTES**.
+
+The plugin’s Windows support is documented as experimental. Treat the local smoke test as implementation evidence, not acceptance of tracking quality, partial-body behavior, orientation, or CPU responsiveness.
+
+USER QA evidence recorded for this handoff: representative frames showed approximately `56–68 FPS` Unity rendering, `17–31 FPS` camera/capture, `58–93 ms` inference samples, commonly `25/33` trusted landmarks, and continuous request/result progression. Subject loss reached `WAITING / UNAVAILABLE` with `0/33` trusted landmarks. Raw landmarks showed some jitter/loose geometry, accepted as a later-phase concern. The evidence was extracted from the USER's recorded test because ChatGPT's video attachment runtime failed to mount the original MP4; this was not a Golden Needle application failure. These observations are not a formal latency benchmark.
 
 Unity MCP and Pipeline are development tools only. They must not be added as runtime product dependencies, and future agents should use them when they materially improve Unity Editor inspection or verification.
 
 ## Next immediate step
 
-USER reviews and commits the Phase 0F tooling changes through GitHub Desktop, then Web Sol Orchestrator audits the final branch before the Phase 1 pose-tracking technical spike begins.
+Next planned phase: **Phase 2 — Canonical Skeleton + Debug Visualization**. Do not begin Phase 2 in this follow-up; wait for the Phase 1 commit/review and explicit Orchestrator authorization.
 
 ## Important governance
 

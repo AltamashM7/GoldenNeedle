@@ -7,11 +7,15 @@ This is a high-level roadmap. Distant phases are intentionally not detailed impl
 - durable documentation;
 - Unity MCP development tooling setup.
 
-## Phase 1 — Minimal webcam and pose-tracking technical spike
+## Phase 1 — Minimal Webcam + Pose Tracking Technical Spike
 
 Primary question: can the target PC obtain sufficiently responsive body landmarks without a dedicated GPU?
 
-## Phase 2 — Canonical skeleton and debug visualization
+Current state: **USER ACCEPTED — PASS WITH NOTES**. Built-in laptop webcam, partial-body behavior, continuous request/result progression, and representative performance evidence were accepted. Notes: raw landmark geometry remains jittery/loose in some poses; the observations are not a formal latency benchmark.
+
+## Phase 2 — Canonical Skeleton + Debug Visualization
+
+Next planned phase. It remains gated until the Phase 1 changes are committed/reviewed and the Orchestrator authorizes implementation.
 
 ## Phase 3 — Calibration, confidence handling, and smoothing
 
