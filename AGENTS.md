@@ -21,7 +21,13 @@ Golden Needle is a Unity 6.5 / URP gamified embodied-fitness application for Sma
 
 - CPU-first operation without a required dedicated GPU is a product requirement.
 - Avoid expensive processing, unnecessary frame copies, and unbounded queues unless the cost is justified and measured.
-- Do not casually add packages. MediaPipe, Unity MCP, and other future tooling require explicit authorization in a later task.
+- Do not casually add packages. MediaPipe and future runtime tooling require explicit authorization. The installed Unity Pipeline/MCP integration is development-only and must never become a shipped runtime dependency.
+
+## Unity development tooling
+
+- When the official Unity CLI, Unity Pipeline, and Codex MCP integration are configured, use live Unity tooling for Editor-state inspection, compilation/console checks, scene or hierarchy interaction, and supported Editor actions when it materially improves correctness.
+- Do not invoke MCP mechanically for every trivial text edit; filesystem and ordinary source editing remain appropriate for code changes.
+- Treat GitHub/Git as authoritative for durable code review and the USER as the authority for visual or physical gameplay acceptance.
 
 ## Unity and asset safety
 
