@@ -15,11 +15,13 @@ Current state: **USER ACCEPTED — PASS WITH NOTES**. Built-in laptop webcam, pa
 
 ## Phase 2 — Canonical Skeleton + Debug Visualization
 
-Current phase: **USER ACCEPTED — PASS WITH NOTES**. USER QA confirmed the webcam preview is upright, the raw/cyan overlay visually aligns, the corrected canonical 2D/yellow overlay is upright after fixing the double Y inversion, the canonical 3D/local-space visualization behaves plausibly, and partial-body canonical tracking remains valid. The Phase 2 mapper tests passed.
+Checkpoint: **USER ACCEPTED — PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. USER QA confirmed the webcam preview is upright, the raw/cyan overlay visually aligns, the corrected canonical 2D/yellow overlay is upright after fixing the double Y inversion, the canonical 3D/local-space visualization behaves plausibly, and partial-body canonical tracking remains valid. The Phase 2 mapper tests passed. The two `UnityEditor.ShaderGraph.ShaderGraphProjectSettings` warnings may occur once during script recompilation or Unity exit, but do not recur during normal Play Mode and are not considered a Golden Needle runtime blocker.
 
-The Phase 2 checkpoint remains uncommitted. The next checkpoint commit will represent the accepted Phase 2 implementation. The next planned phase is Phase 3 — Calibration, confidence handling, and smoothing; Phase 3 has not started.
+Phase 2 was committed, pushed, USER accepted, and audited by Web Sol at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. The current implementation is Phase 3 — Calibration + Confidence Handling + Temporal Smoothing — **USER ACCEPTED — PASS WITH NOTES**. Phase 4 has not started.
 
 ## Phase 3 — Calibration, confidence handling, and smoothing
+
+Current status: **USER ACCEPTED — PASS WITH NOTES**. Neutral calibration, T-pose recognition, calibration completion, and the visibly smoother stabilized `F4` pose passed USER QA. USER-rated responsiveness was **Good**; observed evidence was approximately `60+ FPS` rendering, `7–8/s` pose requests/results, and approximately `60 ms` inference. Focused EditMode tests passed `15/15`. Loss/reacquisition edge cases were not exhaustively physically tested and remain a later integration-quality check, not a Phase 3 blocker. The next checkpoint commit will represent the accepted Phase 3 implementation. Phase 4 has not started.
 
 ## Phase 4 — Humanoid retargeting
 

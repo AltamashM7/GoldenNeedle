@@ -1,5 +1,7 @@
 using GoldenNeedle.Core.Motion.Canonical;
+using GoldenNeedle.Core.Motion.Calibration;
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
+using GoldenNeedle.Core.Motion.Stabilization;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -44,11 +46,17 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         [SerializeField] private bool drawRawLandmarks = true;
         [SerializeField] private bool drawCanonical2D = true;
         [SerializeField] private bool drawCanonical3D = true;
+        [SerializeField] private bool drawStabilized2D = true;
         [SerializeField] private bool drawUnavailableLandmarks = true;
         [SerializeField] private float previewPanelWidth = 360f;
+        [SerializeField] private CanonicalStabilizerSettings stabilizerSettings = new CanonicalStabilizerSettings();
+        [SerializeField] private MotionCalibrationSettings calibrationSettings = new MotionCalibrationSettings();
 
         private readonly PoseObservation _observation = new PoseObservation();
         private readonly CanonicalPoseFrame _canonicalFrame = new CanonicalPoseFrame();
+        private readonly CanonicalPoseFrame _stabilizedFrame = new CanonicalPoseFrame();
+        private CanonicalPoseStabilizer _stabilizer;
+        private MotionCalibrationSession _calibration;
         private float _renderFps;
         private GUIStyle _labelStyle;
         private GUIStyle _smallLabelStyle;
@@ -56,6 +64,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         private void Awake()
         {
             provider = provider == null ? GetComponent<MediaPipePoseProvider>() : provider;
+            _stabilizer = new CanonicalPoseStabilizer(stabilizerSettings);
+            _calibration = new MotionCalibrationSession(calibrationSettings);
         }
 
         private void Update()
@@ -67,6 +77,9 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             provider.CopyLatestObservation(_observation);
             MediaPipeCanonicalPoseMapper.Map(_observation, _canonicalFrame, provider.Orientation);
+            var evaluationTime = GetProviderEvaluationTime();
+            _stabilizer.Stabilize(_canonicalFrame, _stabilizedFrame, evaluationTime);
+            _calibration.Update(_stabilizedFrame, evaluationTime);
 
             var frameTime = Mathf.Max(Time.unscaledDeltaTime, 0.0001f);
             _renderFps = Mathf.Lerp(_renderFps, 1f / frameTime, 1f - Mathf.Exp(-8f * frameTime));
@@ -95,6 +108,21 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             if (keyboard.f3Key.wasPressedThisFrame)
             {
                 drawCanonical3D = !drawCanonical3D;
+            }
+
+            if (keyboard.f4Key.wasPressedThisFrame)
+            {
+                drawStabilized2D = !drawStabilized2D;
+            }
+
+            if (keyboard.cKey.wasPressedThisFrame)
+            {
+                _calibration.Begin(evaluationTime);
+            }
+
+            if (keyboard.xKey.wasPressedThisFrame)
+            {
+                _calibration.Reset();
             }
         }
 
@@ -143,7 +171,12 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             if (drawCanonical2D)
             {
-                DrawCanonical2DSkeleton(contentRect);
+                DrawCanonical2DSkeleton(_canonicalFrame, contentRect, false);
+            }
+
+            if (drawStabilized2D)
+            {
+                DrawCanonical2DSkeleton(_stabilizedFrame, contentRect, true);
             }
 
             GUI.matrix = oldMatrix;
@@ -213,45 +246,50 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             }
         }
 
-        private void DrawCanonical2DSkeleton(Rect contentRect)
+        private void DrawCanonical2DSkeleton(CanonicalPoseFrame frame, Rect contentRect, bool stabilized)
         {
-            if (!_canonicalFrame.hasMeaningfulPose)
+            if (!frame.hasMeaningfulPose)
             {
                 return;
             }
 
             for (var i = 0; i < CanonicalConnections.GetLength(0); i++)
             {
-                var from = _canonicalFrame.GetJoint(CanonicalConnections[i, 0]);
-                var to = _canonicalFrame.GetJoint(CanonicalConnections[i, 1]);
+                var from = frame.GetJoint(CanonicalConnections[i, 0]);
+                var to = frame.GetJoint(CanonicalConnections[i, 1]);
                 if (from.IsTracked && to.IsTracked && from.hasImagePosition && to.hasImagePosition)
                 {
+                    var lineColor = stabilized
+                        ? new Color(0.15f, 1f, 1f, 0.92f)
+                        : new Color(1f, 0.85f, 0.1f, 0.95f);
                     DrawLine(
                         CanonicalCoordinateSystem.CanonicalImageToGuiScreen(from.imagePosition, contentRect),
                         CanonicalCoordinateSystem.CanonicalImageToGuiScreen(to.imagePosition, contentRect),
-                        new Color(1f, 0.85f, 0.1f, 0.95f),
-                        5f);
+                        lineColor,
+                        stabilized ? 4f : 5f);
                 }
             }
 
             for (var i = 0; i < CanonicalPoseFrame.JointCount; i++)
             {
-                var joint = _canonicalFrame.GetJoint((CanonicalJointId)i);
+                var joint = frame.GetJoint((CanonicalJointId)i);
                 if (!joint.IsTracked || !joint.hasImagePosition)
                 {
                     continue;
                 }
 
-                var color = IsDerivedJoint(joint.id)
-                    ? new Color(1f, 0.3f, 0.95f, 1f)
-                    : new Color(1f, 0.9f, 0.15f, 1f);
-                DrawPoint(CanonicalCoordinateSystem.CanonicalImageToGuiScreen(joint.imagePosition, contentRect), color, 14f);
+                var color = stabilized
+                    ? new Color(0.25f, 1f, 1f, 1f)
+                    : IsDerivedJoint(joint.id)
+                        ? new Color(1f, 0.3f, 0.95f, 1f)
+                        : new Color(1f, 0.9f, 0.15f, 1f);
+                DrawPoint(CanonicalCoordinateSystem.CanonicalImageToGuiScreen(joint.imagePosition, contentRect), color, stabilized ? 11f : 14f);
             }
         }
 
         private void DrawDiagnostics()
         {
-            var panelHeight = 286f;
+            var panelHeight = 370f;
             var panel = new Rect(16f, 16f, previewPanelWidth, panelHeight);
             GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.84f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
@@ -273,7 +311,10 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 $"Latest pose age: {age}\n" +
                 $"Raw trusted: {_observation.trustedCount}/{PoseObservation.LandmarkCount}\n" +
                 $"Canonical tracked: {_canonicalFrame.trackedJointCount}/{CanonicalPoseFrame.JointCount}\n" +
+                $"Stabilized tracked: {_stabilizedFrame.trackedJointCount}/{CanonicalPoseFrame.JointCount}\n" +
                 $"Pelvis: {_canonicalFrame.hasCanonicalPelvis}   3D: {_canonicalFrame.hasCanonical3D}\n" +
+                $"Calibration: {_calibration.State}   {_calibration.Progress01 * 100f:0}%   valid={_calibration.IsValid}\n" +
+                $"Calib dimensions: shoulder {_calibration.Profile.shoulderWidth:0.00}   hip {_calibration.Profile.hipWidth:0.00}   torso {_calibration.Profile.torsoLength:0.00}\n" +
                 $"Inference: {provider.LastInferenceDurationMilliseconds:0.0} ms\n" +
                 $"Orientation: sensor rot {provider.Orientation.SensorRotationDegrees}° / sensor V {provider.Orientation.SensorVerticallyMirrored}\n" +
                 $"Inference flips H/V {provider.Orientation.InferenceFlipHorizontally}/{provider.Orientation.InferenceFlipVertically}, rot {provider.Orientation.InferenceRotationDegrees}°\n" +
@@ -282,7 +323,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             GUI.Label(new Rect(panel.x + 12f, panel.y + 10f, panel.width - 24f, panel.height - 20f), text, _smallLabelStyle);
 
             var help = new Rect(16f, Screen.height - 36f, 640f, 24f);
-            GUI.Label(help, "R retry   F1 raw   F2 canonical 2D   F3 canonical 3D   Cyan raw / yellow canonical / magenta derived", _smallLabelStyle);
+            GUI.Label(help, "R retry   C calibrate   X cancel/reset   F1 raw   F2 canonical 2D   F3 3D   F4 stabilized 2D   Cyan stabilized / yellow canonical / magenta derived", _smallLabelStyle);
         }
 
         private void DrawCanonical3DView()
@@ -310,6 +351,16 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 }
             }
 
+            for (var i = 0; i < CanonicalConnections.GetLength(0); i++)
+            {
+                var from = _stabilizedFrame.GetJoint(CanonicalConnections[i, 0]);
+                var to = _stabilizedFrame.GetJoint(CanonicalConnections[i, 1]);
+                if (from.IsTracked && to.IsTracked && from.hasLocalPosition && to.hasLocalPosition)
+                {
+                    DrawLine(Project3D(from.localPosition, view), Project3D(to.localPosition, view), new Color(0.15f, 1f, 1f, 0.95f), 3f);
+                }
+            }
+
             for (var i = 0; i < CanonicalPoseFrame.JointCount; i++)
             {
                 var joint = _canonicalFrame.GetJoint((CanonicalJointId)i);
@@ -321,7 +372,29 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 DrawPoint(Project3D(joint.localPosition, view), IsDerivedJoint(joint.id) ? new Color(1f, 0.3f, 0.95f) : new Color(1f, 0.9f, 0.15f), 9f);
             }
 
-            GUI.Label(new Rect(panel.x + 12f, panel.yMax - 42f, panel.width - 24f, 34f), "+X right/red   +Y up/green   +Z away/blue\nPelvis-relative when available", _smallLabelStyle);
+            for (var i = 0; i < CanonicalPoseFrame.JointCount; i++)
+            {
+                var joint = _stabilizedFrame.GetJoint((CanonicalJointId)i);
+                if (!joint.IsTracked || !joint.hasLocalPosition)
+                {
+                    continue;
+                }
+
+                DrawPoint(Project3D(joint.localPosition, view), new Color(0.25f, 1f, 1f), 7f);
+            }
+
+            GUI.Label(new Rect(panel.x + 12f, panel.yMax - 42f, panel.width - 24f, 34f), "+X right/red   +Y up/green   +Z away/blue\nYellow canonical   Cyan stabilized   Pelvis-relative when available", _smallLabelStyle);
+        }
+
+        private double GetProviderEvaluationTime()
+        {
+            if (_canonicalFrame.receivedAtSeconds > 0d && !double.IsInfinity(provider.LatestPoseAgeMilliseconds))
+            {
+                var age = provider.LatestPoseAgeMilliseconds > 0d ? provider.LatestPoseAgeMilliseconds : 0d;
+                return _canonicalFrame.receivedAtSeconds + age * 0.001d;
+            }
+
+            return Time.unscaledTimeAsDouble;
         }
 
         private static Vector2 Project3D(Vector3 position, Rect view)

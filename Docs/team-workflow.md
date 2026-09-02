@@ -32,6 +32,8 @@ The USER primarily owns Motion Engine work. Other developers will later own inte
 
 Motion Engine implementation phases use the long-lived `engine/pose-tracking-spike` branch through the Phase 6 graybox checkpoint. For each phase, the sequence is implementation, USER QA, accepted checkpoint commit/push, and Web Sol GitHub audit. Intermediate phase checkpoints are not mechanically merged into `main`; `main` remains the stable integration branch, and the intended merge boundary is after the Phase 6 graybox is accepted. The current accepted Phase 1 checkpoint is `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`.
 
+Phase 2 accepted SHA is `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 is USER accepted with **PASS WITH NOTES**, and its checkpoint commit is pending. Phase 4 has not started.
+
 ## Unity conflict policy
 
 Scene/content ownership is the primary defense against Unity YAML merge conflicts. Avoid having several developers edit the same `.unity` scene or major prefab simultaneously. Course developers should primarily own their own course area once the final structure exists. Do not rely on frequent manual scene merging as the normal workflow.

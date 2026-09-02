@@ -1,6 +1,6 @@
 # Planned V1 Motion Engine
 
-Status: **PHASE 2 USER ACCEPTED — PASS WITH NOTES.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. USER QA confirmed the upright webcam preview, aligned raw/cyan overlay, upright canonical 2D/yellow overlay after the double Y inversion fix, plausible canonical 3D/local-space visualization, valid partial-body canonical tracking, and passing Phase 2 mapper tests. The next checkpoint commit will represent the accepted Phase 2 implementation. Phase 3 has not started; calibration, filtering, reconstruction, retargeting, and locomotion remain unimplemented.
+Status: **PHASE 3 — USER ACCEPTED — PASS WITH NOTES.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 2 was USER accepted with **PASS WITH NOTES** after the canonical/debug corrections and mapper tests. Phase 3 USER QA passed neutral calibration, T-pose recognition, calibration completion, and visibly smoother stabilized motion with **Good** responsiveness. Focused EditMode coverage passed `15/15`; loss/reacquisition physical coverage remains a later integration-quality check. Rotation reconstruction, retargeting, and locomotion remain unimplemented. Phase 4 has not started.
 
 ## Phase 1 spike boundary
 
@@ -39,29 +39,24 @@ Phase 2 exposes a smaller engine-owned body representation suitable for later fi
 
 Direct joints are mapped from the required MediaPipe source landmarks. Pelvis is the trusted midpoint of both hips, Chest is the trusted midpoint of both shoulders, and Spine is the trusted midpoint of Pelvis and Chest. Derived confidence is the minimum input confidence. A missing joint leaves that canonical joint unavailable without invalidating the rest of the frame.
 
-Canonical image coordinates are x left-to-right and y bottom-to-top. Canonical 3D uses +X camera/view right, +Y up, and +Z away from the camera. World positions are converted once and are pelvis-relative when a trusted canonical pelvis exists; if the pelvis is unavailable, available source-world data remains in the provider's hip-centered frame. No temporal smoothing is included in Phase 2.
+Canonical image coordinates are x left-to-right and y bottom-to-top. Canonical 3D uses +X camera/view right, +Y up, and +Z away from the camera. World positions are converted once and are pelvis-relative when a trusted canonical pelvis exists; if the pelvis is unavailable, available source-world data remains in the provider's hip-centered frame. Phase 3 filters canonical image positions and canonical world positions independently per joint, then rebuilds stabilized local/root-relative positions from stabilized world positions. If the pelvis is unavailable, tracked joints remain usable in the available hip-centered frame.
 
 ## Camera orientation and debug views
 
-The provider separates the Unity-to-MediaPipe input transform from display metadata and overlay conversion. The display no longer reuses the inference-only vertical flip. Display mirroring is explicit and disabled by default, while canonical left/right semantics remain unchanged by display mirroring. The debug spike exposes raw, canonical 2D, and canonical 3D toggles with `F1`, `F2`, and `F3`; `R` retries camera/model startup.
+The provider separates the Unity-to-MediaPipe input transform from display metadata and overlay conversion. The display no longer reuses the inference-only vertical flip. Display mirroring is explicit and disabled by default, while canonical left/right semantics remain unchanged by display mirroring. The debug spike exposes raw, canonical 2D, canonical 3D, and stabilized canonical 2D views with `F1`, `F2`, `F3`, and `F4`; `C` begins calibration, `X` cancels/resets it, and `R` retries camera/model startup.
 
 ## Calibration
 
-The planned calibration sequence uses:
+Phase 3 provides an in-memory `MotionCalibrationSession` with the state flow `Idle -> Awaiting Neutral -> Sampling Neutral -> Awaiting T-Pose -> Sampling T-Pose -> Complete`, plus cancel/reset. Neutral sampling requires both shoulders, both hips, both knees, and both ankles; it uses a continuous stable hold of approximately `1.25 s`. The head is optional and wrists are not required for neutral capture. T-pose sampling requires both shoulders, elbows, wrists, and hips; it checks arm direction, shoulder-height wrists, extension, and an angular tolerance of approximately `25°` over approximately `0.75 s`. Invalid or moving poses reset stage progress and continue waiting.
 
-- a natural neutral stance;
-- a brief T-pose or T-pose-like stance;
-- derived orientation, scale, and rest offsets.
-
-Calibration should preserve the avatar's own proportions. It should not simply copy the user's measured limb lengths into a character with different proportions.
+The in-memory profile stores valid neutral pelvis/chest/shoulder/hip/knee/ankle references, shoulder/hip widths, torso length, neutral body axes, T-pose arm directions/span, timestamp/state/version, and sample counts. These are user reference measurements, not avatar bone lengths; calibration must preserve the avatar's own proportions.
 
 ## Confidence and filtering
 
-- Confidence handling is required at landmark and derived-joint boundaries.
-- Temporal smoothing is planned.
-- One Euro Filter is currently planned for landmark filtering.
-- Quaternion interpolation is planned downstream for rotations.
-- Lost or occluded landmarks must fail gracefully and avoid instant violent snapping.
+- `CanonicalStabilizerSettings` centralizes acquire confidence `0.60`, sustain confidence `0.40`, acquire samples `2`, loss grace `0.10 s`, and reset-after-loss `0.25 s`.
+- Each canonical joint has independent acquisition, filter, dropout, loss, and reacquisition state. A joint must meet the acquire threshold for consecutive samples, uses the lower sustain threshold while active, preserves the prior stabilized sample during the grace window, becomes unavailable after grace, and resets filters after the reset interval before reacquiring from the new sample.
+- Project-owned pure One Euro filters use min cutoff `1.0`, beta `0.05`, and derivative cutoff `1.0`. The derivative is filtered first, then drives the dynamic cutoff for the position low-pass. Actual pose/received timestamps provide delta time; zero, negative, large, and non-finite intervals are sanitized/clamped.
+- Lost or occluded joints fail gracefully without stale indefinite tracking or violent snapping. Quaternion interpolation remains a downstream rotation concern and is not part of Phase 3.
 
 ## 3D rotation reconstruction
 

@@ -1,6 +1,6 @@
 # Golden Needle architecture
 
-Status: **PHASE 2 USER ACCEPTED — PASS WITH NOTES.** USER QA confirmed the upright webcam preview, visually aligned raw/cyan overlay, upright canonical 2D/yellow overlay after the double Y inversion fix, plausible canonical 3D/local-space visualization, valid partial-body canonical tracking, and passing Phase 2 mapper tests. The next checkpoint commit will represent the accepted Phase 2 implementation. Phase 3 has not started.
+Status: **PHASE 3 — USER ACCEPTED — PASS WITH NOTES.** Phase 2 was USER accepted with **PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea` after confirming the upright webcam preview, aligned raw/cyan overlay, corrected upright canonical 2D/yellow overlay, plausible canonical 3D/local-space visualization, valid partial-body tracking, and passing mapper tests. Phase 3 USER QA passed calibration and visibly smoother stabilized motion with **Good** responsiveness; its checkpoint commit is pending. Phase 4 has not started.
 
 Golden Needle is a CPU-first, webcam-driven embodied-fitness application. The intended runtime uses the user's full-body movement to drive a humanoid 3D avatar while gameplay systems interpret movement separately for world-space action.
 
@@ -56,9 +56,13 @@ pose-provider implementation
 
 MediaPipe-specific structures stay inside the provider/integration boundary. Player, Hub, and course code consume engine-owned representations and stable abstractions, not MediaPipe internals. Changing the pose backend should not require rewriting game or course systems.
 
-The current Phase 2 implementation uses `PoseObservation` only at the MediaPipe provider boundary. `CanonicalPoseFrame` exposes the fixed 20-joint Phase 2 representation, per-joint trust/confidence, partial-body validity, optional image/world/local positions, and derived pelvis/chest/spine midpoints. Canonical consumers do not need MediaPipe classes or raw landmark indices.
+The current implementation uses `PoseObservation` only at the MediaPipe provider boundary. `CanonicalPoseFrame` exposes the fixed 20-joint engine-owned representation, per-joint trust/confidence, partial-body validity, optional image/world/local positions, and derived pelvis/chest/spine midpoints. `CanonicalPoseStabilizer` consumes that frame using actual source/received timestamps, independent per-joint One Euro position filters, confidence hysteresis, dropout grace, and reset-aware reacquisition. `MotionCalibrationSession` consumes canonical frames only and keeps its neutral/T-pose profile in memory. Canonical consumers do not need MediaPipe classes or raw landmark indices.
 
-The camera path keeps sensor metadata, display mirroring, inference preparation, and landmark overlay conversion as separate transforms. The debug scene is the only current consumer and draws raw landmarks, canonical 2D landmarks, and a lightweight canonical local-space 3D view. `POSE != LOCOMOTION` remains unchanged.
+The camera path keeps sensor metadata, display mirroring, inference preparation, and landmark overlay conversion as separate transforms. The debug scene is the only current consumer and draws raw landmarks, canonical 2D landmarks, stabilized canonical 2D landmarks, and canonical/stabilized local-space 3D views. `POSE != LOCOMOTION` remains unchanged.
+
+## Motion Engine maintainability rule
+
+The Golden Needle Motion Engine must remain independently maintainable after the entire game is complete. Gameplay and courses consume stable Motion Engine contracts rather than provider internals; MediaPipe remains isolated behind its provider/mapping boundary; calibration and stabilization remain separately tunable; and later reconstruction, retargeting, and locomotion remain modular. The Motion Engine must remain testable without loading the complete game, dedicated motion-engine debug tooling/scenes must be retained for later inspection and improvement, and replacing or improving one Motion Engine layer must not require rewriting courses or unrelated gameplay.
 
 ## Ownership and performance
 

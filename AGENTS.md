@@ -55,4 +55,4 @@ Golden Needle is a Unity 6.5 / URP gamified embodied-fitness application for Sma
 - Distinguish implementation completion from USER acceptance.
 - Never merge a PR without explicit USER approval.
 
-The current durable project snapshot, architecture, decisions, roadmap, and handoff are maintained in the [`Docs/`](Docs/) directory. Phase 2 canonical skeleton and debug visualization is USER accepted with a **PASS WITH NOTES** verdict; the next checkpoint commit will represent the accepted Phase 2 implementation. Phase 3 has not started and must not begin without an explicit task and Orchestrator direction.
+The current durable project snapshot, architecture, decisions, roadmap, and handoff are maintained in the [`Docs/`](Docs/) directory. Phase 2 canonical skeleton and debug visualization is USER accepted with a **PASS WITH NOTES** verdict at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 calibration, confidence handling, and temporal smoothing is USER accepted with **PASS WITH NOTES**; Phase 4 has not started and must not begin without an explicit task and Orchestrator direction.
