@@ -1,12 +1,13 @@
 # Planned V1 Motion Engine
 
-Status: **PHASE 1 SPIKE IMPLEMENTED; USER QA PENDING.** The isolated webcam and CPU MediaPipe Pose Landmarker spike exists. The canonical skeleton, calibration, filtering, reconstruction, retargeting, and locomotion runtime remain unimplemented.
+Status: **PHASE 2 USER ACCEPTED — PASS WITH NOTES.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. USER QA confirmed the upright webcam preview, aligned raw/cyan overlay, upright canonical 2D/yellow overlay after the double Y inversion fix, plausible canonical 3D/local-space visualization, valid partial-body canonical tracking, and passing Phase 2 mapper tests. The next checkpoint commit will represent the accepted Phase 2 implementation. Phase 3 has not started; calibration, filtering, reconstruction, retargeting, and locomotion remain unimplemented.
 
 ## Phase 1 spike boundary
 
 - `MediaPipePoseProvider` owns the WebCamTexture capture, MediaPipe Tasks API integration, CPU configuration, cadence limiting, async result callback, and per-landmark trust classification.
-- `PoseObservation` is a small spike-only observation type. It is not the final engine-owned canonical skeleton and must not become a gameplay contract.
-- `PoseTrackingSpikePresenter` is a diagnostic consumer that draws the camera texture, trusted landmarks/connections, unavailable landmarks, and runtime statistics.
+- `PoseObservation` is the raw provider-boundary observation type. It remains upstream-only and is not a gameplay contract.
+- `MediaPipeCanonicalPoseMapper` converts the raw provider observation into the engine-owned `CanonicalPoseFrame`. It is the only Phase 2 runtime mapping location that knows the 33-landmark source indices.
+- `PoseTrackingSpikePresenter` is a diagnostic consumer that draws the camera texture, raw and canonical trusted landmarks/connections, a canonical local-space 3D view, and runtime statistics.
 - The current Windows integration uses the repository-local MediaPipeUnityPlugin `0.16.3` CPU prebuilt runtime and a local Pose Landmarker Lite model. Windows support is documented as experimental by the plugin, so the Orchestrator should treat the USER’s physical QA as the acceptance authority.
 - The spike accepts partial bodies through per-landmark trust. Missing or untrusted lower-body landmarks do not invalidate trusted upper-body observations.
 
@@ -32,7 +33,17 @@ The upstream MediaPipe model provides approximately 33 pose landmarks. MediaPipe
 
 ## Canonical skeleton
 
-The Motion Engine will expose a smaller engine-owned body representation suitable for filtering, reconstruction, retargeting, and locomotion interpretation. The exact final joint list is **OPEN / MAY CHANGE** and is not frozen by this document.
+Phase 2 exposes a smaller engine-owned body representation suitable for later filtering, reconstruction, retargeting, and locomotion interpretation. The current exact 20-joint set is:
+
+`Pelvis, Spine, Chest, Head, LeftShoulder, LeftElbow, LeftWrist, RightShoulder, RightElbow, RightWrist, LeftHip, LeftKnee, LeftAnkle, LeftHeel, LeftToe, RightHip, RightKnee, RightAnkle, RightHeel, RightToe`.
+
+Direct joints are mapped from the required MediaPipe source landmarks. Pelvis is the trusted midpoint of both hips, Chest is the trusted midpoint of both shoulders, and Spine is the trusted midpoint of Pelvis and Chest. Derived confidence is the minimum input confidence. A missing joint leaves that canonical joint unavailable without invalidating the rest of the frame.
+
+Canonical image coordinates are x left-to-right and y bottom-to-top. Canonical 3D uses +X camera/view right, +Y up, and +Z away from the camera. World positions are converted once and are pelvis-relative when a trusted canonical pelvis exists; if the pelvis is unavailable, available source-world data remains in the provider's hip-centered frame. No temporal smoothing is included in Phase 2.
+
+## Camera orientation and debug views
+
+The provider separates the Unity-to-MediaPipe input transform from display metadata and overlay conversion. The display no longer reuses the inference-only vertical flip. Display mirroring is explicit and disabled by default, while canonical left/right semantics remain unchanged by display mirroring. The debug spike exposes raw, canonical 2D, and canonical 3D toggles with `F1`, `F2`, and `F3`; `R` retries camera/model startup.
 
 ## Calibration
 

@@ -1,6 +1,6 @@
 # Golden Needle architecture
 
-Status: **PLANNED architecture; NOT YET IMPLEMENTED.**
+Status: **PHASE 2 USER ACCEPTED — PASS WITH NOTES.** USER QA confirmed the upright webcam preview, visually aligned raw/cyan overlay, upright canonical 2D/yellow overlay after the double Y inversion fix, plausible canonical 3D/local-space visualization, valid partial-body canonical tracking, and passing Phase 2 mapper tests. The next checkpoint commit will represent the accepted Phase 2 implementation. Phase 3 has not started.
 
 Golden Needle is a CPU-first, webcam-driven embodied-fitness application. The intended runtime uses the user's full-body movement to drive a humanoid 3D avatar while gameplay systems interpret movement separately for world-space action.
 
@@ -12,7 +12,9 @@ Primary body-reproduction path:
 Unity Webcam
     -> Pose Provider
     -> Raw pose observations
+    -> MediaPipe-to-canonical mapper
     -> Canonical Skeleton
+    -> Canonical debug visualization
     -> Confidence handling / filtering
     -> Rotation reconstruction
     -> Humanoid Retargeter
@@ -53,6 +55,10 @@ pose-provider implementation
 ```
 
 MediaPipe-specific structures stay inside the provider/integration boundary. Player, Hub, and course code consume engine-owned representations and stable abstractions, not MediaPipe internals. Changing the pose backend should not require rewriting game or course systems.
+
+The current Phase 2 implementation uses `PoseObservation` only at the MediaPipe provider boundary. `CanonicalPoseFrame` exposes the fixed 20-joint Phase 2 representation, per-joint trust/confidence, partial-body validity, optional image/world/local positions, and derived pelvis/chest/spine midpoints. Canonical consumers do not need MediaPipe classes or raw landmark indices.
+
+The camera path keeps sensor metadata, display mirroring, inference preparation, and landmark overlay conversion as separate transforms. The debug scene is the only current consumer and draws raw landmarks, canonical 2D landmarks, and a lightweight canonical local-space 3D view. `POSE != LOCOMOTION` remains unchanged.
 
 ## Ownership and performance
 

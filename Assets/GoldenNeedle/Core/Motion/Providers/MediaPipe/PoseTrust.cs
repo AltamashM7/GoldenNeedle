@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 
-namespace GoldenNeedle.Debug.PoseTrackingSpike
+namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 {
     [Serializable]
     public sealed class PoseTrustSettings

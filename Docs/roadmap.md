@@ -15,7 +15,9 @@ Current state: **USER ACCEPTED — PASS WITH NOTES**. Built-in laptop webcam, pa
 
 ## Phase 2 — Canonical Skeleton + Debug Visualization
 
-Next planned phase. It remains gated until the Phase 1 changes are committed/reviewed and the Orchestrator authorizes implementation.
+Current phase: **USER ACCEPTED — PASS WITH NOTES**. USER QA confirmed the webcam preview is upright, the raw/cyan overlay visually aligns, the corrected canonical 2D/yellow overlay is upright after fixing the double Y inversion, the canonical 3D/local-space visualization behaves plausibly, and partial-body canonical tracking remains valid. The Phase 2 mapper tests passed.
+
+The Phase 2 checkpoint remains uncommitted. The next checkpoint commit will represent the accepted Phase 2 implementation. The next planned phase is Phase 3 — Calibration, confidence handling, and smoothing; Phase 3 has not started.
 
 ## Phase 3 — Calibration, confidence handling, and smoothing
 

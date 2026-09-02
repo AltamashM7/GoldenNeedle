@@ -65,13 +65,13 @@ Web Sol Orchestrator
 
 ## Current phase
 
-**Phase 1 minimal webcam and CPU pose-tracking spike — USER ACCEPTED.** Verdict: **PASS WITH NOTES**. The repository contains the isolated `PoseTrackingSpike` scene, a repository-local MediaPipeUnityPlugin `0.16.3` CPU runtime subset, a local Pose Landmarker Lite model, and the provider/presenter implementation. It does not contain the canonical skeleton, avatar-control, calibration, locomotion, Hub, course, or final presentation systems.
+**Phase 2 Canonical Skeleton + Debug Visualization — USER ACCEPTED — PASS WITH NOTES.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6` (`feat: add CPU pose-tracking spike`). USER QA confirmed the webcam preview is upright, the raw/cyan overlay visually aligns, the canonical 2D/yellow overlay is now upright after fixing the double Y inversion, canonical 3D/local-space visualization behaves plausibly, partial-body canonical tracking remains valid, and the Phase 2 mapper tests passed. The next checkpoint commit will represent the accepted Phase 2 implementation. Avatar control, calibration, smoothing, locomotion, Hub, course, and final presentation systems remain unimplemented.
 
 ## Tooling state
 
 The official Unity Codex plugin `unity@unity-agent-plugin` (`0.1.0-beta`) is installed and enabled in user-level Codex configuration. The official Unity CLI (`1.0.0-beta.5`) and Unity Pipeline package (`com.unity.pipeline` `0.5.0-exp.1`) are installed. Codex MCP is configured for this project with `unity mcp --project-path ...`.
 
-Live verification passed: the MCP server initialized as `unity-mcp 1.0.0-beta.5`, exposed 142 tools, and executed editor status, compile, console, hierarchy, Play Mode, and screenshot checks against the running Golden Needle Editor. The final smoke test reported Unity `6000.5.0f1`, no compilation errors, integrated `HP TrueVision HD Camera` at `640x480`, CPU Pose Landmarker initialization, a live inference request, and an asynchronous result callback. The final Editor state was returned to `ready` with Play Mode stopped. USER physical/visual QA is complete and accepted as **PASS WITH NOTES**.
+Live verification passed: the MCP server initialized as `unity-mcp 1.0.0-beta.5`, exposed 142 tools, and executed editor status, compile, console, hierarchy, Play Mode, and screenshot checks against the running Golden Needle Editor. Phase 1 smoke evidence reported Unity `6000.5.0f1`, no compilation errors, integrated `HP TrueVision HD Camera` at `640x480`, CPU Pose Landmarker initialization, a live inference request, and an asynchronous result callback. Phase 2's focused EditMode mapper suite is 5/5 passing. USER QA accepted the Phase 2 result with **PASS WITH NOTES**. The two `UnityEditor.ShaderGraph.ShaderGraphProjectSettings` warnings may occur once during script recompilation or Unity exit, but do not recur during normal Play Mode and are not considered a Golden Needle runtime blocker. Codex is not independently claiming physical/visual acceptance; this status records the USER's acceptance.
 
 The plugin’s Windows support is documented as experimental. Treat the local smoke test as implementation evidence, not acceptance of tracking quality, partial-body behavior, orientation, or CPU responsiveness.
 
@@ -81,10 +81,12 @@ Unity MCP and Pipeline are development tools only. They must not be added as run
 
 ## Next immediate step
 
-Next planned phase: **Phase 2 — Canonical Skeleton + Debug Visualization**. Do not begin Phase 2 in this follow-up; wait for the Phase 1 commit/review and explicit Orchestrator authorization.
+The immediate step is the **Phase 2 checkpoint commit**, which will represent the accepted Phase 2 implementation. The next planned phase after that checkpoint is **Phase 3 — Calibration, confidence handling, and smoothing**. Phase 3 has not started; do not begin it from this handoff.
 
 ## Important governance
 
 Future Orchestrators must inspect `AGENTS.md`, `Docs/current-state.md`, `Docs/decisions.md`, `Docs/architecture.md`, and current GitHub state before directing implementation. Do not assume old chat context is available.
+
+Core Motion Engine phases use the long-lived `engine/pose-tracking-spike` branch through the Phase 6 graybox checkpoint. Each accepted phase follows implementation -> USER QA -> accepted checkpoint commit/push -> Web Sol GitHub audit. Intermediate checkpoints are not mechanically merged into `main`; the intended merge boundary is after Phase 6 graybox acceptance, subject to the current Orchestrator brief.
 
 The USER normally performs Git mutations through GitHub Desktop. Follow the current brief for any explicitly authorized exception. Do not claim Unity visual or physical QA without actual USER verification, and do not merge without explicit USER approval.

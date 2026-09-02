@@ -42,6 +42,7 @@ Golden Needle is a Unity 6.5 / URP gamified embodied-fitness application for Sma
 
 - GitHub Desktop is normally used by the USER for Git mutations.
 - Future Codex tasks may explicitly authorize Git operations, but agents must follow the governance of the current Orchestrator brief rather than assuming permission.
+- Core Motion Engine phases use the long-lived `engine/pose-tracking-spike` branch through the Phase 6 graybox checkpoint. Each accepted phase follows implementation -> USER QA -> accepted checkpoint commit/push -> Web Sol GitHub audit; do not merge intermediate checkpoints into `main`, and do not assume a merge is appropriate without the current Orchestrator brief.
 - Do not create commits, amend, push, pull/rebase/reset, merge, or create PRs unless the current brief explicitly authorizes that operation.
 - Preserve valid Git LFS configuration. Do not disable LFS or perform Git LFS history migration unless explicitly directed.
 - Do not invent large sets of speculative LFS patterns.
@@ -54,4 +55,4 @@ Golden Needle is a Unity 6.5 / URP gamified embodied-fitness application for Sma
 - Distinguish implementation completion from USER acceptance.
 - Never merge a PR without explicit USER approval.
 
-The current durable project snapshot, architecture, decisions, roadmap, and handoff are maintained in the [`Docs/`](Docs/) directory. The project is currently in the Phase 1 pose-tracking spike with USER QA pending; do not begin Phase 2 without an explicit task and Orchestrator direction.
+The current durable project snapshot, architecture, decisions, roadmap, and handoff are maintained in the [`Docs/`](Docs/) directory. Phase 2 canonical skeleton and debug visualization is USER accepted with a **PASS WITH NOTES** verdict; the next checkpoint commit will represent the accepted Phase 2 implementation. Phase 3 has not started and must not begin without an explicit task and Orchestrator direction.

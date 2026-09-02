@@ -1,6 +1,6 @@
 using System;
 
-namespace GoldenNeedle.Debug.PoseTrackingSpike
+namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 {
     public enum LandmarkTrust
     {

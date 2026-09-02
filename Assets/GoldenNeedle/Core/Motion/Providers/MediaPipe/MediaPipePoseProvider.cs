@@ -12,7 +12,7 @@ using Mediapipe.Unity.Experimental;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace GoldenNeedle.Debug.PoseTrackingSpike
+namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 {
     public enum PoseProviderStatus
     {
@@ -40,6 +40,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         [SerializeField] private int requestedCameraHeight = 480;
         [SerializeField] private int requestedCameraFps = 30;
         [SerializeField] private float cameraStartupTimeoutSeconds = 8f;
+        [Tooltip("Optional selfie-style display mirror. Canonical left/right semantics are not changed.")]
+        [SerializeField] private bool mirrorFrontFacingDisplay;
 
         [Header("Pose Landmarker")]
         [SerializeField] private float targetInferenceFps = 20f;
@@ -73,9 +75,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         private int _totalResultCallbacks;
         private bool _inferenceRequestLogPublished;
         private ImageProcessingOptions _imageProcessingOptions;
-        private bool _flipInputHorizontally;
-        private bool _flipInputVertically;
-        private int _inputRotationDegrees;
+        private CameraOrientationState _orientation;
 
         public PoseProviderStatus Status { get; private set; } = PoseProviderStatus.Starting;
         public string StatusMessage { get; private set; } = "Starting pose-tracking spike";
@@ -86,9 +86,11 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         public int RequestedCameraFps => requestedCameraFps;
         public int VideoRotationAngle => _webCamTexture == null ? 0 : _webCamTexture.videoRotationAngle;
         public bool VideoVerticallyMirrored => _webCamTexture != null && _webCamTexture.videoVerticallyMirrored;
-        public bool FlipInputHorizontally => _flipInputHorizontally;
-        public bool FlipInputVertically => _flipInputVertically;
-        public int InputRotationDegrees => _inputRotationDegrees;
+        public CameraOrientationState Orientation => _orientation;
+        public bool FlipInputHorizontally => _orientation.InferenceFlipHorizontally;
+        public bool FlipInputVertically => _orientation.InferenceFlipVertically;
+        public int InputRotationDegrees => _orientation.InferenceRotationDegrees;
+        public bool DisplayMirror => _orientation.DisplayMirrored;
         public Texture CameraTexture => _webCamTexture;
         public float CameraFramesPerSecond { get; private set; }
         public float InferenceRequestsPerSecond { get; private set; }
@@ -283,7 +285,10 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             AsyncGPUReadbackRequest request = default;
             try
             {
-                request = textureFrame.ReadTextureAsync(_webCamTexture, _flipInputHorizontally, _flipInputVertically);
+                request = textureFrame.ReadTextureAsync(
+                    _webCamTexture,
+                    _orientation.InferenceFlipHorizontally,
+                    _orientation.InferenceFlipVertically);
             }
             catch (Exception exception)
             {
@@ -524,10 +529,15 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 isVerticallyFlipped: _webCamTexture.videoVerticallyMirrored,
                 rotation: (RotationAngle)_webCamTexture.videoRotationAngle);
 
-            _flipInputHorizontally = transformation.flipHorizontally;
-            _flipInputVertically = transformation.flipVertically;
-            _inputRotationDegrees = (int)transformation.rotationAngle;
-            _imageProcessingOptions = new ImageProcessingOptions(rotationDegrees: _inputRotationDegrees);
+            _orientation = new CameraOrientationState(
+                sensorRotationDegrees: _webCamTexture.videoRotationAngle,
+                sensorVerticallyMirrored: _webCamTexture.videoVerticallyMirrored,
+                frontFacing: _selectedDevice.isFrontFacing,
+                displayMirrored: mirrorFrontFacingDisplay,
+                inferenceFlipHorizontally: transformation.flipHorizontally,
+                inferenceFlipVertically: transformation.flipVertically,
+                inferenceRotationDegrees: (int)transformation.rotationAngle);
+            _imageProcessingOptions = new ImageProcessingOptions(rotationDegrees: _orientation.InferenceRotationDegrees);
         }
 
         private void UpdateMetrics()
