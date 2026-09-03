@@ -129,8 +129,8 @@ namespace GoldenNeedle.Tests
         public void KinematicTargetBuilderNormalizesEachSideWithItsOwnReach()
         {
             var profile = ValidProfile();
-            profile.leftArmReach = 0.5f;
-            profile.rightArmReach = 1f;
+            profile.leftArmGeometry = Geometry(0.25f, 0.25f, Vector3.down, Vector3.down);
+            profile.rightArmGeometry = Geometry(0.5f, 0.5f, Vector3.down, Vector3.down);
             var frame = CreateCanonicalFrame(
                 new Vector3(-0.4f, 1.2f, 0f),
                 new Vector3(-0.4f, 0.9f, 0f),
@@ -557,7 +557,7 @@ namespace GoldenNeedle.Tests
                     isValid = true,
                     hasBendHint = true,
                     confidence = 1f,
-                    sourceReach = profile.leftArmReach,
+                    sourceReach = profile.leftArmGeometry.reach,
                     normalizedEffectorDisplacement = new Vector3(-0.15f, -0.70f, 0.20f),
                     normalizedBendHintDisplacement = new Vector3(-0.08f, -0.35f, 0.24f),
                 });
@@ -567,7 +567,7 @@ namespace GoldenNeedle.Tests
                     isValid = true,
                     hasBendHint = true,
                     confidence = 1f,
-                    sourceReach = profile.rightArmReach,
+                    sourceReach = profile.rightArmGeometry.reach,
                     normalizedEffectorDisplacement = new Vector3(0.20f, 0.62f, -0.18f),
                     normalizedBendHintDisplacement = new Vector3(0.11f, 0.31f, -0.22f),
                 });
@@ -765,20 +765,53 @@ namespace GoldenNeedle.Tests
             frame.Begin(1L, 0d, true);
             SetTracked(frame, CanonicalJointId.Pelvis, profile.neutralPelvisPosition);
             SetTracked(frame, CanonicalJointId.Chest, profile.neutralChestPosition);
-            SetTracked(frame, CanonicalJointId.LeftShoulder, profile.tPoseLeftShoulderPosition);
-            SetTracked(frame, CanonicalJointId.LeftElbow, profile.tPoseLeftElbowPosition);
-            SetTracked(frame, CanonicalJointId.LeftWrist, profile.tPoseLeftWristPosition);
-            SetTracked(frame, CanonicalJointId.RightShoulder, profile.tPoseRightShoulderPosition);
-            SetTracked(frame, CanonicalJointId.RightElbow, profile.tPoseRightElbowPosition);
-            SetTracked(frame, CanonicalJointId.RightWrist, profile.tPoseRightWristPosition);
-            SetTracked(frame, CanonicalJointId.LeftHip, profile.neutralLeftHipPosition);
-            SetTracked(frame, CanonicalJointId.LeftKnee, profile.neutralLeftKneePosition);
-            SetTracked(frame, CanonicalJointId.LeftAnkle, profile.neutralLeftAnklePosition);
-            SetTracked(frame, CanonicalJointId.RightHip, profile.neutralRightHipPosition);
-            SetTracked(frame, CanonicalJointId.RightKnee, profile.neutralRightKneePosition);
-            SetTracked(frame, CanonicalJointId.RightAnkle, profile.neutralRightAnklePosition);
+            AddReferenceChain(
+                frame,
+                CanonicalJointId.LeftShoulder,
+                CanonicalJointId.LeftElbow,
+                CanonicalJointId.LeftWrist,
+                profile.neutralLeftShoulderPosition,
+                profile.leftArmGeometry);
+            AddReferenceChain(
+                frame,
+                CanonicalJointId.RightShoulder,
+                CanonicalJointId.RightElbow,
+                CanonicalJointId.RightWrist,
+                profile.neutralRightShoulderPosition,
+                profile.rightArmGeometry);
+            AddReferenceChain(
+                frame,
+                CanonicalJointId.LeftHip,
+                CanonicalJointId.LeftKnee,
+                CanonicalJointId.LeftAnkle,
+                profile.neutralLeftHipPosition,
+                profile.leftLegGeometry);
+            AddReferenceChain(
+                frame,
+                CanonicalJointId.RightHip,
+                CanonicalJointId.RightKnee,
+                CanonicalJointId.RightAnkle,
+                profile.neutralRightHipPosition,
+                profile.rightLegGeometry);
             frame.Complete();
             return frame;
+        }
+
+        private static void AddReferenceChain(
+            CanonicalPoseFrame frame,
+            CanonicalJointId rootId,
+            CanonicalJointId midId,
+            CanonicalJointId tipId,
+            Vector3 rootPosition,
+            MotionCalibrationChainGeometry geometry)
+        {
+            var midPosition = rootPosition +
+                geometry.referenceUpperDirection * geometry.upperLength;
+            var tipPosition = midPosition +
+                geometry.referenceLowerDirection * geometry.lowerLength;
+            SetTracked(frame, rootId, rootPosition);
+            SetTracked(frame, midId, midPosition);
+            SetTracked(frame, tipId, tipPosition);
         }
 
         private static CanonicalPoseFrame CreateYawedReferenceCanonicalFrame(
@@ -829,11 +862,13 @@ namespace GoldenNeedle.Tests
             return new MotionCalibrationProfile
             {
                 isValid = true,
+                bodyReferenceValid = true,
                 version = MotionCalibrationProfile.CurrentVersion,
-                leftArmReach = 0.5f,
-                rightArmReach = 1f,
-                leftLegReach = 1f,
-                rightLegReach = 1f,
+                state = MotionCalibrationState.Ready,
+                leftArmGeometry = Geometry(0.25f, 0.25f, Vector3.left, Vector3.left),
+                rightArmGeometry = Geometry(0.5f, 0.5f, Vector3.right, Vector3.right),
+                leftLegGeometry = Geometry(0.5f, 0.5f, Vector3.down, Vector3.down),
+                rightLegGeometry = Geometry(0.5f, 0.5f, Vector3.down, Vector3.down),
                 neutralBodyRight = Vector3.right,
                 neutralBodyUp = Vector3.up,
                 neutralBodyForward = Vector3.back,
@@ -843,30 +878,52 @@ namespace GoldenNeedle.Tests
         private static MotionCalibrationProfile RetargetProfile()
         {
             var profile = ValidProfile();
-            profile.leftArmReach = 0.66f;
-            profile.rightArmReach = 0.66f;
-            profile.leftLegReach = 0.45f + new Vector3(0f, -0.12f, 0.10f).magnitude;
-            profile.rightLegReach = 0.45f + new Vector3(0f, -0.12f, 0.10f).magnitude;
             profile.neutralPelvisPosition = Vector3.zero;
             profile.neutralChestPosition = new Vector3(0f, 0.40f, 0f);
             profile.neutralLeftShoulderPosition = new Vector3(-0.31f, 0.42f, 0f);
             profile.neutralRightShoulderPosition = new Vector3(0.31f, 0.42f, 0f);
             profile.neutralLeftHipPosition = new Vector3(-0.17f, -0.45f, 0f);
             profile.neutralRightHipPosition = new Vector3(0.17f, -0.45f, 0f);
-            profile.neutralLeftKneePosition = new Vector3(-0.17f, -0.90f, 0f);
-            profile.neutralRightKneePosition = new Vector3(0.17f, -0.90f, 0f);
-            profile.neutralLeftAnklePosition = new Vector3(-0.17f, -1.02f, 0.10f);
-            profile.neutralRightAnklePosition = new Vector3(0.17f, -1.02f, 0.10f);
-            profile.tPoseLeftShoulderPosition = new Vector3(-0.31f, 0.42f, 0f);
-            profile.tPoseLeftElbowPosition = new Vector3(-0.67f, 0.42f, 0f);
-            profile.tPoseLeftWristPosition = new Vector3(-0.97f, 0.42f, 0f);
-            profile.tPoseRightShoulderPosition = new Vector3(0.31f, 0.42f, 0f);
-            profile.tPoseRightElbowPosition = new Vector3(0.67f, 0.42f, 0f);
-            profile.tPoseRightWristPosition = new Vector3(0.97f, 0.42f, 0f);
-            profile.tPoseLeftArmDirection = Vector3.left;
-            profile.tPoseRightArmDirection = Vector3.right;
-            profile.tPoseArmSpan = 1.94f;
+            profile.leftArmGeometry = Geometry(
+                0.36f,
+                0.30f,
+                Vector3.left,
+                Vector3.left);
+            profile.rightArmGeometry = Geometry(
+                0.36f,
+                0.30f,
+                Vector3.right,
+                Vector3.right);
+            var lowerLegVector = new Vector3(0f, -0.12f, 0.10f);
+            profile.leftLegGeometry = Geometry(
+                0.45f,
+                lowerLegVector.magnitude,
+                Vector3.down,
+                lowerLegVector.normalized);
+            profile.rightLegGeometry = Geometry(
+                0.45f,
+                lowerLegVector.magnitude,
+                Vector3.down,
+                lowerLegVector.normalized);
             return profile;
+        }
+
+        private static MotionCalibrationChainGeometry Geometry(
+            float upperLength,
+            float lowerLength,
+            Vector3 upperDirection,
+            Vector3 lowerDirection)
+        {
+            return new MotionCalibrationChainGeometry
+            {
+                isValid = true,
+                sampleCount = 3,
+                upperLength = upperLength,
+                lowerLength = lowerLength,
+                reach = upperLength + lowerLength,
+                referenceUpperDirection = upperDirection.normalized,
+                referenceLowerDirection = lowerDirection.normalized,
+            };
         }
 
         private static Transform CreateChild(string name, Transform parent, Vector3 localPosition)

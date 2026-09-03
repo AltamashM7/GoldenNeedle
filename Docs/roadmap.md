@@ -24,7 +24,7 @@ Accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`.
 
 Accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`.
 
-USER QA passed calibration, T-pose recognition, visible smoothing improvement and Good responsiveness. Loss/reacquisition edge cases were not exhaustively physically tested and remain a later integration-quality check.
+USER QA historically passed the Phase 3 calibration/T-pose implementation, visible smoothing improvement and Good responsiveness. Phase 4 now deliberately supersedes hard T-pose recognition with modular measurement calibration; the Phase 3 acceptance remains historical rather than a requirement to preserve that UI/architecture.
 
 ## Phase 4 — Humanoid retargeting
 
@@ -32,11 +32,11 @@ USER QA passed calibration, T-pose recognition, visible smoothing improvement an
 
 Pre-correction handoff HEAD: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` (runtime parent `5e830dce7ac3de542ab159b8b90992935d9dd0b0`).
 
-A repository-first correction now removes the unintended automatic front-camera presentation flip and replaces the production reflected/per-chain quaternion mapping with an explicit signed canonical-to-avatar basis map feeding the existing positional analytic IK. The accepted canonical mapping, stabilization, calibration state machine, avatar-authored proportions, partial-body behavior, provider boundary, rig binding, and permanent debug Lab are retained.
+A repository-first correction removed the unintended front-camera presentation flip and replaced reflected/per-chain quaternion production mapping with an explicit signed canonical-to-avatar basis map feeding positional analytic IK. The corrected 2D presentation has now passed USER QA. The old hard T-pose calibration state machine is being replaced with a comfortable body reference plus independent arm/leg geometry modules while preserving canonical mapping, stabilization, avatar-authored proportions, partial-body behavior, provider boundary, rig binding, and the permanent debug Lab.
 
 Phase 4 remains **NOT USER ACCEPTED**. The correction must not be merged into `main` until fresh USER motion/visual QA and Orchestrator audit pass.
 
-**Immediate next step:** USER QA the corrected preview and procedural retargeting across asymmetric, bent, depth, leg, and large-yaw poses; then audit the exact pushed head. If the procedural harness passes, physically validate the Animator Humanoid path before Phase 4 acceptance.
+**Immediate next step:** USER QA the modular calibration flow with comfortable/non-T-pose poses and partial visibility. Once body/per-chain readiness is trustworthy, resume F3/F5 procedural retarget QA across asymmetric, bent, depth, leg, and large-yaw poses; then validate the Animator Humanoid path before Phase 4 acceptance.
 
 ## Phase 5 — Locomotion prototype
 

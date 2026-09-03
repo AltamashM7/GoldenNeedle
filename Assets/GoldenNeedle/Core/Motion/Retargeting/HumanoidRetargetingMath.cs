@@ -159,7 +159,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             out CanonicalToAvatarAxisMap map)
         {
             map = default;
-            if (profile == null || !profile.isValid || binding == null || !binding.IsBound ||
+            if (profile == null || !profile.bodyReferenceValid || binding == null || !binding.IsBound ||
                 !TryBuildSignedBasis(
                     profile.neutralBodyRight,
                     profile.neutralBodyUp,
@@ -326,7 +326,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             out ChainReferenceCharacterization characterization)
         {
             characterization = default;
-            if (profile == null || !profile.isValid || binding == null ||
+            if (profile == null || !profile.bodyReferenceValid || binding == null ||
                 !binding.IsChainAvailable(chainId))
             {
                 return false;
@@ -422,46 +422,45 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             rootToMid = Vector3.zero;
             rootToTip = Vector3.zero;
             reach = 0f;
+            var geometry = GetCalibrationGeometry(profile, chainId);
+            if (!geometry.isValid ||
+                !TryNormalize(geometry.referenceUpperDirection, out var upperDirection) ||
+                !TryNormalize(geometry.referenceLowerDirection, out var lowerDirection) ||
+                !IsFinite(geometry.upperLength) ||
+                !IsFinite(geometry.lowerLength) ||
+                !IsFinite(geometry.reach) ||
+                geometry.upperLength <= 0f ||
+                geometry.lowerLength <= 0f ||
+                geometry.reach <= 0f)
+            {
+                return false;
+            }
+
+            rootToMid = upperDirection * geometry.upperLength;
+            rootToTip = rootToMid + lowerDirection * geometry.lowerLength;
+            reach = geometry.reach;
+            return IsFinite(rootToMid) &&
+                   IsFinite(rootToTip) &&
+                   rootToTip.sqrMagnitude > MinimumDirectionSquared;
+        }
+
+        private static MotionCalibrationChainGeometry GetCalibrationGeometry(
+            MotionCalibrationProfile profile,
+            CanonicalKinematicChainId chainId)
+        {
             switch (chainId)
             {
                 case CanonicalKinematicChainId.LeftArm:
-                    rootToMid = profile.tPoseLeftElbowPosition - profile.tPoseLeftShoulderPosition;
-                    rootToTip = profile.tPoseLeftWristPosition - profile.tPoseLeftShoulderPosition;
-                    reach = profile.leftArmReach;
-                    if (rootToTip.sqrMagnitude <= MinimumDirectionSquared &&
-                        TryNormalize(profile.tPoseLeftArmDirection, out var leftArmDirection))
-                    {
-                        rootToTip = leftArmDirection * reach;
-                        rootToMid = rootToTip * 0.5f;
-                    }
-                    break;
+                    return profile.leftArmGeometry;
                 case CanonicalKinematicChainId.RightArm:
-                    rootToMid = profile.tPoseRightElbowPosition - profile.tPoseRightShoulderPosition;
-                    rootToTip = profile.tPoseRightWristPosition - profile.tPoseRightShoulderPosition;
-                    reach = profile.rightArmReach;
-                    if (rootToTip.sqrMagnitude <= MinimumDirectionSquared &&
-                        TryNormalize(profile.tPoseRightArmDirection, out var rightArmDirection))
-                    {
-                        rootToTip = rightArmDirection * reach;
-                        rootToMid = rootToTip * 0.5f;
-                    }
-                    break;
+                    return profile.rightArmGeometry;
                 case CanonicalKinematicChainId.LeftLeg:
-                    rootToMid = profile.neutralLeftKneePosition - profile.neutralLeftHipPosition;
-                    rootToTip = profile.neutralLeftAnklePosition - profile.neutralLeftHipPosition;
-                    reach = profile.leftLegReach;
-                    break;
+                    return profile.leftLegGeometry;
                 case CanonicalKinematicChainId.RightLeg:
-                    rootToMid = profile.neutralRightKneePosition - profile.neutralRightHipPosition;
-                    rootToTip = profile.neutralRightAnklePosition - profile.neutralRightHipPosition;
-                    reach = profile.rightLegReach;
-                    break;
+                    return profile.rightLegGeometry;
                 default:
-                    return false;
+                    return default;
             }
-
-            return IsFinite(rootToMid) && IsFinite(rootToTip) && IsFinite(reach) &&
-                   reach > 0.0001f && rootToTip.sqrMagnitude > MinimumDirectionSquared;
         }
 
         private static bool IsArm(CanonicalKinematicChainId chainId)

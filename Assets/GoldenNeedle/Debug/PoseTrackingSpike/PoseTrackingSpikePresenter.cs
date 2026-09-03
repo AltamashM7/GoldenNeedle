@@ -1,3 +1,4 @@
+using GoldenNeedle.Core.Motion.Calibration;
 using GoldenNeedle.Core.Motion.Canonical;
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
 using GoldenNeedle.Core.Motion.Retargeting;
@@ -330,7 +331,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
         private void DrawDiagnostics()
         {
-            var panelHeight = 500f;
+            var panelHeight = 590f;
             var panel = new Rect(16f, 16f, previewPanelWidth, panelHeight);
             GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.84f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
@@ -368,7 +369,12 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                   $"Pelvis: {(rawFrame != null && rawFrame.hasCanonicalPelvis)}   3D: {(rawFrame != null && rawFrame.hasCanonical3D)}\n" +
                   $"2D↔3D X agreement: {AgreementStatus(coordinateAgreement.hasXEvidence, coordinateAgreement.xPass)}   X comparisons: {coordinateAgreement.xComparisons}\n" +
                   $"2D↔3D Y agreement: {AgreementStatus(coordinateAgreement.hasYEvidence, coordinateAgreement.yPass)}   Y comparisons: {coordinateAgreement.yComparisons}   mismatches: {coordinateAgreement.yMismatches}   N/A: {coordinateAgreement.yInsufficientComparisons}\n" +
-                  $"Calibration: {(calibration == null ? "Unavailable" : calibration.State.ToString())}   {(calibration == null ? 0f : calibration.Progress01 * 100f):0}%   valid={(calibration != null && calibration.IsValid)}\n" +
+                  $"Calibration: {(calibration == null ? "Unavailable" : calibration.State.ToString())}   usable={(calibration != null && calibration.IsValid)}\n" +
+                 $"Body reference: {FormatBodyReferenceStatus(calibration)}\n" +
+                 $"Left arm: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.LeftArm)}\n" +
+                 $"Right arm: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.RightArm)}\n" +
+                 $"Left leg: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.LeftLeg)}\n" +
+                 $"Right leg: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.RightLeg)}\n" +
                  $"Calib dimensions: shoulder {(calibration == null ? 0f : calibration.Profile.shoulderWidth):0.00}   hip {(calibration == null ? 0f : calibration.Profile.hipWidth):0.00}   torso {(calibration == null ? 0f : calibration.Profile.torsoLength):0.00}\n" +
                  $"Rotation solve: {rotationState}\n" +
                  $"Valid bones: {(rotationFrame == null ? 0 : rotationFrame.validBoneCount)}/{GoldenNeedle.Core.Motion.Rotation.CanonicalRotationFrame.BoneCount}\n" +
@@ -398,6 +404,63 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             var help = new Rect(16f, Screen.height - 36f, 640f, 24f);
             GUI.Label(help, "R retry   C calibrate   X cancel/reset   F1 raw   F2 canonical 2D   F3 3D   F4 stabilized 2D   F5 rig drive ON/OFF   F6 coordinate sample   Cyan stabilized / yellow canonical / magenta targets / orange bend hints", _smallLabelStyle);
+        }
+
+        private static string FormatBodyReferenceStatus(MotionCalibrationSession calibration)
+        {
+            if (calibration == null)
+            {
+                return "Unavailable";
+            }
+
+            if (calibration.Profile.bodyReferenceValid)
+            {
+                return "READY";
+            }
+
+            return calibration.State == MotionCalibrationState.SamplingBodyReference
+                ? $"sampling {calibration.Progress01 * 100f:0}%"
+                : "waiting for shoulders / hips";
+        }
+
+        private static string FormatCalibrationChainStatus(
+            MotionCalibrationSession calibration,
+            MotionCalibrationChainId id)
+        {
+            if (calibration == null)
+            {
+                return "Unavailable";
+            }
+
+            var progress = calibration.GetChainProgress(id);
+            if (progress.IsReady)
+            {
+                return "READY";
+            }
+
+            var sampleText = progress.SampleCount > 0
+                ? $"{progress.SampleCount}/{progress.RequiredSamples} samples"
+                : string.Empty;
+            string waitText;
+            switch (progress.WaitReason)
+            {
+                case MotionCalibrationChainWaitReason.MissingJoint:
+                    waitText = $"waiting for {progress.WaitingForJoint}";
+                    break;
+                case MotionCalibrationChainWaitReason.LowConfidence:
+                    waitText = "waiting for confident tracking";
+                    break;
+                case MotionCalibrationChainWaitReason.InvalidGeometry:
+                    waitText = "waiting for usable segment geometry";
+                    break;
+                default:
+                    waitText = "waiting for samples";
+                    break;
+            }
+
+            return string.IsNullOrEmpty(sampleText)
+                ? waitText
+                : $"{sampleText}; {waitText}";
         }
 
         private static string AgreementStatus(bool hasEvidence, bool pass)

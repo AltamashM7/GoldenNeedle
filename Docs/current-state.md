@@ -10,7 +10,7 @@ This is the concise durable snapshot. It intentionally distinguishes accepted Mo
 - Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`
 - Phase 4 runtime investigation parent: `5e830dce7ac3de542ab159b8b90992935d9dd0b0`.
 - Phase 4 handoff-doc HEAD before the correction: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — `docs: hand off phase 4 investigation state`.
-- The branch now contains a Phase 4 coordinate/retarget correction **awaiting USER QA and Orchestrator audit**.
+- The branch contains the Phase 4 coordinate/retarget correction plus a modular calibration redesign **awaiting USER QA and Orchestrator audit**.
 - Phase 4 is **NOT USER ACCEPTED**.
 - Phase 5 has **NOT STARTED**.
 - No Phase 4 PR or merge to `main` is authorized.
@@ -29,20 +29,20 @@ The branch currently contains, among other work:
 - project-owned analytic two-bone IK;
 - explicit and structural Animator Humanoid rig binding;
 - procedural debug humanoid plus dedicated RenderTexture view;
-- calibration-profile extensions for per-side reach/reference geometry;
+- modular body-reference plus independent per-chain calibration geometry;
 - coordinate-space diagnostics and the permanent Motion Engine Lab controls.
 
-The latest correction keeps the provider/canonical/stabilization/calibration boundaries, per-side reach, positional targets, analytic IK, rig binding, and debug harness. It replaces production current-parent/per-chain quaternion characterization with one explicit signed canonical-to-avatar basis map. The avatar target basis is cached from bind/reference geometry instead of recomputed from already-driven transforms, and 2D debug overlays explicitly inverse inference preparation before entering display space. This is **still not accepted Phase 4 architecture** until USER QA and Orchestrator audit pass.
+The coordinate/retarget correction keeps the provider/canonical/stabilization boundaries, positional targets, analytic IK, rig binding, and debug harness. Production limb mapping uses the explicit signed canonical-to-avatar basis map with an immutable avatar reference basis, and the corrected 2D presentation path is now USER-QA-passed. Calibration has subsequently been redesigned so body-reference readiness is separate from four independently sampled limb geometries. This is **still not accepted Phase 4 architecture** until calibration and procedural retarget USER QA plus Orchestrator audit pass.
 
 ## Latest USER QA evidence at the checkpoint
 
 The latest visible state before this handoff is:
 
-- F3 canonical 3D appears upright and broadly follows the correct viewer-left/viewer-right motion.
-- The canonical 2D skeleton is human-shaped and aligned over the visible person.
-- USER QA at `0eda91393bd94f9f621b8d5376df1b507207312f` confirmed the webcam is upright/unmirrored, F3 is upright, and internal 2D↔3D X/Y agreement reports PASS. That QA also exposed one presentation-only regression: the 2D overlay was vertically inverted. The follow-up correction restores the single display-normalized-to-IMGUI Y inversion while preserving the horizontal fix.
-- Earlier and repeated Phase 4 USER QA showed the procedural rig failing to accurately reproduce the F3 articulated pose across multiple arm, leg, asymmetric, and side-view poses.
-- Therefore the procedural retargeter remains **unaccepted** even if individual diagnostics report targets/chains/bones as valid or solved.
+- **2D PRESENTATION QA — PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`: webcam upright, unwanted horizontal presentation mirror fixed, 2D skeleton upright, and 2D skeleton registered correctly over the user.
+- F3 canonical 3D had already appeared upright/sensible, with internal 2D↔3D X/Y agreement reporting PASS.
+- Calibration then became the next blocker: the old hard bilateral T-pose stage could remain at `AwaitingTPose 0%` in the USER's limited physical space.
+- The approved redesign removes that hard T-pose gate in favor of a comfortable body-reference capture plus independently sampled LeftArm, RightArm, LeftLeg, and RightLeg geometry.
+- Procedural F3/F5 retarget USER QA has **not resumed yet** after the calibration blocker and remains unaccepted.
 - Coordinate/presentation diagnostics were changed several times during investigation. They are useful observability tools but must not be treated as proof that the foundation is correct without code inspection and fresh USER QA.
 - The production Animator Humanoid path has not been physically tested against the USER's real character asset.
 
@@ -53,7 +53,8 @@ Do not infer that the correction is visually correct merely because the signed-a
 - Unity 6.5 / project version `6000.5.0f1` remains the engine baseline.
 - URP `17.5.0` remains configured.
 - MediaPipeUnityPlugin `0.16.3` and local Pose Landmarker Lite remain the tracking backend.
-- Phase 3 physical QA passed calibration, smoothing and responsiveness with **PASS WITH NOTES**.
+- Phase 3 physical QA historically passed the then-current T-pose calibration, smoothing and responsiveness with **PASS WITH NOTES**; Phase 4 now deliberately supersedes the hard T-pose calibration architecture.
+- Phase 4 2D presentation QA has **PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
 - The pre-correction Phase 4 source/test compilation was repeatedly reported successful by Luna.
 - This correction was produced repository-first; targeted source/math checks are documented in the handoff, but USER Unity QA is still required.
 - The expanding Phase 4 EditMode suites were often only **present/source-compiled**, not executed by Unity Test Runner, because another Unity Editor instance/licensing channel blocked batch execution. Do not convert those counts into passing Unity tests without rerunning them.
@@ -88,9 +89,9 @@ Perform fresh USER QA on the correction, then have the Web Orchestrator audit th
 
 The highest-value QA is:
 
-1. Recheck the upright/unmirrored webcam with the 2D skeleton and confirm both horizontal and vertical overlay registration.
-2. Only after that presentation check passes, recalibrate and compare F3 against the procedural rig across neutral/T-pose, asymmetric arms, bent arms, raised/bent legs, depth motion, and large body yaw/side views.
-3. Keep F5 target/hint markers visible when diagnosing any remaining mismatch.
+1. Run the smallest modular-calibration QA: press `C`, stand comfortably until **Body reference: READY**, then confirm visible chains independently advance/READY without requiring a T-pose or all four limbs simultaneously.
+2. Verify one naturally bent arm can reach READY and that an unavailable opposite arm/lower body does not invalidate the body reference or completed chain.
+3. Only after calibration behaves correctly, resume F3/F5 procedural retarget QA across asymmetric, bent, depth, leg, and large-yaw poses.
 4. If the procedural path passes, physically test one real Animator Humanoid asset before Phase 4 acceptance.
 5. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.
 

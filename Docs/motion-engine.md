@@ -66,9 +66,13 @@ The provider separates sensor/storage metadata, MediaPipe pixel preparation, can
 
 ## Calibration
 
-Phase 3 provides an in-memory `MotionCalibrationSession` with the state flow `Idle -> Awaiting Neutral -> Sampling Neutral -> Awaiting T-Pose -> Sampling T-Pose -> Complete`, plus cancel/reset. Neutral sampling requires both shoulders, both hips, both knees, and both ankles; it uses a continuous stable hold of approximately `1.25 s`. The head is optional and wrists are not required for neutral capture. T-pose sampling requires both shoulders, elbows, wrists, and hips; it checks arm direction, shoulder-height wrists, extension, and an angular tolerance of approximately `25°` over approximately `0.75 s`. Invalid or moving poses reset stage progress and continue waiting.
+Phase 4 supersedes the old hard bilateral T-pose gate with modular measurement calibration. The state flow is `Idle -> AwaitingBodyReference -> SamplingBodyReference -> AcquiringGeometry -> Ready`. **Usability begins when the body reference is valid**, even if the state remains `AcquiringGeometry` because some optional chains are still missing.
 
-The in-memory profile stores valid neutral pelvis/chest/shoulder/hip/knee/ankle references, shoulder/hip widths, torso length, neutral body axes, confidence-weighted T-pose shoulder/elbow/wrist geometry for both arms, T-pose arm directions/span, independent left/right arm and leg reaches, timestamp/state/version, and sample counts. The profile schema is version `4`. These are user reference measurements, not avatar bone lengths; calibration must preserve the avatar's own proportions.
+Body reference uses only pelvis/chest plus bilateral shoulders/hips and a short comfortable stable hold. It captures shoulder width, hip width, torso length, neutral pelvis/chest/shoulder/hip positions, and semantic Right/Up/Forward. Knees, ankles, elbows, wrists, and a special T-pose are not required for this stage.
+
+LeftArm, RightArm, LeftLeg, and RightLeg accumulate independently on stabilized frames when their own root/mid/tip joints have trustworthy 3D positions. Each sample measures `upperLength = |root-mid|` and `lowerLength = |mid-tip|`; `reach = upperLength + lowerLength`. Segment lengths and optional segment reference directions are confidence-weighted across a short fixed sample count (default 8). A bent arm is therefore not shortened to the shoulder→wrist chord, and one unavailable chain never resets or invalidates another.
+
+The profile schema is version `5`. It carries `bodyReferenceValid` plus four independent `MotionCalibrationChainGeometry` records. Compatibility `isValid` now means body-reference usability only, not all-chain completeness. The Lab displays body readiness and per-chain READY/sample/waiting reasons instead of an opaque permanent T-pose 0%.
 
 ## Confidence and filtering
 
@@ -81,7 +85,7 @@ The in-memory profile stores valid neutral pelvis/chest/shoulder/hip/knee/ankle 
 
 The project-owned `CanonicalRotationFrame` has ten bones: Pelvis, Chest, LeftUpperArm, LeftLowerArm, RightUpperArm, RightLowerArm, LeftUpperLeg, LeftLowerLeg, RightUpperLeg, and RightLowerLeg. Each output includes tracking, confidence, optional vectors, and a `rotationDeltaFromCalibration`; the frame is preallocated and independently partial-body valid. Phase 4 retains this frame for torso orientation, diagnostics, and future orientation consumers; it is not the primary limb-pose contract.
 
-Arms use the Phase 3 profile T-pose left/right arm directions as reference directions for both upper and lower segments. Runtime current directions are shoulder -> elbow, elbow -> wrist, and the corresponding right-side pairs. Legs use neutral hip -> knee, knee -> ankle directions. Each solve requires tracked finite joints and uses the minimum required confidence. Limb posing consumes the separate positional `CanonicalKinematicTargets` output.
+For diagnostic `CanonicalRotationFrame` limb swing, each calibrated chain contributes independently sampled upper/lower reference segment directions. Runtime directions remain shoulder→elbow/elbow→wrist or hip→knee/knee→ankle. Uncalibrated chains simply omit those diagnostic bones. Production limb posing continues to use positional `CanonicalKinematicTargets`, not these diagnostic rotations.
 
 Pelvis and chest rotation diagnostics use Right = right hip/shoulder minus left hip/shoulder and Up = chest minus pelvis, followed by finite validation and orthonormalization. The calibration profile still records canonical +X right, +Y up, +Z away with semantic frontal forward at -Z. Because that semantic triple may be reflected, `CanonicalRotationSolver` no longer tries to force the semantic forward into a quaternion; its body quaternion is a proper rotation derived from Right + Up. The signed semantic forward is consumed by the explicit retarget map instead.
 
@@ -89,7 +93,7 @@ All limb and torso outputs are swing-only. Monocular webcam input does not relia
 
 ## Phase 4 humanoid retargeting
 
-`CanonicalKinematicTargetBuilder` consumes stabilized canonical positions and the valid in-memory profile to produce four independent positional targets: LeftArm, RightArm, LeftLeg, and RightLeg. Each target stores source root/mid/effector positions, source reach, confidence, normalized effector displacement, optional normalized bend-hint displacement, and timing. Root plus effector is the minimum valid chain; the current mid is preferred for the bend plane.
+`CanonicalKinematicTargetBuilder` consumes stabilized canonical positions once the body reference is usable, then evaluates calibration per chain. A chain is emitted only when its own `MotionCalibrationChainGeometry` is valid; its source reach is the calibrated upper+lower segment sum. Root plus effector remains the minimum live positional target, and the current mid is preferred for the bend plane. An uncalibrated or currently unavailable chain does not block other chains.
 
 `HumanoidRigBinding` captures the actual root/mid/tip Transform for each explicit or Animator Humanoid chain, bind local rotations, upper/lower world lengths, total reach, original local positions/scales, and a proper target anatomical reference basis from actual bound joint positions. That target basis is cached during `CaptureReferencePose()`, returned immutably during live retargeting, and cleared/rebuilt with the binding so already-driven transforms cannot feed back into the next canonical-to-avatar map. `MotionEngineRuntime` owns the preallocated target output, and `HumanoidRetargeter` consumes stabilized canonical positions plus those targets in `LateUpdate`.
 

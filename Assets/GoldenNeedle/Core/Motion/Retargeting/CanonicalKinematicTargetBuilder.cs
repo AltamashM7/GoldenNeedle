@@ -6,15 +6,15 @@ namespace GoldenNeedle.Core.Motion.Retargeting
 {
     /// <summary>
     /// Converts stabilized canonical positions into normalized root-to-effector and root-to-mid
-    /// chain vectors. It deliberately does not construct a body quaternion: Golden Needle's
-    /// canonical anatomical basis may be reflected relative to an avatar basis, and that
-    /// handedness conversion belongs explicitly in the target adapter.
+    /// chain vectors. Body-reference readiness is global; each chain is emitted only when that
+    /// chain's independent calibration geometry is valid.
     /// </summary>
     public sealed class CanonicalKinematicTargetBuilder
     {
         private struct ChainDefinition
         {
             public CanonicalKinematicChainId id;
+            public MotionCalibrationChainId calibrationId;
             public CanonicalJointId root;
             public CanonicalJointId mid;
             public CanonicalJointId effector;
@@ -25,6 +25,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             new ChainDefinition
             {
                 id = CanonicalKinematicChainId.LeftArm,
+                calibrationId = MotionCalibrationChainId.LeftArm,
                 root = CanonicalJointId.LeftShoulder,
                 mid = CanonicalJointId.LeftElbow,
                 effector = CanonicalJointId.LeftWrist,
@@ -32,6 +33,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             new ChainDefinition
             {
                 id = CanonicalKinematicChainId.RightArm,
+                calibrationId = MotionCalibrationChainId.RightArm,
                 root = CanonicalJointId.RightShoulder,
                 mid = CanonicalJointId.RightElbow,
                 effector = CanonicalJointId.RightWrist,
@@ -39,6 +41,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             new ChainDefinition
             {
                 id = CanonicalKinematicChainId.LeftLeg,
+                calibrationId = MotionCalibrationChainId.LeftLeg,
                 root = CanonicalJointId.LeftHip,
                 mid = CanonicalJointId.LeftKnee,
                 effector = CanonicalJointId.LeftAnkle,
@@ -46,6 +49,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             new ChainDefinition
             {
                 id = CanonicalKinematicChainId.RightLeg,
+                calibrationId = MotionCalibrationChainId.RightLeg,
                 root = CanonicalJointId.RightHip,
                 mid = CanonicalJointId.RightKnee,
                 effector = CanonicalJointId.RightAnkle,
@@ -54,10 +58,13 @@ namespace GoldenNeedle.Core.Motion.Retargeting
 
         public void Reset()
         {
-            // No temporal orientation state is required. Stabilization is owned upstream.
+            // No temporal orientation state is required. Stabilization/calibration own sampling.
         }
 
-        public void Build(CanonicalPoseFrame source, MotionCalibrationProfile profile, CanonicalKinematicTargets destination)
+        public void Build(
+            CanonicalPoseFrame source,
+            MotionCalibrationProfile profile,
+            CanonicalKinematicTargets destination)
         {
             if (destination == null)
             {
@@ -66,9 +73,9 @@ namespace GoldenNeedle.Core.Motion.Retargeting
 
             var timestamp = source == null ? 0L : source.sourceTimestampMillisec;
             var receivedAt = source == null ? 0d : source.receivedAtSeconds;
-            var profileValid = profile != null && profile.isValid;
-            destination.Begin(timestamp, receivedAt, profileValid);
-            if (source == null || !profileValid)
+            var bodyReferenceValid = profile != null && profile.bodyReferenceValid;
+            destination.Begin(timestamp, receivedAt, bodyReferenceValid);
+            if (source == null || !bodyReferenceValid)
             {
                 destination.Complete();
                 return;
@@ -77,17 +84,19 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             for (var i = 0; i < Definitions.Length; i++)
             {
                 var definition = Definitions[i];
+                var geometry = profile.GetChainGeometry(definition.calibrationId);
+                if (!geometry.isValid ||
+                    !IsFinite(geometry.reach) ||
+                    geometry.reach <= 0.0001f)
+                {
+                    continue;
+                }
+
                 var rootJoint = source.GetJoint(definition.root);
                 var midJoint = source.GetJoint(definition.mid);
                 var effectorJoint = source.GetJoint(definition.effector);
                 if (!TryGetPosition(rootJoint, out var rootPosition) ||
                     !TryGetPosition(effectorJoint, out var effectorPosition))
-                {
-                    continue;
-                }
-
-                var sourceReach = GetSourceReach(profile, definition.id);
-                if (!IsFinite(sourceReach) || sourceReach <= 0.0001f)
                 {
                     continue;
                 }
@@ -107,8 +116,10 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                     midDisplacement = Vector3.zero;
                 }
 
-                var normalizedEffector = effectorDisplacement / sourceReach;
-                var normalizedMid = hasBendHint ? midDisplacement / sourceReach : Vector3.zero;
+                var normalizedEffector = effectorDisplacement / geometry.reach;
+                var normalizedMid = hasBendHint
+                    ? midDisplacement / geometry.reach
+                    : Vector3.zero;
                 if (!IsFinite(normalizedEffector) || !IsFinite(normalizedMid))
                 {
                     continue;
@@ -119,11 +130,12 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                     id = definition.id,
                     isValid = true,
                     hasBendHint = hasBendHint && midDisplacement.sqrMagnitude > 0.00000001f,
-                    confidence = Mathf.Clamp01(Mathf.Min(Confidence(rootJoint), Confidence(effectorJoint))),
+                    confidence = Mathf.Clamp01(
+                        Mathf.Min(Confidence(rootJoint), Confidence(effectorJoint))),
                     sourceRootPosition = rootPosition,
                     sourceMidPosition = midPosition,
                     sourceEffectorPosition = effectorPosition,
-                    sourceReach = sourceReach,
+                    sourceReach = geometry.reach,
                     normalizedEffectorDisplacement = normalizedEffector,
                     normalizedBendHintDisplacement = normalizedMid,
                     sourceTimestampMillisec = timestamp,
@@ -134,26 +146,11 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             destination.Complete();
         }
 
-        private static float GetSourceReach(MotionCalibrationProfile profile, CanonicalKinematicChainId id)
-        {
-            switch (id)
-            {
-                case CanonicalKinematicChainId.LeftArm:
-                    return profile.leftArmReach;
-                case CanonicalKinematicChainId.RightArm:
-                    return profile.rightArmReach;
-                case CanonicalKinematicChainId.LeftLeg:
-                    return profile.leftLegReach;
-                case CanonicalKinematicChainId.RightLeg:
-                    return profile.rightLegReach;
-                default:
-                    return 0f;
-            }
-        }
-
         private static float Confidence(CanonicalPoseJoint joint)
         {
-            return IsFinite(joint.confidence) ? Mathf.Clamp01(joint.confidence) : 0f;
+            return IsFinite(joint.confidence)
+                ? Mathf.Clamp01(joint.confidence)
+                : 0f;
         }
 
         private static bool TryGetPosition(CanonicalPoseJoint joint, out Vector3 position)

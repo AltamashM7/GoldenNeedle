@@ -5,8 +5,9 @@ using UnityEngine;
 namespace GoldenNeedle.Core.Motion.Rotation
 {
     /// <summary>
-    /// Reconstructs constrained swing-only bone deltas from stabilized canonical positions.
-    /// Monocular axial twist is intentionally not treated as observable.
+    /// Reconstructs constrained swing-only diagnostic bone deltas from stabilized canonical
+    /// positions. Torso requires only the body reference. Each limb segment is optional and uses
+    /// that chain's sampled reference segment direction when available.
     /// </summary>
     public sealed class CanonicalRotationSolver
     {
@@ -15,7 +16,10 @@ namespace GoldenNeedle.Core.Motion.Rotation
         public Quaternion ReferenceBodyRotation { get; private set; } = Quaternion.identity;
         public bool HasReferenceBodyRotation { get; private set; }
 
-        public void Solve(CanonicalPoseFrame source, MotionCalibrationProfile profile, CanonicalRotationFrame destination)
+        public void Solve(
+            CanonicalPoseFrame source,
+            MotionCalibrationProfile profile,
+            CanonicalRotationFrame destination)
         {
             if (destination == null)
             {
@@ -31,14 +35,19 @@ namespace GoldenNeedle.Core.Motion.Rotation
                 return;
             }
 
-            var profileValid = profile != null && profile.isValid;
-            destination.Begin(source.sourceTimestampMillisec, source.receivedAtSeconds, profileValid);
+            var bodyReferenceValid = profile != null && profile.bodyReferenceValid;
+            destination.Begin(
+                source.sourceTimestampMillisec,
+                source.receivedAtSeconds,
+                bodyReferenceValid);
+
             var referenceBodyRotation = Quaternion.identity;
-            HasReferenceBodyRotation = profileValid && TryBuildBodyRotation(
-                profile.neutralBodyRight,
-                profile.neutralBodyUp,
-                profile.neutralBodyForward,
-                out referenceBodyRotation);
+            HasReferenceBodyRotation = bodyReferenceValid &&
+                TryBuildBodyRotation(
+                    profile.neutralBodyRight,
+                    profile.neutralBodyUp,
+                    profile.neutralBodyForward,
+                    out referenceBodyRotation);
 
             if (!HasReferenceBodyRotation)
             {
@@ -68,60 +77,39 @@ namespace GoldenNeedle.Core.Motion.Rotation
                 CanonicalJointId.Chest,
                 destination);
 
-            TrySolveDirectionalBone(
+            TrySolveChain(
+                source,
+                profile.leftArmGeometry,
                 CanonicalBoneId.LeftUpperArm,
-                source,
-                profile.tPoseLeftArmDirection,
-                CanonicalJointId.LeftShoulder,
-                CanonicalJointId.LeftElbow,
-                destination);
-            TrySolveDirectionalBone(
                 CanonicalBoneId.LeftLowerArm,
-                source,
-                profile.tPoseLeftArmDirection,
+                CanonicalJointId.LeftShoulder,
                 CanonicalJointId.LeftElbow,
                 CanonicalJointId.LeftWrist,
                 destination);
-            TrySolveDirectionalBone(
+            TrySolveChain(
+                source,
+                profile.rightArmGeometry,
                 CanonicalBoneId.RightUpperArm,
-                source,
-                profile.tPoseRightArmDirection,
-                CanonicalJointId.RightShoulder,
-                CanonicalJointId.RightElbow,
-                destination);
-            TrySolveDirectionalBone(
                 CanonicalBoneId.RightLowerArm,
-                source,
-                profile.tPoseRightArmDirection,
+                CanonicalJointId.RightShoulder,
                 CanonicalJointId.RightElbow,
                 CanonicalJointId.RightWrist,
                 destination);
-
-            TrySolveDirectionalBone(
+            TrySolveChain(
+                source,
+                profile.leftLegGeometry,
                 CanonicalBoneId.LeftUpperLeg,
-                source,
-                profile.neutralLeftKneePosition - profile.neutralLeftHipPosition,
-                CanonicalJointId.LeftHip,
-                CanonicalJointId.LeftKnee,
-                destination);
-            TrySolveDirectionalBone(
                 CanonicalBoneId.LeftLowerLeg,
-                source,
-                profile.neutralLeftAnklePosition - profile.neutralLeftKneePosition,
+                CanonicalJointId.LeftHip,
                 CanonicalJointId.LeftKnee,
                 CanonicalJointId.LeftAnkle,
                 destination);
-            TrySolveDirectionalBone(
+            TrySolveChain(
+                source,
+                profile.rightLegGeometry,
                 CanonicalBoneId.RightUpperLeg,
-                source,
-                profile.neutralRightKneePosition - profile.neutralRightHipPosition,
-                CanonicalJointId.RightHip,
-                CanonicalJointId.RightKnee,
-                destination);
-            TrySolveDirectionalBone(
                 CanonicalBoneId.RightLowerLeg,
-                source,
-                profile.neutralRightAnklePosition - profile.neutralRightKneePosition,
+                CanonicalJointId.RightHip,
                 CanonicalJointId.RightKnee,
                 CanonicalJointId.RightAnkle,
                 destination);
@@ -129,11 +117,12 @@ namespace GoldenNeedle.Core.Motion.Rotation
             destination.Complete();
         }
 
-        public static bool TryBuildBodyRotation(Vector3 right, Vector3 up, Vector3 forwardHint, out Quaternion rotation)
+        public static bool TryBuildBodyRotation(
+            Vector3 right,
+            Vector3 up,
+            Vector3 forwardHint,
+            out Quaternion rotation)
         {
-            // A Quaternion can only represent a proper rotation. The calibration profile keeps its
-            // semantic forward separately (and may therefore describe a reflected anatomical
-            // basis); rotation output derives a proper frame from Right + Up only.
             _ = forwardHint;
             rotation = Quaternion.identity;
             if (!TryNormalize(right, out right) || !TryNormalize(up, out up))
@@ -155,6 +144,37 @@ namespace GoldenNeedle.Core.Motion.Rotation
 
             rotation = Quaternion.LookRotation(forward, up);
             return IsFinite(rotation);
+        }
+
+        private static void TrySolveChain(
+            CanonicalPoseFrame source,
+            MotionCalibrationChainGeometry geometry,
+            CanonicalBoneId upperBone,
+            CanonicalBoneId lowerBone,
+            CanonicalJointId root,
+            CanonicalJointId mid,
+            CanonicalJointId tip,
+            CanonicalRotationFrame destination)
+        {
+            if (!geometry.isValid)
+            {
+                return;
+            }
+
+            TrySolveDirectionalBone(
+                upperBone,
+                source,
+                geometry.referenceUpperDirection,
+                root,
+                mid,
+                destination);
+            TrySolveDirectionalBone(
+                lowerBone,
+                source,
+                geometry.referenceLowerDirection,
+                mid,
+                tip,
+                destination);
         }
 
         private static void TrySolveTorsoBone(
@@ -181,7 +201,11 @@ namespace GoldenNeedle.Core.Motion.Rotation
 
             var currentRight = rightPosition - leftPosition;
             var currentUp = chestPosition - pelvisPosition;
-            if (!TryBuildBodyRotation(currentRight, currentUp, profile.neutralBodyForward, out var currentRotation))
+            if (!TryBuildBodyRotation(
+                    currentRight,
+                    currentUp,
+                    profile.neutralBodyForward,
+                    out var currentRotation))
             {
                 return;
             }
@@ -192,7 +216,13 @@ namespace GoldenNeedle.Core.Motion.Rotation
                 return;
             }
 
-            AddTrackedBone(id, ConfidenceMin(left, right, pelvisJoint, chestJoint), delta, Vector3.zero, currentUp, destination);
+            AddTrackedBone(
+                id,
+                ConfidenceMin(left, right, pelvisJoint, chestJoint),
+                delta,
+                Vector3.zero,
+                currentUp,
+                destination);
         }
 
         private static void TrySolveDirectionalBone(
@@ -205,7 +235,8 @@ namespace GoldenNeedle.Core.Motion.Rotation
         {
             var from = source.GetJoint(fromId);
             var to = source.GetJoint(toId);
-            if (!TryGetPosition(from, out var fromPosition) || !TryGetPosition(to, out var toPosition))
+            if (!TryGetPosition(from, out var fromPosition) ||
+                !TryGetPosition(to, out var toPosition))
             {
                 return;
             }
@@ -223,12 +254,22 @@ namespace GoldenNeedle.Core.Motion.Rotation
                 return;
             }
 
-            AddTrackedBone(id, Mathf.Min(Confidence(from), Confidence(to)), delta, normalizedReference, normalizedCurrent, destination);
+            AddTrackedBone(
+                id,
+                Mathf.Min(Confidence(from), Confidence(to)),
+                delta,
+                normalizedReference,
+                normalizedCurrent,
+                destination);
         }
 
         private static Quaternion QuaternionFromProfile(MotionCalibrationProfile profile)
         {
-            return TryBuildBodyRotation(profile.neutralBodyRight, profile.neutralBodyUp, profile.neutralBodyForward, out var rotation)
+            return TryBuildBodyRotation(
+                profile.neutralBodyRight,
+                profile.neutralBodyUp,
+                profile.neutralBodyForward,
+                out var rotation)
                 ? rotation
                 : Quaternion.identity;
         }
@@ -254,15 +295,27 @@ namespace GoldenNeedle.Core.Motion.Rotation
 
         private static float Confidence(CanonicalPoseJoint joint)
         {
-            return IsFinite(joint.confidence) ? Mathf.Clamp01(joint.confidence) : 0f;
+            return IsFinite(joint.confidence)
+                ? Mathf.Clamp01(joint.confidence)
+                : 0f;
         }
 
-        private static float ConfidenceMin(CanonicalPoseJoint first, CanonicalPoseJoint second, CanonicalPoseJoint third, CanonicalPoseJoint fourth)
+        private static float ConfidenceMin(
+            CanonicalPoseJoint first,
+            CanonicalPoseJoint second,
+            CanonicalPoseJoint third,
+            CanonicalPoseJoint fourth)
         {
-            return Mathf.Min(Confidence(first), Confidence(second), Confidence(third), Confidence(fourth));
+            return Mathf.Min(
+                Confidence(first),
+                Confidence(second),
+                Confidence(third),
+                Confidence(fourth));
         }
 
-        private static bool TryGetPosition(CanonicalPoseJoint joint, out Vector3 position)
+        private static bool TryGetPosition(
+            CanonicalPoseJoint joint,
+            out Vector3 position)
         {
             if (!joint.IsTracked)
             {
@@ -270,13 +323,15 @@ namespace GoldenNeedle.Core.Motion.Rotation
                 return false;
             }
 
-            if (joint.hasLocalPosition && TryNormalizePosition(joint.localPosition, out position))
+            if (joint.hasLocalPosition && IsFinite(joint.localPosition))
             {
+                position = joint.localPosition;
                 return true;
             }
 
-            if (joint.hasWorldPosition && TryNormalizePosition(joint.worldPosition, out position))
+            if (joint.hasWorldPosition && IsFinite(joint.worldPosition))
             {
+                position = joint.worldPosition;
                 return true;
             }
 
@@ -284,16 +339,11 @@ namespace GoldenNeedle.Core.Motion.Rotation
             return false;
         }
 
-        private static bool TryNormalizePosition(Vector3 value, out Vector3 position)
-        {
-            position = value;
-            return IsFinite(value);
-        }
-
         private static bool TryNormalize(Vector3 value, out Vector3 normalized)
         {
             normalized = Vector3.zero;
-            if (!IsFinite(value) || value.sqrMagnitude <= MinimumVectorMagnitudeSquared)
+            if (!IsFinite(value) ||
+                value.sqrMagnitude <= MinimumVectorMagnitudeSquared)
             {
                 return false;
             }
@@ -304,12 +354,17 @@ namespace GoldenNeedle.Core.Motion.Rotation
 
         private static bool IsFinite(Quaternion value)
         {
-            return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z) && IsFinite(value.w);
+            return IsFinite(value.x) &&
+                IsFinite(value.y) &&
+                IsFinite(value.z) &&
+                IsFinite(value.w);
         }
 
         private static bool IsFinite(Vector3 value)
         {
-            return IsFinite(value.x) && IsFinite(value.y) && IsFinite(value.z);
+            return IsFinite(value.x) &&
+                IsFinite(value.y) &&
+                IsFinite(value.z);
         }
 
         private static bool IsFinite(float value)

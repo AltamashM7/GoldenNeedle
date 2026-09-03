@@ -16,7 +16,7 @@ Phase 4 handoff HEAD before the correction:
 
 `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — `docs: hand off phase 4 investigation state`
 
-Its runtime parent is `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The branch now contains a Phase 4 coordinate/retarget correction awaiting USER QA and Orchestrator audit.
+Its runtime parent is `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The branch now contains the Phase 4 coordinate/retarget correction plus a modular calibration redesign awaiting USER QA and Orchestrator audit.
 
 Accepted Motion Engine baseline:
 
@@ -70,7 +70,7 @@ MediaPipe provider
 
 `CanonicalRotationFrame` remains available for diagnostics/future orientation work, but the production limb mapping no longer depends on per-chain quaternion characterization or moving parent-frame quaternions. The source semantic basis is allowed to be reflected; reflections are represented explicitly rather than hidden inside `Quaternion` composition.
 
-This correction is **not accepted** until USER QA and Orchestrator audit.
+The coordinate/presentation correction direction is retained. **2D PRESENTATION QA has PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`. Phase 4 as a whole is still not accepted; modular calibration and procedural retarget QA remain.
 
 ## Phase 4 failure history, condensed
 
@@ -82,7 +82,9 @@ This correction is **not accepted** until USER QA and Orchestrator audit.
 6. Latest pre-correction USER evidence showed F3 substantially better/upright and viewer-side-correct, and the 2D skeleton human-shaped/aligned, but the visible webcam preview still horizontally mirrored.
 7. Repository audit traced the preview issue to an extra front-facing presentation heuristic, separate from MediaPipe inference preparation.
 8. Repository audit also found the source semantic basis can be reflected (`Right=+X, Up=+Y, Forward=-Z` in the reference case), while the production mapping attempted to encode it through quaternions and forward-hemisphere compensation.
-9. The correction removes that production mapping in favor of explicit signed-axis vector conversion; USER QA has not yet judged the result.
+9. The correction removes that production mapping in favor of explicit signed-axis vector conversion.
+10. USER QA subsequently passed the corrected upright/unmirrored 2D presentation at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
+11. Calibration then blocked at the old `AwaitingTPose 0%` gate, so the USER/Orchestrator approved replacing hard T-pose recognition with modular body-reference and independent chain measurements before F5 QA resumes.
 
 The important lesson is not to continue stacking fixes from this history. Inspect the current code and establish the actual coordinate/presentation/retarget behavior from first principles.
 
@@ -113,10 +115,10 @@ Trace coordinate spaces explicitly from camera pixels through inference, normali
 
 At the checkpoint:
 
-- F3: appears upright and viewer-side-correct.
-- Canonical 2D: human-shaped and aligned over the visible person.
-- Webcam preview: still appears horizontally mirrored despite intended display mirror being off.
-- Procedural rig: not accepted; prior multi-pose QA showed large articulated mismatches versus F3.
+- Webcam/2D presentation: **USER QA PASSED** — upright, unmirrored, and correctly registered.
+- F3: previously appeared upright/sensible with 2D↔3D X/Y diagnostics passing.
+- Calibration: current redesign target. The former bilateral T-pose gate was the immediate blocker and is being removed.
+- Procedural rig: not accepted; F3/F5 retarget QA has not resumed after the calibration blocker.
 - The USER has a real humanoid character asset available for later import, but it has not yet been used to validate the structural Animator Humanoid binding.
 
 Do not judge the real avatar path until the tracking/presentation foundation and procedural acceptance harness are trustworthy.
@@ -135,12 +137,11 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 Audit the exact pushed correction head, then use USER QA as the gate:
 
-1. Verify inference H/V preparation remains unchanged and presentation mirror OFF no longer adds a front-camera X flip.
-2. Verify canonical mapping remains `(x,1-y)` / `(x,-y,z)`.
-3. Verify production retargeting uses the signed basis map rather than per-chain quaternion characterization.
-4. Check the procedural rig against F3 across asymmetric and large-yaw poses.
-5. If that passes, validate the real Animator Humanoid binding path.
-6. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
+1. USER-QA the modular calibration only: comfortable body reference, bent/non-horizontal arm geometry, and independent partial-chain readiness.
+2. Confirm the Lab reports useful per-module READY/sample/waiting reasons and never requires a bilateral T-pose.
+3. Then resume procedural F3/F5 comparison across asymmetric and large-yaw poses.
+4. If that passes, validate the real Animator Humanoid binding path.
+5. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
 
 ## Governance
 

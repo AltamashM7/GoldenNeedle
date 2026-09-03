@@ -116,7 +116,10 @@ namespace GoldenNeedle.Tests
         public void InvalidDirectionBecomesUnavailableWithoutNaN()
         {
             var profile = ReferenceProfile();
-            profile.tPoseLeftArmDirection = Vector3.zero;
+            var leftArm = profile.leftArmGeometry;
+            leftArm.referenceUpperDirection = Vector3.zero;
+            leftArm.referenceLowerDirection = Vector3.zero;
+            profile.leftArmGeometry = leftArm;
             var output = new CanonicalRotationFrame();
 
             new CanonicalRotationSolver().Solve(ReferenceFrame(), profile, output);
@@ -160,22 +163,39 @@ namespace GoldenNeedle.Tests
             {
                 version = MotionCalibrationProfile.CurrentVersion,
                 isValid = true,
-                state = MotionCalibrationState.Complete,
+                bodyReferenceValid = true,
+                state = MotionCalibrationState.Ready,
                 neutralPelvisPosition = new Vector3(0f, 1.05f, 0f),
                 neutralChestPosition = new Vector3(0f, 1.95f, 0f),
                 neutralLeftShoulderPosition = new Vector3(-0.4f, 1.95f, 0f),
                 neutralRightShoulderPosition = new Vector3(0.4f, 1.95f, 0f),
                 neutralLeftHipPosition = new Vector3(-0.2f, 1.05f, 0f),
                 neutralRightHipPosition = new Vector3(0.2f, 1.05f, 0f),
-                neutralLeftKneePosition = new Vector3(-0.2f, 0.55f, 0f),
-                neutralRightKneePosition = new Vector3(0.2f, 0.55f, 0f),
-                neutralLeftAnklePosition = new Vector3(-0.2f, 0.05f, 0f),
-                neutralRightAnklePosition = new Vector3(0.2f, 0.05f, 0f),
                 neutralBodyRight = Vector3.right,
                 neutralBodyUp = Vector3.up,
                 neutralBodyForward = Vector3.back,
-                tPoseLeftArmDirection = Vector3.left,
-                tPoseRightArmDirection = Vector3.right,
+                leftArmGeometry = Geometry(0.3f, 0.3f, Vector3.left, Vector3.left),
+                rightArmGeometry = Geometry(0.3f, 0.3f, Vector3.right, Vector3.right),
+                leftLegGeometry = Geometry(0.5f, 0.5f, Vector3.down, Vector3.down),
+                rightLegGeometry = Geometry(0.5f, 0.5f, Vector3.down, Vector3.down),
+            };
+        }
+
+        private static MotionCalibrationChainGeometry Geometry(
+            float upperLength,
+            float lowerLength,
+            Vector3 upperDirection,
+            Vector3 lowerDirection)
+        {
+            return new MotionCalibrationChainGeometry
+            {
+                isValid = true,
+                sampleCount = 3,
+                upperLength = upperLength,
+                lowerLength = lowerLength,
+                reach = upperLength + lowerLength,
+                referenceUpperDirection = upperDirection.normalized,
+                referenceLowerDirection = lowerDirection.normalized,
             };
         }
 

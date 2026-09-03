@@ -1,5 +1,6 @@
 using GoldenNeedle.Core.Motion.Calibration;
 using GoldenNeedle.Core.Motion.Canonical;
+using GoldenNeedle.Core.Motion.Retargeting;
 using GoldenNeedle.Core.Motion.Stabilization;
 using NUnit.Framework;
 using UnityEngine;
@@ -113,77 +114,87 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void CalibrationMissingRequiredJointDoesNotAdvance()
+        public void BodyReferenceCompletesWithoutKneesOrAnkles()
         {
             var session = NewCalibrationSession();
             session.Begin(0d);
-            var frame = NeutralFrame(1, 0d);
-            frame.SetJoint(Untracked(CanonicalJointId.LeftAnkle));
-            frame.Complete();
-            session.Update(frame, 0d);
+            session.Update(BodyReferenceFrame(1, 0d), 0d);
+            session.Update(BodyReferenceFrame(2, 0.25d), 0.25d);
+            session.Update(BodyReferenceFrame(3, 0.55d), 0.55d);
 
-            Assert.That(session.State, Is.EqualTo(MotionCalibrationState.AwaitingNeutral));
-            Assert.That(session.Progress01, Is.EqualTo(0f));
-        }
-
-        [Test]
-        public void CalibrationRequiresStableNeutralHoldThenMovesToTPose()
-        {
-            var session = NewCalibrationSession();
-            session.Begin(0d);
-            session.Update(NeutralFrame(1, 0d), 0d);
-            session.Update(NeutralFrame(2, 0.6d), 0.6d);
-            Assert.That(session.State, Is.EqualTo(MotionCalibrationState.SamplingNeutral));
-            Assert.That(session.Progress01, Is.GreaterThan(0.4f));
-            session.Update(NeutralFrame(3, 1.3d), 1.3d);
-
-            Assert.That(session.State, Is.EqualTo(MotionCalibrationState.AwaitingTPose));
-            Assert.That(session.Profile.neutralSampleCount, Is.EqualTo(3));
-        }
-
-        [Test]
-        public void CalibrationMovingNeutralPoseResetsSamplingProgress()
-        {
-            var session = NewCalibrationSession();
-            session.Begin(0d);
-            session.Update(NeutralFrame(1, 0d), 0d);
-            var moved = NeutralFrame(2, 0.2d);
-            SetTracked(moved, CanonicalJointId.LeftKnee, new Vector2(0.4f, 0.55f));
-            moved.Complete();
-            session.Update(moved, 0.2d);
-
-            Assert.That(session.State, Is.EqualTo(MotionCalibrationState.AwaitingNeutral));
-            Assert.That(session.Progress01, Is.EqualTo(0f));
-        }
-
-        [Test]
-        public void CalibrationRejectsNonTPoseAndCompletesValidTPoseWithFiniteProfile()
-        {
-            var session = NewCalibrationSession();
-            session.Begin(0d);
-            session.Update(NeutralFrame(1, 0d), 0d);
-            session.Update(NeutralFrame(2, 0.7d), 0.7d);
-            session.Update(NeutralFrame(3, 1.3d), 1.3d);
-
-            session.Update(NonTPoseFrame(4, 1.4d), 1.4d);
-            Assert.That(session.State, Is.EqualTo(MotionCalibrationState.AwaitingTPose));
-            session.Update(TPoseFrame(5, 1.4d), 1.4d);
-            session.Update(TPoseFrame(6, 1.8d), 1.8d);
-            session.Update(TPoseFrame(7, 2.2d), 2.2d);
-
-            Assert.That(session.State, Is.EqualTo(MotionCalibrationState.Complete));
             Assert.That(session.IsValid, Is.True);
-            Assert.That(session.Profile.shoulderWidth, Is.GreaterThan(0f));
-            Assert.That(session.Profile.hipWidth, Is.GreaterThan(0f));
-            Assert.That(session.Profile.torsoLength, Is.GreaterThan(0f));
-            Assert.That(session.Profile.leftArmReach, Is.GreaterThan(0f));
-            Assert.That(session.Profile.rightArmReach, Is.GreaterThan(0f));
-            Assert.That(session.Profile.leftLegReach, Is.GreaterThan(0f));
-            Assert.That(session.Profile.rightLegReach, Is.GreaterThan(0f));
-            Assert.That(IsFinite(session.Profile.neutralBodyUp), Is.True);
-            Assert.That(IsFinite(session.Profile.tPoseLeftArmDirection), Is.True);
+            Assert.That(session.Profile.bodyReferenceValid, Is.True);
+            Assert.That(session.Profile.isValid, Is.True);
+            Assert.That(session.State, Is.EqualTo(MotionCalibrationState.AcquiringGeometry));
+            Assert.That(session.Profile.bodyReferenceSampleCount, Is.EqualTo(3));
+            Assert.That(session.Profile.leftLegGeometry.isValid, Is.False);
+            Assert.That(session.Profile.rightLegGeometry.isValid, Is.False);
             Assert.That(Vector3.Dot(session.Profile.neutralBodyForward, Vector3.back), Is.GreaterThan(0.99f));
-            Assert.That(session.Profile.version, Is.EqualTo(MotionCalibrationProfile.CurrentVersion));
+        }
+
+        [Test]
+        public void BentLeftArmUsesSegmentSumAndCalibratesWithoutRightArm()
+        {
+            var session = NewCalibrationSession();
+            session.Begin(0d);
+            var first = BentLeftArmFrame(1, 0d);
+            var second = BentLeftArmFrame(2, 0.25d);
+            var third = BentLeftArmFrame(3, 0.55d);
+            session.Update(first, 0d);
+            session.Update(second, 0.25d);
+            session.Update(third, 0.55d);
+
+            var shoulder = first.GetJoint(CanonicalJointId.LeftShoulder).localPosition;
+            var elbow = first.GetJoint(CanonicalJointId.LeftElbow).localPosition;
+            var wrist = first.GetJoint(CanonicalJointId.LeftWrist).localPosition;
+            var expectedReach = Vector3.Distance(shoulder, elbow) + Vector3.Distance(elbow, wrist);
+            var chord = Vector3.Distance(shoulder, wrist);
+            var left = session.Profile.leftArmGeometry;
+
+            Assert.That(session.IsValid, Is.True);
+            Assert.That(left.isValid, Is.True);
+            Assert.That(left.sampleCount, Is.EqualTo(3));
+            Assert.That(left.reach, Is.EqualTo(expectedReach).Within(0.0001f));
+            Assert.That(left.reach, Is.GreaterThan(chord + 0.001f));
+            Assert.That(session.Profile.rightArmGeometry.isValid, Is.False);
+            Assert.That(session.Profile.leftLegGeometry.isValid, Is.False);
+        }
+
+        [Test]
+        public void KinematicTargetBuilderSkipsOnlyUncalibratedChain()
+        {
+            var profile = new MotionCalibrationProfile
+            {
+                version = MotionCalibrationProfile.CurrentVersion,
+                isValid = true,
+                bodyReferenceValid = true,
+                state = MotionCalibrationState.AcquiringGeometry,
+                neutralBodyRight = Vector3.right,
+                neutralBodyUp = Vector3.up,
+                neutralBodyForward = Vector3.back,
+                leftArmGeometry = Geometry(
+                    0.20f,
+                    0.20f,
+                    Vector3.down,
+                    Vector3.down),
+            };
+            var frame = new CanonicalPoseFrame();
+            frame.Begin(1L, 0d, true);
+            SetTracked(frame, CanonicalJointId.LeftShoulder, new Vector2(0.3f, 0.8f));
+            SetTracked(frame, CanonicalJointId.LeftElbow, new Vector2(0.3f, 0.6f));
+            SetTracked(frame, CanonicalJointId.LeftWrist, new Vector2(0.3f, 0.4f));
+            SetTracked(frame, CanonicalJointId.RightShoulder, new Vector2(0.7f, 0.8f));
+            SetTracked(frame, CanonicalJointId.RightElbow, new Vector2(0.7f, 0.6f));
+            SetTracked(frame, CanonicalJointId.RightWrist, new Vector2(0.7f, 0.4f));
+            frame.Complete();
+
+            var targets = new CanonicalKinematicTargets();
+            new CanonicalKinematicTargetBuilder().Build(frame, profile, targets);
+
+            Assert.That(targets.calibrationValid, Is.True);
+            Assert.That(targets.GetTarget(CanonicalKinematicChainId.LeftArm).isValid, Is.True);
+            Assert.That(targets.GetTarget(CanonicalKinematicChainId.RightArm).isValid, Is.False);
+            Assert.That(targets.validChainCount, Is.EqualTo(1));
         }
 
         private static CanonicalStabilizerSettings NewStabilizerSettings()
@@ -204,14 +215,38 @@ namespace GoldenNeedle.Tests
         {
             return new MotionCalibrationSession(new MotionCalibrationSettings
             {
-                neutralHoldSeconds = 1.25f,
-                tPoseHoldSeconds = 0.75f,
-                neutralStabilityTolerance = 0.06f,
-                tPoseStabilityTolerance = 0.10f,
+                bodyReferenceHoldSeconds = 0.50f,
+                bodyReferenceStabilityTolerance = 0.06f,
+                minimumMeasurementConfidence = 0.40f,
+                geometrySamplesRequired = 3,
+                minimumSegmentLength = 0.01f,
             });
         }
 
-        private static CanonicalPoseFrame SingleJointFrame(long timestamp, double received, CanonicalJointId id, float confidence, Vector2 image)
+        private static MotionCalibrationChainGeometry Geometry(
+            float upper,
+            float lower,
+            Vector3 upperDirection,
+            Vector3 lowerDirection)
+        {
+            return new MotionCalibrationChainGeometry
+            {
+                isValid = true,
+                sampleCount = 3,
+                upperLength = upper,
+                lowerLength = lower,
+                reach = upper + lower,
+                referenceUpperDirection = upperDirection.normalized,
+                referenceLowerDirection = lowerDirection.normalized,
+            };
+        }
+
+        private static CanonicalPoseFrame SingleJointFrame(
+            long timestamp,
+            double received,
+            CanonicalJointId id,
+            float confidence,
+            Vector2 image)
         {
             var frame = new CanonicalPoseFrame();
             frame.Begin(timestamp, received, confidence > 0f);
@@ -224,7 +259,13 @@ namespace GoldenNeedle.Tests
             return frame;
         }
 
-        private static CanonicalPoseFrame TwoJointFrame(long timestamp, double received, bool wristTracked, float wristX, bool elbowTracked, float elbowX)
+        private static CanonicalPoseFrame TwoJointFrame(
+            long timestamp,
+            double received,
+            bool wristTracked,
+            float wristX,
+            bool elbowTracked,
+            float elbowX)
         {
             var frame = new CanonicalPoseFrame();
             frame.Begin(timestamp, received, wristTracked || elbowTracked);
@@ -242,7 +283,7 @@ namespace GoldenNeedle.Tests
             return frame;
         }
 
-        private static CanonicalPoseFrame NeutralFrame(long timestamp, double received)
+        private static CanonicalPoseFrame BodyReferenceFrame(long timestamp, double received)
         {
             var frame = new CanonicalPoseFrame();
             frame.Begin(timestamp, received, true);
@@ -252,37 +293,24 @@ namespace GoldenNeedle.Tests
             SetTracked(frame, CanonicalJointId.RightShoulder, new Vector2(0.65f, 0.75f));
             SetTracked(frame, CanonicalJointId.LeftHip, new Vector2(0.4f, 0.5f));
             SetTracked(frame, CanonicalJointId.RightHip, new Vector2(0.6f, 0.5f));
-            SetTracked(frame, CanonicalJointId.LeftKnee, new Vector2(0.4f, 0.3f));
-            SetTracked(frame, CanonicalJointId.RightKnee, new Vector2(0.6f, 0.3f));
-            SetTracked(frame, CanonicalJointId.LeftAnkle, new Vector2(0.4f, 0.1f));
-            SetTracked(frame, CanonicalJointId.RightAnkle, new Vector2(0.6f, 0.1f));
             frame.Complete();
             return frame;
         }
 
-        private static CanonicalPoseFrame NonTPoseFrame(long timestamp, double received)
+        private static CanonicalPoseFrame BentLeftArmFrame(long timestamp, double received)
         {
-            var frame = NeutralFrame(timestamp, received);
-            SetTracked(frame, CanonicalJointId.LeftElbow, new Vector2(0.35f, 0.60f));
-            SetTracked(frame, CanonicalJointId.LeftWrist, new Vector2(0.35f, 0.45f));
-            SetTracked(frame, CanonicalJointId.RightElbow, new Vector2(0.65f, 0.60f));
-            SetTracked(frame, CanonicalJointId.RightWrist, new Vector2(0.65f, 0.45f));
+            var frame = BodyReferenceFrame(timestamp, received);
+            SetTracked(frame, CanonicalJointId.LeftElbow, new Vector2(0.25f, 0.62f));
+            SetTracked(frame, CanonicalJointId.LeftWrist, new Vector2(0.35f, 0.48f));
             frame.Complete();
             return frame;
         }
 
-        private static CanonicalPoseFrame TPoseFrame(long timestamp, double received)
-        {
-            var frame = NeutralFrame(timestamp, received);
-            SetTracked(frame, CanonicalJointId.LeftElbow, new Vector2(0.20f, 0.75f));
-            SetTracked(frame, CanonicalJointId.LeftWrist, new Vector2(0.05f, 0.75f));
-            SetTracked(frame, CanonicalJointId.RightElbow, new Vector2(0.80f, 0.75f));
-            SetTracked(frame, CanonicalJointId.RightWrist, new Vector2(0.95f, 0.75f));
-            frame.Complete();
-            return frame;
-        }
-
-        private static void SetTracked(CanonicalPoseFrame frame, CanonicalJointId id, Vector2 image, float confidence = 1f)
+        private static void SetTracked(
+            CanonicalPoseFrame frame,
+            CanonicalJointId id,
+            Vector2 image,
+            float confidence = 1f)
         {
             var position = new Vector3(image.x, image.y, 0f);
             frame.SetJoint(new CanonicalPoseJoint
@@ -297,11 +325,6 @@ namespace GoldenNeedle.Tests
                 localPosition = position,
                 hasLocalPosition = true,
             });
-        }
-
-        private static CanonicalPoseJoint Untracked(CanonicalJointId id)
-        {
-            return new CanonicalPoseJoint { id = id, tracking = CanonicalTrackingState.Unavailable };
         }
 
         private static bool IsFinite(Vector3 value)

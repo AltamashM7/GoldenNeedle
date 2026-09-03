@@ -123,7 +123,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             var targets = runtime.KinematicTargets;
             var profile = runtime.Calibration == null ? null : runtime.Calibration.Profile;
             if (sourceFrame == null || frame == null || targets == null || profile == null ||
-                !frame.calibrationValid || !targets.calibrationValid || !profile.isValid)
+                !frame.calibrationValid || !targets.calibrationValid || !profile.bodyReferenceValid)
             {
                 ClearDiagnostics();
                 binding.ResetToReferencePose();
@@ -154,7 +154,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
             if (binding == null || !binding.IsBound || sourceFrame == null || frame == null ||
                 targets == null || profile == null || !frame.calibrationValid ||
-                !targets.calibrationValid || !profile.isValid ||
+                !targets.calibrationValid || !profile.bodyReferenceValid ||
                 !HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(profile, binding, out var axisMap))
             {
                 ClearDiagnostics();
