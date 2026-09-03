@@ -1,7 +1,7 @@
 using GoldenNeedle.Core.Motion.Canonical;
-using GoldenNeedle.Core.Motion.Calibration;
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
-using GoldenNeedle.Core.Motion.Stabilization;
+using GoldenNeedle.Core.Motion.Retargeting;
+using GoldenNeedle.Core.Motion.Runtime;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -42,21 +42,34 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             { CanonicalJointId.RightAnkle, CanonicalJointId.RightToe },
         };
 
+        private static readonly int[] CoordinateDiagnosticSourceIndices = { 11, 12, 15, 16, 23, 24, 25, 26, 27, 28 };
+        private static readonly CanonicalJointId[] CoordinateDiagnosticJointIds =
+        {
+            CanonicalJointId.LeftShoulder, CanonicalJointId.RightShoulder,
+            CanonicalJointId.LeftWrist, CanonicalJointId.RightWrist,
+            CanonicalJointId.LeftHip, CanonicalJointId.RightHip,
+            CanonicalJointId.LeftKnee, CanonicalJointId.RightKnee,
+            CanonicalJointId.LeftAnkle, CanonicalJointId.RightAnkle,
+        };
+        private static readonly string[] CoordinateDiagnosticLabels =
+        {
+            "L shoulder", "R shoulder", "L wrist", "R wrist", "L hip", "R hip", "L knee", "R knee", "L ankle", "R ankle",
+        };
+
         [SerializeField] private MediaPipePoseProvider provider;
         [SerializeField] private bool drawRawLandmarks = true;
         [SerializeField] private bool drawCanonical2D = true;
         [SerializeField] private bool drawCanonical3D = true;
         [SerializeField] private bool drawStabilized2D = true;
         [SerializeField] private bool drawUnavailableLandmarks = true;
+        [SerializeField] private bool drawCoordinateDiagnostic;
         [SerializeField] private float previewPanelWidth = 360f;
-        [SerializeField] private CanonicalStabilizerSettings stabilizerSettings = new CanonicalStabilizerSettings();
-        [SerializeField] private MotionCalibrationSettings calibrationSettings = new MotionCalibrationSettings();
 
-        private readonly PoseObservation _observation = new PoseObservation();
-        private readonly CanonicalPoseFrame _canonicalFrame = new CanonicalPoseFrame();
-        private readonly CanonicalPoseFrame _stabilizedFrame = new CanonicalPoseFrame();
-        private CanonicalPoseStabilizer _stabilizer;
-        private MotionCalibrationSession _calibration;
+        [SerializeField] private MediaPipeCanonicalPoseSource canonicalSource;
+        [SerializeField] private MotionEngineRuntime runtime;
+        [SerializeField] private HumanoidRetargeter retargeter;
+        [SerializeField] private ProceduralDebugRigView rigView;
+
         private float _renderFps;
         private GUIStyle _labelStyle;
         private GUIStyle _smallLabelStyle;
@@ -64,65 +77,90 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         private void Awake()
         {
             provider = provider == null ? GetComponent<MediaPipePoseProvider>() : provider;
-            _stabilizer = new CanonicalPoseStabilizer(stabilizerSettings);
-            _calibration = new MotionCalibrationSession(calibrationSettings);
+            canonicalSource = canonicalSource == null ? GetComponent<MediaPipeCanonicalPoseSource>() : canonicalSource;
+            if (canonicalSource == null)
+            {
+                canonicalSource = gameObject.AddComponent<MediaPipeCanonicalPoseSource>();
+            }
+
+            runtime = runtime == null ? GetComponent<MotionEngineRuntime>() : runtime;
+            if (runtime == null)
+            {
+                runtime = gameObject.AddComponent<MotionEngineRuntime>();
+            }
+
+            if (GetComponent<ProceduralDebugHumanoidRig>() == null)
+            {
+                gameObject.AddComponent<ProceduralDebugHumanoidRig>();
+            }
+
+            rigView = rigView == null ? GetComponent<ProceduralDebugRigView>() : rigView;
+            if (rigView == null)
+            {
+                rigView = gameObject.AddComponent<ProceduralDebugRigView>();
+            }
+
+            if (GetComponent<HumanoidRigBinding>() == null)
+            {
+                gameObject.AddComponent<HumanoidRigBinding>();
+            }
+
+            retargeter = retargeter == null ? GetComponent<HumanoidRetargeter>() : retargeter;
+            if (retargeter == null)
+            {
+                retargeter = gameObject.AddComponent<HumanoidRetargeter>();
+            }
         }
 
         private void Update()
         {
-            if (provider == null)
-            {
-                return;
-            }
-
-            provider.CopyLatestObservation(_observation);
-            MediaPipeCanonicalPoseMapper.Map(_observation, _canonicalFrame, provider.Orientation);
-            var evaluationTime = GetProviderEvaluationTime();
-            _stabilizer.Stabilize(_canonicalFrame, _stabilizedFrame, evaluationTime);
-            _calibration.Update(_stabilizedFrame, evaluationTime);
-
             var frameTime = Mathf.Max(Time.unscaledDeltaTime, 0.0001f);
             _renderFps = Mathf.Lerp(_renderFps, 1f / frameTime, 1f - Mathf.Exp(-8f * frameTime));
 
             var keyboard = Keyboard.current;
-            if (keyboard == null)
-            {
-                return;
-            }
-
-            if (keyboard.rKey.wasPressedThisFrame)
+            if (keyboard != null && keyboard.rKey.wasPressedThisFrame && provider != null)
             {
                 provider.Retry();
             }
 
-            if (keyboard.f1Key.wasPressedThisFrame)
+            if (keyboard != null && keyboard.f1Key.wasPressedThisFrame)
             {
                 drawRawLandmarks = !drawRawLandmarks;
             }
 
-            if (keyboard.f2Key.wasPressedThisFrame)
+            if (keyboard != null && keyboard.f2Key.wasPressedThisFrame)
             {
                 drawCanonical2D = !drawCanonical2D;
             }
 
-            if (keyboard.f3Key.wasPressedThisFrame)
+            if (keyboard != null && keyboard.f3Key.wasPressedThisFrame)
             {
                 drawCanonical3D = !drawCanonical3D;
             }
 
-            if (keyboard.f4Key.wasPressedThisFrame)
+            if (keyboard != null && keyboard.f4Key.wasPressedThisFrame)
             {
                 drawStabilized2D = !drawStabilized2D;
             }
 
-            if (keyboard.cKey.wasPressedThisFrame)
+            if (keyboard != null && keyboard.f5Key.wasPressedThisFrame && retargeter != null)
             {
-                _calibration.Begin(evaluationTime);
+                retargeter.DriveRig = !retargeter.DriveRig;
             }
 
-            if (keyboard.xKey.wasPressedThisFrame)
+            if (keyboard != null && keyboard.f6Key.wasPressedThisFrame)
             {
-                _calibration.Reset();
+                drawCoordinateDiagnostic = !drawCoordinateDiagnostic;
+            }
+
+            if (keyboard != null && keyboard.cKey.wasPressedThisFrame && runtime != null)
+            {
+                runtime.BeginCalibration();
+            }
+
+            if (keyboard != null && keyboard.xKey.wasPressedThisFrame && runtime != null)
+            {
+                runtime.ResetCalibration();
             }
         }
 
@@ -142,17 +180,14 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 provider.ActualCameraWidth,
                 provider.ActualCameraHeight,
                 orientation.DisplayRotationDegrees);
+            var presentationHorizontalMirror = orientation.PresentationHorizontalMirror;
             var oldMatrix = GUI.matrix;
-            var pivot = previewRect.center;
 
-            // This transform is display-only. It intentionally does not use the texture flips
-            // required to convert Unity pixel data into MediaPipe image coordinates.
-            GUIUtility.ScaleAroundPivot(
-                new Vector2(
-                    orientation.DisplayFlipHorizontally ? -1f : 1f,
-                    orientation.DisplayFlipVertically ? -1f : 1f),
-                pivot);
-            GUIUtility.RotateAroundPivot(-orientation.DisplayRotationDegrees, pivot);
+            // The preview uses sensor/display metadata plus the explicit raw-source correction.
+            // Inference readback flags are not GUI instructions. Restore the caller's matrix
+            // before drawing any overlay so its coordinates are transformed exactly once by the
+            // shared content rectangle.
+            ApplyDisplayPreviewTransform(previewRect, orientation);
             GUI.color = Color.white;
             if (provider.CameraTexture != null)
             {
@@ -164,26 +199,32 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 GUI.DrawTexture(previewRect, Texture2D.whiteTexture);
             }
 
+            GUI.matrix = oldMatrix;
+
             if (drawRawLandmarks)
             {
-                DrawRawSkeleton(contentRect, orientation);
+                DrawRawSkeleton(contentRect, presentationHorizontalMirror);
             }
 
             if (drawCanonical2D)
             {
-                DrawCanonical2DSkeleton(_canonicalFrame, contentRect, false);
+                DrawCanonical2DSkeleton(runtime == null ? null : runtime.RawCanonicalFrame, contentRect, false, presentationHorizontalMirror);
             }
 
             if (drawStabilized2D)
             {
-                DrawCanonical2DSkeleton(_stabilizedFrame, contentRect, true);
+                DrawCanonical2DSkeleton(runtime == null ? null : runtime.StabilizedFrame, contentRect, true, presentationHorizontalMirror);
             }
-
-            GUI.matrix = oldMatrix;
             DrawDiagnostics();
             if (drawCanonical3D)
             {
                 DrawCanonical3DView();
+            }
+
+            DrawDebugRigView();
+            if (drawCoordinateDiagnostic)
+            {
+                DrawCoordinateDiagnostic();
             }
         }
 
@@ -205,22 +246,29 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             };
         }
 
-        private void DrawRawSkeleton(Rect contentRect, CameraOrientationState orientation)
+        private void DrawRawSkeleton(Rect contentRect, bool displayMirrored)
         {
-            if (!_observation.hasPose)
+            var observation = canonicalSource == null ? null : canonicalSource.LatestObservation;
+            if (observation == null || !observation.hasPose)
             {
                 return;
             }
 
             for (var i = 0; i < RawConnections.GetLength(0); i++)
             {
-                var from = _observation.GetLandmark(RawConnections[i, 0]);
-                var to = _observation.GetLandmark(RawConnections[i, 1]);
+                var from = observation.GetLandmark(RawConnections[i, 0]);
+                var to = observation.GetLandmark(RawConnections[i, 1]);
                 if (from.IsTracked && to.IsTracked)
                 {
                     DrawLine(
-                        ToRawScreenPoint(orientation.MediaPipeImageToCameraNormalized(new Vector2(from.x, from.y)), contentRect),
-                        ToRawScreenPoint(orientation.MediaPipeImageToCameraNormalized(new Vector2(to.x, to.y)), contentRect),
+                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(
+                            CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(from.x, from.y)),
+                            contentRect,
+                            displayMirrored),
+                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(
+                            CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(to.x, to.y)),
+                            contentRect,
+                            displayMirrored),
                         new Color(0.1f, 1f, 0.55f, 0.9f),
                         3f);
                 }
@@ -228,27 +276,33 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             for (var i = 0; i < PoseObservation.LandmarkCount; i++)
             {
-                var landmark = _observation.GetLandmark(i);
+                var landmark = observation.GetLandmark(i);
                 if (landmark.IsTracked)
                 {
                     DrawPoint(
-                        ToRawScreenPoint(orientation.MediaPipeImageToCameraNormalized(new Vector2(landmark.x, landmark.y)), contentRect),
+                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(
+                            CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(landmark.x, landmark.y)),
+                            contentRect,
+                            displayMirrored),
                         new Color(0.2f, 1f, 0.7f, 1f),
                         10f);
                 }
                 else if (drawUnavailableLandmarks && IsFinite(landmark.x) && IsFinite(landmark.y))
                 {
                     DrawPoint(
-                        ToRawScreenPoint(orientation.MediaPipeImageToCameraNormalized(new Vector2(landmark.x, landmark.y)), contentRect),
+                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(
+                            CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(landmark.x, landmark.y)),
+                            contentRect,
+                            displayMirrored),
                         new Color(1f, 0.55f, 0.15f, 0.35f),
                         6f);
                 }
             }
         }
 
-        private void DrawCanonical2DSkeleton(CanonicalPoseFrame frame, Rect contentRect, bool stabilized)
+        private void DrawCanonical2DSkeleton(CanonicalPoseFrame frame, Rect contentRect, bool stabilized, bool displayMirrored)
         {
-            if (!frame.hasMeaningfulPose)
+            if (frame == null || !frame.hasMeaningfulPose)
             {
                 return;
             }
@@ -263,8 +317,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                         ? new Color(0.15f, 1f, 1f, 0.92f)
                         : new Color(1f, 0.85f, 0.1f, 0.95f);
                     DrawLine(
-                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(from.imagePosition, contentRect),
-                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(to.imagePosition, contentRect),
+                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(from.imagePosition, contentRect, displayMirrored),
+                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(to.imagePosition, contentRect, displayMirrored),
                         lineColor,
                         stabilized ? 4f : 5f);
                 }
@@ -283,51 +337,193 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                     : IsDerivedJoint(joint.id)
                         ? new Color(1f, 0.3f, 0.95f, 1f)
                         : new Color(1f, 0.9f, 0.15f, 1f);
-                DrawPoint(CanonicalCoordinateSystem.CanonicalImageToGuiScreen(joint.imagePosition, contentRect), color, stabilized ? 11f : 14f);
+                DrawPoint(CanonicalCoordinateSystem.CanonicalImageToGuiScreen(joint.imagePosition, contentRect, displayMirrored), color, stabilized ? 11f : 14f);
             }
         }
 
         private void DrawDiagnostics()
         {
-            var panelHeight = 370f;
+            var panelHeight = 500f;
             var panel = new Rect(16f, 16f, previewPanelWidth, panelHeight);
             GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.84f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = Color.white;
 
-            var state = !_observation.hasPose
-                ? provider.Status == PoseProviderStatus.Ready ? "WAITING / UNAVAILABLE" : provider.Status.ToString().ToUpperInvariant()
-                : _observation.trustedCount > 0 ? "TRACKING" : "POSE / NO TRUSTED LANDMARKS";
-            var cameraName = string.IsNullOrEmpty(provider.SelectedCameraName) ? "(none)" : provider.SelectedCameraName;
-            var resolution = provider.ActualCameraWidth > 0 ? $"{provider.ActualCameraWidth}x{provider.ActualCameraHeight}" : "(not started)";
-            var age = double.IsInfinity(provider.LatestPoseAgeMilliseconds) ? "-" : $"{provider.LatestPoseAgeMilliseconds:0} ms";
+            var observation = canonicalSource == null ? null : canonicalSource.LatestObservation;
+            var rawFrame = runtime == null ? null : runtime.RawCanonicalFrame;
+            var stabilizedFrame = runtime == null ? null : runtime.StabilizedFrame;
+            var calibration = runtime == null ? null : runtime.Calibration;
+            var rotationFrame = runtime == null ? null : runtime.RotationFrame;
+            var coordinateAgreement = CanonicalCoordinateAgreementEvaluator.Evaluate(rawFrame);
+            var providerReady = provider != null && provider.Status == PoseProviderStatus.Ready;
+            var proceduralRig = GetComponent<ProceduralDebugHumanoidRig>();
+            var debugRigPresent = proceduralRig != null && proceduralRig.IsBuilt;
+            var state = observation == null || !observation.hasPose
+                ? providerReady ? "WAITING / UNAVAILABLE" : provider == null ? "SOURCE / UNAVAILABLE" : provider.Status.ToString().ToUpperInvariant()
+                : observation.trustedCount > 0 ? "TRACKING" : "POSE / NO TRUSTED LANDMARKS";
+            var cameraName = provider == null || string.IsNullOrEmpty(provider.SelectedCameraName) ? "(none)" : provider.SelectedCameraName;
+            var resolution = provider != null && provider.ActualCameraWidth > 0 ? $"{provider.ActualCameraWidth}x{provider.ActualCameraHeight}" : "(not started)";
+            var age = provider == null || double.IsInfinity(provider.LatestPoseAgeMilliseconds) ? "-" : $"{provider.LatestPoseAgeMilliseconds:0} ms";
+            var rotationState = rotationFrame != null && rotationFrame.calibrationValid && rotationFrame.hasMeaningfulRotation ? "Live" : "Waiting Calibration";
+            var retargeted = retargeter != null && retargeter.IsBound;
+            var kinematicTargets = runtime == null ? null : runtime.KinematicTargets;
             var text =
-                $"POSE TRACKING / CANONICAL SPIKE\n" +
+                $"POSE TRACKING / MOTION ENGINE LAB\n" +
                 $"State: {state}\n" +
                 $"Camera: {cameraName}\n" +
-                $"Capture: {resolution} @ {provider.CameraFramesPerSecond:0.0} fps\n" +
+                $"Capture: {resolution} @ {(provider == null ? 0f : provider.CameraFramesPerSecond):0.0} fps\n" +
                 $"Render: {_renderFps:0.0} fps\n" +
-                $"Requests: {provider.InferenceRequestsPerSecond:0.0}/s   Results: {provider.PoseResultsPerSecond:0.0}/s\n" +
+                $"Requests: {(provider == null ? 0f : provider.InferenceRequestsPerSecond):0.0}/s   Results: {(provider == null ? 0f : provider.PoseResultsPerSecond):0.0}/s\n" +
                 $"Latest pose age: {age}\n" +
-                $"Raw trusted: {_observation.trustedCount}/{PoseObservation.LandmarkCount}\n" +
-                $"Canonical tracked: {_canonicalFrame.trackedJointCount}/{CanonicalPoseFrame.JointCount}\n" +
-                $"Stabilized tracked: {_stabilizedFrame.trackedJointCount}/{CanonicalPoseFrame.JointCount}\n" +
-                $"Pelvis: {_canonicalFrame.hasCanonicalPelvis}   3D: {_canonicalFrame.hasCanonical3D}\n" +
-                $"Calibration: {_calibration.State}   {_calibration.Progress01 * 100f:0}%   valid={_calibration.IsValid}\n" +
-                $"Calib dimensions: shoulder {_calibration.Profile.shoulderWidth:0.00}   hip {_calibration.Profile.hipWidth:0.00}   torso {_calibration.Profile.torsoLength:0.00}\n" +
-                $"Inference: {provider.LastInferenceDurationMilliseconds:0.0} ms\n" +
-                $"Orientation: sensor rot {provider.Orientation.SensorRotationDegrees}° / sensor V {provider.Orientation.SensorVerticallyMirrored}\n" +
-                $"Inference flips H/V {provider.Orientation.InferenceFlipHorizontally}/{provider.Orientation.InferenceFlipVertically}, rot {provider.Orientation.InferenceRotationDegrees}°\n" +
-                $"Display mirror: {provider.Orientation.DisplayMirrored}\n" +
-                $"Status: {provider.StatusMessage}";
+                $"Raw trusted: {(observation == null ? 0 : observation.trustedCount)}/{PoseObservation.LandmarkCount}\n" +
+                $"Canonical tracked: {(rawFrame == null ? 0 : rawFrame.trackedJointCount)}/{CanonicalPoseFrame.JointCount}\n" +
+                  $"Stabilized tracked: {(stabilizedFrame == null ? 0 : stabilizedFrame.trackedJointCount)}/{CanonicalPoseFrame.JointCount}\n" +
+                  $"Pelvis: {(rawFrame != null && rawFrame.hasCanonicalPelvis)}   3D: {(rawFrame != null && rawFrame.hasCanonical3D)}\n" +
+                  $"2D↔3D X agreement: {AgreementStatus(coordinateAgreement.hasXEvidence, coordinateAgreement.xPass)}   X comparisons: {coordinateAgreement.xComparisons}\n" +
+                  $"2D↔3D Y agreement: {AgreementStatus(coordinateAgreement.hasYEvidence, coordinateAgreement.yPass)}   Y comparisons: {coordinateAgreement.yComparisons}   mismatches: {coordinateAgreement.yMismatches}   N/A: {coordinateAgreement.yInsufficientComparisons}\n" +
+                  $"Calibration: {(calibration == null ? "Unavailable" : calibration.State.ToString())}   {(calibration == null ? 0f : calibration.Progress01 * 100f):0}%   valid={(calibration != null && calibration.IsValid)}\n" +
+                 $"Calib dimensions: shoulder {(calibration == null ? 0f : calibration.Profile.shoulderWidth):0.00}   hip {(calibration == null ? 0f : calibration.Profile.hipWidth):0.00}   torso {(calibration == null ? 0f : calibration.Profile.torsoLength):0.00}\n" +
+                 $"Rotation solve: {rotationState}\n" +
+                 $"Valid bones: {(rotationFrame == null ? 0 : rotationFrame.validBoneCount)}/{GoldenNeedle.Core.Motion.Rotation.CanonicalRotationFrame.BoneCount}\n" +
+                 $"Debug rig: {(debugRigPresent ? "Present" : "Missing")}   View: {(rigView != null && rigView.IsReady ? "Ready" : "Missing")}\n" +
+                 $"Retargeter: {(retargeted ? "Bound" : "Unbound")}   Binding mode: {(retargeter == null ? "Unbound" : retargeter.BindingModeName)}\n" +
+                 $"Driving: {(retargeter != null && retargeter.DriveRig ? "On" : "Off")}\n" +
+                 $"Kinematic targets: {(retargeter != null && retargeter.KinematicTargetsLive && kinematicTargets != null ? "Live" : "Waiting")}\n" +
+                 $"Source chains valid: {(retargeter == null ? 0 : retargeter.SourceChainsValid)}/{CanonicalKinematicTargets.ChainCount}\n" +
+                 $"Targets generated: {(retargeter == null ? 0 : retargeter.TargetsGenerated)}/{CanonicalKinematicTargets.ChainCount}\n" +
+                 $"IK chains solved: {(retargeter == null ? 0 : retargeter.IkChainsSolved)}/{CanonicalKinematicTargets.ChainCount}\n" +
+                 $"Limb bones driven: {(retargeter == null ? 0 : retargeter.LimbBonesDriven)}/8\n" +
+                 $"Max retarget fidelity error: {(retargeter == null ? 0f : retargeter.MaxNormalizedRetargetFidelityError * 100f):0.0}%\n" +
+                 $"Max IK endpoint residual: {(retargeter == null ? 0f : retargeter.MaxNormalizedIkEndpointResidual * 100f):0.0}%\n" +
+                 $"Max bend-plane error: {(retargeter == null ? 0f : retargeter.MaxBendPlaneErrorDegrees):0.0}°\n" +
+                 $"Inference: {(provider == null ? 0f : provider.LastInferenceDurationMilliseconds):0.0} ms\n" +
+                $"Canonical view: MediaPipe inference frame\n" +
+                $"Sensor rotation: {(provider == null ? 0 : provider.Orientation.SensorRotationDegrees)}°\n" +
+                $"Sensor V mirrored: {(provider != null && provider.Orientation.SensorVerticallyMirrored)}\n" +
+                $"Inference prep H/V: {(provider != null && provider.Orientation.InferenceFlipHorizontally)}/{(provider != null && provider.Orientation.InferenceFlipVertically)}\n" +
+                 $"Display rotation: {(provider == null ? 0 : provider.Orientation.DisplayRotationDegrees)}°\n" +
+                 $"Display V correction: {(provider != null && provider.Orientation.DisplayVerticalCorrection)}\n" +
+                $"Source H correction: {(provider != null && provider.Orientation.SourceTextureHorizontallyMirrored)}\n" +
+                $"Display mirror: {(provider != null && provider.Orientation.DisplayMirrored)} (explicit only)\n" +
+                $"Presentation H transform: {(provider != null && provider.Orientation.PresentationHorizontalMirror)}\n" +
+                $"Status: {(provider == null ? "No MediaPipe provider" : provider.StatusMessage)}";
             GUI.Label(new Rect(panel.x + 12f, panel.y + 10f, panel.width - 24f, panel.height - 20f), text, _smallLabelStyle);
 
             var help = new Rect(16f, Screen.height - 36f, 640f, 24f);
-            GUI.Label(help, "R retry   C calibrate   X cancel/reset   F1 raw   F2 canonical 2D   F3 3D   F4 stabilized 2D   Cyan stabilized / yellow canonical / magenta derived", _smallLabelStyle);
+            GUI.Label(help, "R retry   C calibrate   X cancel/reset   F1 raw   F2 canonical 2D   F3 3D   F4 stabilized 2D   F5 rig drive ON/OFF   F6 coordinate sample   Cyan stabilized / yellow canonical / magenta targets / orange bend hints", _smallLabelStyle);
+        }
+
+        private static string AgreementStatus(bool hasEvidence, bool pass)
+        {
+            return !hasEvidence ? "PENDING" : pass ? "PASS" : "FAIL";
+        }
+
+        private void DrawCoordinateDiagnostic()
+        {
+            var width = Mathf.Min(620f, Mathf.Max(360f, Screen.width - 32f));
+            var height = Mathf.Min(430f, Mathf.Max(278f, Screen.height - 32f));
+            var panel = new Rect(Screen.width - width - 16f, 16f, width, height);
+            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.96f);
+            GUI.DrawTexture(panel, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            var observation = canonicalSource == null ? null : canonicalSource.LatestObservation;
+            var rawFrame = runtime == null ? null : runtime.RawCanonicalFrame;
+            var orientation = provider == null ? default(CameraOrientationState) : provider.Orientation;
+            var text =
+                "CANONICAL FRAME / RAW WORLD INSPECTOR\n" +
+                $"Canonical view: inference frame   Display mirror: {orientation.DisplayMirrored}\n" +
+                $"Source H correction: {orientation.SourceTextureHorizontallyMirrored}   Presentation H: {orientation.PresentationHorizontalMirror}\n" +
+                CanonicalCoordinateAgreementEvaluator.DescribeYComparisons(rawFrame) +
+                "joint          image x,y       raw world x,y,z          canonical world x,y,z\n";
+
+            for (var i = 0; i < CoordinateDiagnosticJointIds.Length; i++)
+            {
+                var raw = observation == null ? default : observation.GetLandmark(CoordinateDiagnosticSourceIndices[i]);
+                var canonical = rawFrame == null ? default : rawFrame.GetJoint(CoordinateDiagnosticJointIds[i]);
+                text += $"{CoordinateDiagnosticLabels[i],-12} {FormatImage(canonical),-15} {FormatRawWorld(raw),-24} {FormatWorld(canonical)}\n";
+            }
+
+            GUI.Label(new Rect(panel.x + 10f, panel.y + 8f, panel.width - 20f, panel.height - 16f), text, _smallLabelStyle);
+        }
+
+        private static string FormatImage(CanonicalPoseJoint joint)
+        {
+            return joint.IsTracked && joint.hasImagePosition
+                ? $"{joint.imagePosition.x:0.00},{joint.imagePosition.y:0.00}"
+                : "--,--";
+        }
+
+        private static string FormatRawWorld(PoseLandmarkObservation landmark)
+        {
+            return landmark.IsTracked && landmark.hasWorldCoordinates &&
+                   IsFinite(landmark.worldX) && IsFinite(landmark.worldY) && IsFinite(landmark.worldZ)
+                ? $"{landmark.worldX:0.00},{landmark.worldY:0.00},{landmark.worldZ:0.00}"
+                : "--,--,--";
+        }
+
+        private static string FormatWorld(CanonicalPoseJoint joint)
+        {
+            return joint.IsTracked && joint.hasWorldPosition
+                ? $"{joint.worldPosition.x:0.00},{joint.worldPosition.y:0.00},{joint.worldPosition.z:0.00}"
+                : "--,--,--";
+        }
+
+        private static void ApplyDisplayPreviewTransform(Rect previewRect, CameraOrientationState orientation)
+        {
+            var pivot = previewRect.center;
+            GUIUtility.ScaleAroundPivot(
+                new Vector2(
+                    orientation.PresentationHorizontalMirror ? -1f : 1f,
+                    orientation.DisplayVerticalCorrection ? -1f : 1f),
+                pivot);
+            GUIUtility.RotateAroundPivot(-orientation.DisplayRotationDegrees, pivot);
+        }
+
+        private void DrawDebugRigView()
+        {
+            if (rigView == null)
+            {
+                return;
+            }
+
+            var width = Mathf.Min(previewPanelWidth, Mathf.Max(220f, Screen.width - 32f));
+            var panelHeight = Mathf.Clamp(Screen.height * 0.34f, 180f, 300f);
+            var panelTop = Screen.height - panelHeight - 48f;
+            if (panelTop < 388f)
+            {
+                panelTop = 388f;
+                panelHeight = Mathf.Max(140f, Screen.height - panelTop - 48f);
+            }
+
+            var panel = new Rect(16f, panelTop, width, panelHeight);
+            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.94f);
+            GUI.DrawTexture(panel, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(panel.x + 10f, panel.y + 7f, panel.width - 20f, 22f), "PROCEDURAL RIG / ACTUAL TRANSFORMS", _smallLabelStyle);
+
+            var view = new Rect(panel.x + 8f, panel.y + 32f, panel.width - 16f, panel.height - 40f);
+            if (rigView.Texture != null)
+            {
+                GUI.DrawTexture(view, rigView.Texture, ScaleMode.ScaleToFit, false);
+            }
+            else
+            {
+                GUI.color = new Color(0.12f, 0.14f, 0.18f, 1f);
+                GUI.DrawTexture(view, Texture2D.whiteTexture);
+                GUI.color = Color.white;
+            }
         }
 
         private void DrawCanonical3DView()
         {
+            var canonicalFrame = runtime == null ? null : runtime.RawCanonicalFrame;
+            var stabilizedFrame = runtime == null ? null : runtime.StabilizedFrame;
+            if (canonicalFrame == null || stabilizedFrame == null)
+            {
+                return;
+            }
+
             var width = Mathf.Clamp(previewPanelWidth, 280f, 420f);
             var panel = new Rect(Screen.width - width - 16f, 16f, width, Screen.height - 64f);
             GUI.color = new Color(0.015f, 0.02f, 0.035f, 0.92f);
@@ -343,8 +539,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             for (var i = 0; i < CanonicalConnections.GetLength(0); i++)
             {
-                var from = _canonicalFrame.GetJoint(CanonicalConnections[i, 0]);
-                var to = _canonicalFrame.GetJoint(CanonicalConnections[i, 1]);
+                var from = canonicalFrame.GetJoint(CanonicalConnections[i, 0]);
+                var to = canonicalFrame.GetJoint(CanonicalConnections[i, 1]);
                 if (from.IsTracked && to.IsTracked && from.hasLocalPosition && to.hasLocalPosition)
                 {
                     DrawLine(Project3D(from.localPosition, view), Project3D(to.localPosition, view), new Color(1f, 0.72f, 0.12f, 0.9f), 3f);
@@ -353,8 +549,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             for (var i = 0; i < CanonicalConnections.GetLength(0); i++)
             {
-                var from = _stabilizedFrame.GetJoint(CanonicalConnections[i, 0]);
-                var to = _stabilizedFrame.GetJoint(CanonicalConnections[i, 1]);
+                var from = stabilizedFrame.GetJoint(CanonicalConnections[i, 0]);
+                var to = stabilizedFrame.GetJoint(CanonicalConnections[i, 1]);
                 if (from.IsTracked && to.IsTracked && from.hasLocalPosition && to.hasLocalPosition)
                 {
                     DrawLine(Project3D(from.localPosition, view), Project3D(to.localPosition, view), new Color(0.15f, 1f, 1f, 0.95f), 3f);
@@ -363,7 +559,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             for (var i = 0; i < CanonicalPoseFrame.JointCount; i++)
             {
-                var joint = _canonicalFrame.GetJoint((CanonicalJointId)i);
+                var joint = canonicalFrame.GetJoint((CanonicalJointId)i);
                 if (!joint.IsTracked || !joint.hasLocalPosition)
                 {
                     continue;
@@ -374,7 +570,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             for (var i = 0; i < CanonicalPoseFrame.JointCount; i++)
             {
-                var joint = _stabilizedFrame.GetJoint((CanonicalJointId)i);
+                var joint = stabilizedFrame.GetJoint((CanonicalJointId)i);
                 if (!joint.IsTracked || !joint.hasLocalPosition)
                 {
                     continue;
@@ -386,17 +582,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             GUI.Label(new Rect(panel.x + 12f, panel.yMax - 42f, panel.width - 24f, 34f), "+X right/red   +Y up/green   +Z away/blue\nYellow canonical   Cyan stabilized   Pelvis-relative when available", _smallLabelStyle);
         }
 
-        private double GetProviderEvaluationTime()
-        {
-            if (_canonicalFrame.receivedAtSeconds > 0d && !double.IsInfinity(provider.LatestPoseAgeMilliseconds))
-            {
-                var age = provider.LatestPoseAgeMilliseconds > 0d ? provider.LatestPoseAgeMilliseconds : 0d;
-                return _canonicalFrame.receivedAtSeconds + age * 0.001d;
-            }
-
-            return Time.unscaledTimeAsDouble;
-        }
-
         private static Vector2 Project3D(Vector3 position, Rect view)
         {
             var perspective = 1f / Mathf.Max(0.45f, 1f + position.z * 0.45f);
@@ -404,14 +589,14 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             return view.center + new Vector2(position.x * scale * perspective, -position.y * scale * perspective);
         }
 
-        private static Rect GetContentRect(Rect target, int width, int height, int displayRotationDegrees)
+        private static Rect GetContentRect(Rect target, int width, int height, int imageRotationDegrees)
         {
             if (width <= 0 || height <= 0)
             {
                 return target;
             }
 
-            if (displayRotationDegrees == 90 || displayRotationDegrees == 270)
+            if (imageRotationDegrees == 90 || imageRotationDegrees == 270)
             {
                 var swapped = width;
                 width = height;
@@ -428,13 +613,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             var drawnHeight = target.width / sourceAspect;
             return new Rect(target.x, target.center.y - drawnHeight * 0.5f, target.width, drawnHeight);
-        }
-
-        private static Vector2 ToRawScreenPoint(Vector2 normalizedImagePosition, Rect contentRect)
-        {
-            return new Vector2(
-                contentRect.x + normalizedImagePosition.x * contentRect.width,
-                contentRect.y + (1f - normalizedImagePosition.y) * contentRect.height);
         }
 
         private static bool IsDerivedJoint(CanonicalJointId id)

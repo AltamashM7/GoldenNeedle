@@ -40,8 +40,10 @@ namespace GoldenNeedle.Core.Motion.Calibration
         private static readonly CanonicalJointId[] TPoseJoints =
         {
             CanonicalJointId.LeftShoulder,
+            CanonicalJointId.LeftElbow,
             CanonicalJointId.LeftWrist,
             CanonicalJointId.RightShoulder,
+            CanonicalJointId.RightElbow,
             CanonicalJointId.RightWrist,
         };
 
@@ -50,10 +52,10 @@ namespace GoldenNeedle.Core.Motion.Calibration
         private readonly float[] _neutralWeights = new float[NeutralJointCount];
         private readonly Vector2[] _previousNeutralImage = new Vector2[NeutralJointCount];
         private readonly bool[] _hasPreviousNeutralImage = new bool[NeutralJointCount];
-        private readonly Vector2[] _previousTPoseImage = new Vector2[4];
-        private readonly bool[] _hasPreviousTPoseImage = new bool[4];
-        private readonly Vector3[] _tPoseSums = new Vector3[4];
-        private readonly float[] _tPoseWeights = new float[4];
+        private readonly Vector2[] _previousTPoseImage = new Vector2[6];
+        private readonly bool[] _hasPreviousTPoseImage = new bool[6];
+        private readonly Vector3[] _tPoseSums = new Vector3[6];
+        private readonly float[] _tPoseWeights = new float[6];
         private readonly MotionCalibrationProfile _profile = new MotionCalibrationProfile();
 
         private bool _hasLastFrame;
@@ -356,24 +358,42 @@ namespace GoldenNeedle.Core.Motion.Calibration
             _profile.torsoLength = Vector3.Distance(neutral[0], neutral[1]);
             _profile.neutralBodyRight = SafeNormalize(neutral[3] - neutral[2]);
             _profile.neutralBodyUp = SafeNormalize(neutral[1] - neutral[0]);
-            _profile.neutralBodyForward = SafeNormalize(Vector3.Cross(_profile.neutralBodyRight, _profile.neutralBodyUp));
+            // Canonical +X is view right and +Y is up. The semantic frontal direction is -Z,
+            // so the right-handed body basis is Up x Right rather than Right x Up.
+            _profile.neutralBodyForward = SafeNormalize(Vector3.Cross(_profile.neutralBodyUp, _profile.neutralBodyRight));
 
-            var tPose = new Vector3[4];
+            var tPose = new Vector3[6];
             for (var i = 0; i < tPose.Length; i++)
             {
                 tPose[i] = _tPoseWeights[i] > 0f ? _tPoseSums[i] / _tPoseWeights[i] : Vector3.zero;
             }
 
-            _profile.tPoseLeftArmDirection = SafeNormalize(tPose[1] - tPose[0]);
-            _profile.tPoseRightArmDirection = SafeNormalize(tPose[3] - tPose[2]);
-            _profile.tPoseArmSpan = Vector3.Distance(tPose[1], tPose[3]);
+            _profile.tPoseLeftShoulderPosition = tPose[0];
+            _profile.tPoseLeftElbowPosition = tPose[1];
+            _profile.tPoseLeftWristPosition = tPose[2];
+            _profile.tPoseRightShoulderPosition = tPose[3];
+            _profile.tPoseRightElbowPosition = tPose[4];
+            _profile.tPoseRightWristPosition = tPose[5];
+            _profile.tPoseLeftArmDirection = SafeNormalize(tPose[2] - tPose[0]);
+            _profile.tPoseRightArmDirection = SafeNormalize(tPose[5] - tPose[3]);
+            _profile.tPoseArmSpan = Vector3.Distance(tPose[2], tPose[5]);
+            _profile.leftArmReach = Vector3.Distance(tPose[0], tPose[2]);
+            _profile.rightArmReach = Vector3.Distance(tPose[3], tPose[5]);
+            _profile.leftLegReach = Vector3.Distance(neutral[4], neutral[6]) +
+                                    Vector3.Distance(neutral[6], neutral[8]);
+            _profile.rightLegReach = Vector3.Distance(neutral[5], neutral[7]) +
+                                     Vector3.Distance(neutral[7], neutral[9]);
             _profile.completedAtSeconds = now;
             _profile.version = MotionCalibrationProfile.CurrentVersion;
             _profile.isValid = AllFinite(_profile) &&
                 _profile.shoulderWidth > 0.0001f &&
                 _profile.hipWidth > 0.0001f &&
                 _profile.torsoLength > 0.0001f &&
-                _profile.tPoseArmSpan > 0.0001f;
+                _profile.tPoseArmSpan > 0.0001f &&
+                _profile.leftArmReach > 0.0001f &&
+                _profile.rightArmReach > 0.0001f &&
+                _profile.leftLegReach > 0.0001f &&
+                _profile.rightLegReach > 0.0001f;
             State = MotionCalibrationState.Complete;
             _profile.state = State;
             _progress01 = 1f;
@@ -454,8 +474,13 @@ namespace GoldenNeedle.Core.Motion.Calibration
                 IsFinite(profile.neutralLeftAnklePosition) && IsFinite(profile.neutralRightAnklePosition) &&
                 IsFinite(profile.neutralBodyUp) && IsFinite(profile.neutralBodyRight) && IsFinite(profile.neutralBodyForward) &&
                 IsFinite(profile.tPoseLeftArmDirection) && IsFinite(profile.tPoseRightArmDirection) &&
+                IsFinite(profile.tPoseLeftShoulderPosition) && IsFinite(profile.tPoseLeftElbowPosition) &&
+                IsFinite(profile.tPoseLeftWristPosition) && IsFinite(profile.tPoseRightShoulderPosition) &&
+                IsFinite(profile.tPoseRightElbowPosition) && IsFinite(profile.tPoseRightWristPosition) &&
                 IsFinite(profile.shoulderWidth) && IsFinite(profile.hipWidth) && IsFinite(profile.torsoLength) &&
-                IsFinite(profile.tPoseArmSpan);
+                IsFinite(profile.tPoseArmSpan) && IsFinite(profile.leftArmReach) &&
+                IsFinite(profile.rightArmReach) && IsFinite(profile.leftLegReach) &&
+                IsFinite(profile.rightLegReach);
         }
 
         private static bool IsFinite(Vector2 value)

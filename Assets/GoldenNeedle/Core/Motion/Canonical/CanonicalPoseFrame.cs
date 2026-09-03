@@ -39,10 +39,16 @@ namespace GoldenNeedle.Core.Motion.Canonical
         public CanonicalJointId id;
         public CanonicalTrackingState tracking;
         [Range(0f, 1f)] public float confidence;
+
+        /// <summary>Golden Needle canonical image position: normalized X right, Y up.</summary>
         public Vector2 imagePosition;
         public bool hasImagePosition;
+
+        /// <summary>Golden Needle canonical 3D position: X right, Y up, Z away.</summary>
         public Vector3 worldPosition;
         public bool hasWorldPosition;
+
+        /// <summary>Canonical world position relative to the trusted canonical pelvis when available.</summary>
         public Vector3 localPosition;
         public bool hasLocalPosition;
 

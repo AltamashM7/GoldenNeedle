@@ -32,7 +32,7 @@ The USER primarily owns Motion Engine work. Other developers will later own inte
 
 Motion Engine implementation phases use the long-lived `engine/pose-tracking-spike` branch through the Phase 6 graybox checkpoint. For each phase, the sequence is implementation, USER QA, accepted checkpoint commit/push, and Web Sol GitHub audit. Intermediate phase checkpoints are not mechanically merged into `main`; `main` remains the stable integration branch, and the intended merge boundary is after the Phase 6 graybox is accepted. The current accepted Phase 1 checkpoint is `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`.
 
-Phase 2 accepted SHA is `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 is USER accepted with **PASS WITH NOTES**, and its checkpoint commit is pending. Phase 4 has not started.
+Phase 2 accepted SHA is `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 accepted SHA is `2ee4d6eb606a8b845183cc44126ecf9530d8280b`, and Phase 4's IK retarget architecture is implemented and awaiting USER QA. Phase 5 has not started.
 
 ## Unity conflict policy
 

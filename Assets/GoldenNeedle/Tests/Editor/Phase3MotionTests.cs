@@ -176,8 +176,14 @@ namespace GoldenNeedle.Tests
             Assert.That(session.Profile.shoulderWidth, Is.GreaterThan(0f));
             Assert.That(session.Profile.hipWidth, Is.GreaterThan(0f));
             Assert.That(session.Profile.torsoLength, Is.GreaterThan(0f));
+            Assert.That(session.Profile.leftArmReach, Is.GreaterThan(0f));
+            Assert.That(session.Profile.rightArmReach, Is.GreaterThan(0f));
+            Assert.That(session.Profile.leftLegReach, Is.GreaterThan(0f));
+            Assert.That(session.Profile.rightLegReach, Is.GreaterThan(0f));
             Assert.That(IsFinite(session.Profile.neutralBodyUp), Is.True);
             Assert.That(IsFinite(session.Profile.tPoseLeftArmDirection), Is.True);
+            Assert.That(Vector3.Dot(session.Profile.neutralBodyForward, Vector3.back), Is.GreaterThan(0.99f));
+            Assert.That(session.Profile.version, Is.EqualTo(MotionCalibrationProfile.CurrentVersion));
         }
 
         private static CanonicalStabilizerSettings NewStabilizerSettings()

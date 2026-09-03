@@ -19,7 +19,7 @@ namespace GoldenNeedle.Tests
             Track(observation, 24, 0.65f, 0.7f, new Vector3(0.15f, 0.1f, 0.2f), 0.55f);
 
             var frame = new CanonicalPoseFrame();
-            MediaPipeCanonicalPoseMapper.Map(observation, frame, DefaultOrientation());
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
 
             var leftShoulder = frame.GetJoint(CanonicalJointId.LeftShoulder);
             var rightShoulder = frame.GetJoint(CanonicalJointId.RightShoulder);
@@ -28,11 +28,11 @@ namespace GoldenNeedle.Tests
             var spine = frame.GetJoint(CanonicalJointId.Spine);
 
             Assert.That(leftShoulder.IsTracked, Is.True);
-            Assert.That(leftShoulder.imagePosition, Is.EqualTo(new Vector2(0.2f, 0.3f)));
-            Assert.That(rightShoulder.imagePosition, Is.EqualTo(new Vector2(0.8f, 0.3f)));
-            Assert.That(chest.imagePosition, Is.EqualTo(new Vector2(0.5f, 0.3f)));
+            Assert.That(leftShoulder.imagePosition, Is.EqualTo(new Vector2(0.2f, 0.7f)));
+            Assert.That(rightShoulder.imagePosition, Is.EqualTo(new Vector2(0.8f, 0.7f)));
+            Assert.That(chest.imagePosition, Is.EqualTo(new Vector2(0.5f, 0.7f)));
             Assert.That(chest.confidence, Is.EqualTo(0.8f).Within(0.0001f));
-            Assert.That(pelvis.imagePosition, Is.EqualTo(new Vector2(0.5f, 0.7f)));
+            Assert.That(pelvis.imagePosition, Is.EqualTo(new Vector2(0.5f, 0.3f)));
             Assert.That(spine.imagePosition, Is.EqualTo(new Vector2(0.5f, 0.5f)));
             Assert.That(pelvis.localPosition, Is.EqualTo(Vector3.zero));
             Assert.That(frame.hasCanonicalPelvis, Is.True);
@@ -48,7 +48,7 @@ namespace GoldenNeedle.Tests
             Track(observation, 15, 0.05f, 0.5f, Vector3.zero);
 
             var frame = new CanonicalPoseFrame();
-            MediaPipeCanonicalPoseMapper.Map(observation, frame, DefaultOrientation());
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
 
             Assert.That(frame.GetJoint(CanonicalJointId.LeftShoulder).IsTracked, Is.True);
             Assert.That(frame.GetJoint(CanonicalJointId.LeftElbow).IsTracked, Is.True);
@@ -67,7 +67,7 @@ namespace GoldenNeedle.Tests
             Track(observation, 24, 0.65f, 0.7f, new Vector3(0.2f, -0.2f, 0.3f), 0.55f);
 
             var frame = new CanonicalPoseFrame();
-            MediaPipeCanonicalPoseMapper.Map(observation, frame, DefaultOrientation());
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
             var pelvis = frame.GetJoint(CanonicalJointId.Pelvis);
 
             Assert.That(pelvis.confidence, Is.EqualTo(0.55f).Within(0.0001f));
@@ -76,31 +76,218 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void InvertsInferenceTransformBeforeCanonicalImageConversion()
+        public void MapsMediaPipeNormalizedCoordinatesDirectlyInCanonicalInferenceFrame()
         {
-            var orientation = new CameraOrientationState(
-                sensorRotationDegrees: 0,
-                sensorVerticallyMirrored: false,
-                frontFacing: true,
-                displayMirrored: false,
+            var observation = NewObservation();
+            Track(observation, 11, 0.2f, 0.3f, Vector3.zero);
+            var frame = new CanonicalPoseFrame();
+
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
+
+            Assert.That(frame.GetJoint(CanonicalJointId.LeftShoulder).imagePosition, Is.EqualTo(new Vector2(0.2f, 0.7f)));
+        }
+
+        [Test]
+        public void SensorInputPreparationSupportsAllQuarterTurns()
+        {
+            var input = new Vector2(0.2f, 0.3f);
+
+            Assert.That(Orientation(inferenceRotationDegrees: 0).SensorTopLeftToInferenceNormalized(input), Is.EqualTo(new Vector2(0.2f, 0.3f)));
+            Assert.That(Orientation(inferenceRotationDegrees: 90).SensorTopLeftToInferenceNormalized(input), Is.EqualTo(new Vector2(0.7f, 0.2f)));
+            Assert.That(Orientation(inferenceRotationDegrees: 180).SensorTopLeftToInferenceNormalized(input), Is.EqualTo(new Vector2(0.8f, 0.7f)));
+            Assert.That(Orientation(inferenceRotationDegrees: 270).SensorTopLeftToInferenceNormalized(input), Is.EqualTo(new Vector2(0.3f, 0.8f)));
+        }
+
+        [Test]
+        public void SensorInputPreparationAppliesFlipsBeforeRotation()
+        {
+            var input = new Vector2(0.2f, 0.3f);
+            var orientation = Orientation(
                 inferenceFlipHorizontally: true,
                 inferenceFlipVertically: true,
-                inferenceRotationDegrees: 0);
+                inferenceRotationDegrees: 90);
 
-            var cameraImage = orientation.MediaPipeImageToCameraNormalized(new Vector2(0.2f, 0.3f));
+            Assert.That(orientation.SensorTopLeftToInferenceNormalized(input), Is.EqualTo(new Vector2(0.3f, 0.8f)));
+        }
 
-            Assert.That(cameraImage, Is.EqualTo(new Vector2(0.8f, 0.7f)));
+        [Test]
+        public void DisplayBaselineUsesSensorMetadataOnly()
+        {
+            var input = new Vector2(0.2f, 0.3f);
+            var orientation = Orientation(inferenceFlipHorizontally: true, inferenceFlipVertically: true);
+
+            Assert.That(orientation.SensorTopLeftToDisplayNormalized(input), Is.EqualTo(input));
+            Assert.That(orientation.SensorTopLeftToInferenceNormalized(input), Is.EqualTo(new Vector2(0.8f, 0.7f)));
+        }
+
+        [Test]
+        public void FrontFacingSourceCorrectionIsSeparateFromDisplayMirror()
+        {
+            var input = new Vector2(0.2f, 0.3f);
+            var corrected = Orientation(frontFacing: true, sourceTextureHorizontallyMirrored: true);
+            var correctedAndMirrored = Orientation(frontFacing: true, sourceTextureHorizontallyMirrored: true, displayMirrored: true);
+
+            Assert.That(corrected.DisplayMirrored, Is.False);
+            Assert.That(corrected.PresentationHorizontalMirror, Is.True);
+            Assert.That(corrected.SensorTopLeftToDisplayNormalized(input), Is.EqualTo(new Vector2(0.8f, 0.3f)));
+            Assert.That(correctedAndMirrored.DisplayMirrored, Is.True);
+            Assert.That(correctedAndMirrored.PresentationHorizontalMirror, Is.False);
+            Assert.That(correctedAndMirrored.SensorTopLeftToDisplayNormalized(input), Is.EqualTo(input));
+        }
+
+        [Test]
+        public void SensorVerticalMirrorAffectsDisplayOnly()
+        {
+            var input = new Vector2(0.2f, 0.3f);
+            var orientation = Orientation(sensorVerticallyMirrored: true);
+
+            Assert.That(orientation.SensorTopLeftToDisplayNormalized(input), Is.EqualTo(new Vector2(0.2f, 0.7f)));
+            Assert.That(orientation.SensorTopLeftToInferenceNormalized(input), Is.EqualTo(input));
+        }
+
+        [Test]
+        public void SensorDisplayRotationSupportsAllQuarterTurns()
+        {
+            var input = new Vector2(0.2f, 0.3f);
+            var expected = new[]
+            {
+                new Vector2(0.2f, 0.3f),
+                new Vector2(0.7f, 0.2f),
+                new Vector2(0.8f, 0.7f),
+                new Vector2(0.3f, 0.8f),
+            };
+            var rotations = new[] { 0, 90, 180, 270 };
+
+            for (var i = 0; i < rotations.Length; i++)
+            {
+                Assert.That(
+                    Orientation(sensorRotationDegrees: rotations[i]).SensorTopLeftToDisplayNormalized(input),
+                    Is.EqualTo(expected[i]));
+            }
+        }
+
+        [Test]
+        public void WorldConversionUsesTheCanonicalBaseAxesOnly()
+        {
+            var rawWorld = new Vector3(1f, 2f, 3f);
+            AssertCanonicalWorld(CanonicalCoordinateSystem.MediaPipeWorldToCanonical(rawWorld), new Vector3(1f, -2f, 3f));
+        }
+
+        [Test]
+        public void PixelTransportOrientationDoesNotTransformReturnedWorldCoordinates()
+        {
+            var orientation = Orientation(inferenceFlipVertically: true);
+            Assert.That(orientation.SensorTopLeftToInferenceNormalized(new Vector2(0.5f, 0.2f)).y, Is.EqualTo(0.8f));
+
+            var observation = NewObservation();
+            Track(observation, 23, 0.5f, 0.6f, new Vector3(0f, -0.6f, 0.1f));
+            Track(observation, 24, 0.5f, 0.6f, new Vector3(0f, -0.4f, 0.1f));
+            var frame = new CanonicalPoseFrame();
+
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
+
+            AssertCanonicalWorld(frame.GetJoint(CanonicalJointId.Pelvis).worldPosition, new Vector3(0f, 0.5f, 0.1f));
+        }
+
+        [Test]
+        public void DisplayMirrorDoesNotChangeCanonicalData()
+        {
+            var observation = NewObservation();
+            Track(observation, 11, 0.2f, 0.3f, new Vector3(-0.2f, -0.5f, 0.1f));
+            Track(observation, 12, 0.8f, 0.3f, new Vector3(0.2f, -0.5f, 0.1f));
+            var unmirroredOrientation = Orientation(displayMirrored: false);
+            var mirroredOrientation = Orientation(displayMirrored: true);
+            var unmirrored = new CanonicalPoseFrame();
+            var mirrored = new CanonicalPoseFrame();
+
+            MediaPipeCanonicalPoseMapper.Map(observation, unmirrored);
+            MediaPipeCanonicalPoseMapper.Map(observation, mirrored);
+
+            Assert.That(
+                unmirroredOrientation.SensorTopLeftToDisplayNormalized(new Vector2(0.2f, 0.3f)),
+                Is.EqualTo(new Vector2(0.2f, 0.3f)));
+            Assert.That(
+                mirroredOrientation.SensorTopLeftToDisplayNormalized(new Vector2(0.2f, 0.3f)),
+                Is.EqualTo(new Vector2(0.8f, 0.3f)));
+            Assert.That(mirrored.GetJoint(CanonicalJointId.LeftShoulder).imagePosition, Is.EqualTo(unmirrored.GetJoint(CanonicalJointId.LeftShoulder).imagePosition));
+            Assert.That(mirrored.GetJoint(CanonicalJointId.LeftShoulder).worldPosition, Is.EqualTo(unmirrored.GetJoint(CanonicalJointId.LeftShoulder).worldPosition));
+        }
+
+        [Test]
+        public void DisplayMirrorAndOverlayMirrorTogether()
+        {
+            var sourcePoint = new Vector2(0.2f, 0.3f);
+            var canonicalPoint = CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(sourcePoint);
+            var contentRect = new Rect(10f, 20f, 100f, 200f);
+            var unmirroredPreviewPoint = Orientation().SensorTopLeftToDisplayNormalized(sourcePoint);
+            var mirroredPreviewPoint = Orientation(displayMirrored: true).SensorTopLeftToDisplayNormalized(sourcePoint);
+            var unmirroredOverlayPoint = CanonicalCoordinateSystem.CanonicalImageToGuiScreen(canonicalPoint, contentRect);
+            var mirroredOverlayPoint = CanonicalCoordinateSystem.CanonicalImageToGuiScreen(canonicalPoint, contentRect, true);
+
+            Assert.That(mirroredPreviewPoint.x, Is.EqualTo(1f - unmirroredPreviewPoint.x).Within(0.0001f));
+            Assert.That(mirroredPreviewPoint.y, Is.EqualTo(unmirroredPreviewPoint.y).Within(0.0001f));
+            Assert.That(mirroredOverlayPoint.x, Is.EqualTo(contentRect.x + (1f - unmirroredPreviewPoint.x) * contentRect.width).Within(0.0001f));
+            Assert.That(mirroredOverlayPoint.y, Is.EqualTo(unmirroredOverlayPoint.y).Within(0.0001f));
+            Assert.That(canonicalPoint, Is.EqualTo(new Vector2(0.2f, 0.7f)));
+        }
+
+        [Test]
+        public void MapperKeepsSemanticIdsWithoutApplyingInputOrientation()
+        {
+            var observation = NewObservation();
+            Track(observation, 15, 0.2f, 0.3f, new Vector3(1f, 2f, 3f));
+            Track(observation, 16, 0.8f, 0.3f, new Vector3(4f, 5f, 6f));
+            var frame = new CanonicalPoseFrame();
+
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
+
+            Assert.That(frame.GetJoint(CanonicalJointId.LeftWrist).imagePosition, Is.EqualTo(new Vector2(0.2f, 0.7f)));
+            Assert.That(frame.GetJoint(CanonicalJointId.RightWrist).imagePosition, Is.EqualTo(new Vector2(0.8f, 0.7f)));
+            AssertCanonicalWorld(frame.GetJoint(CanonicalJointId.LeftWrist).worldPosition, new Vector3(1f, -2f, 3f));
+            AssertCanonicalWorld(frame.GetJoint(CanonicalJointId.RightWrist).worldPosition, new Vector3(4f, -5f, 6f));
+        }
+
+        [Test]
+        public void CanonicalImageAndWorldDeltasAgreeAfterWorldConversion()
+        {
+            var observation = NewObservation();
+            Track(observation, 11, 0.3f, 0.3f, new Vector3(-0.2f, -0.3f, 0.1f));
+            Track(observation, 12, 0.7f, 0.3f, new Vector3(0.2f, -0.3f, 0.1f));
+            Track(observation, 15, 0.2f, 0.2f, new Vector3(-0.3f, -0.5f, 0.1f));
+            Track(observation, 16, 0.8f, 0.6f, new Vector3(0.3f, 0.1f, 0.1f));
+            Track(observation, 23, 0.35f, 0.6f, new Vector3(-0.15f, 0.2f, 0.2f));
+            Track(observation, 24, 0.65f, 0.6f, new Vector3(0.15f, 0.2f, 0.2f));
+            Track(observation, 25, 0.35f, 0.75f, new Vector3(-0.15f, 0.5f, 0.2f));
+            Track(observation, 26, 0.65f, 0.75f, new Vector3(0.15f, 0.5f, 0.2f));
+            Track(observation, 27, 0.35f, 0.9f, new Vector3(-0.15f, 0.8f, 0.2f));
+            Track(observation, 28, 0.65f, 0.9f, new Vector3(0.15f, 0.8f, 0.2f));
+            var frame = new CanonicalPoseFrame();
+
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
+
+            var agreement = CanonicalCoordinateAgreementEvaluator.Evaluate(frame);
+            Assert.That(agreement.xComparisons, Is.GreaterThan(0));
+            Assert.That(agreement.yComparisons, Is.GreaterThan(0));
+            Assert.That(agreement.xPass, Is.True);
+            Assert.That(agreement.yPass, Is.True);
+        }
+
+        [Test]
+        public void CanonicalWorldZRemainsTheAwayAxisAcrossOrientationTransforms()
+        {
+            var input = new Vector3(1f, 2f, -4f);
+            Assert.That(CanonicalCoordinateSystem.MediaPipeWorldToCanonical(input).z, Is.EqualTo(-4f));
         }
 
         [Test]
         public void CanonicalImageYUpMapsToSmallerGuiScreenY()
         {
             var observation = NewObservation();
-            Track(observation, 11, 0.5f, 0.8f, Vector3.zero);
-            Track(observation, 13, 0.5f, 0.2f, Vector3.zero);
+            Track(observation, 11, 0.5f, 0.2f, Vector3.zero);
+            Track(observation, 13, 0.5f, 0.8f, Vector3.zero);
 
             var frame = new CanonicalPoseFrame();
-            MediaPipeCanonicalPoseMapper.Map(observation, frame, DefaultOrientation());
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
 
             var higher = frame.GetJoint(CanonicalJointId.LeftShoulder);
             var lower = frame.GetJoint(CanonicalJointId.LeftElbow);
@@ -110,6 +297,64 @@ namespace GoldenNeedle.Tests
 
             Assert.That(higher.imagePosition.y, Is.GreaterThan(lower.imagePosition.y));
             Assert.That(higherScreen.y, Is.LessThan(lowerScreen.y));
+        }
+
+        [Test]
+        public void CanonicalGuiMappingUsesOneYAxisInversion()
+        {
+            var contentRect = new Rect(10f, 20f, 100f, 200f);
+
+            Assert.That(
+                CanonicalCoordinateSystem.CanonicalImageToGuiScreen(Vector2.zero, contentRect),
+                Is.EqualTo(new Vector2(10f, 220f)));
+            Assert.That(
+                CanonicalCoordinateSystem.CanonicalImageToGuiScreen(Vector2.one, contentRect),
+                Is.EqualTo(new Vector2(110f, 20f)));
+        }
+
+        [Test]
+        public void CanonicalCoordinateAgreementUsesStrongVerticalChains()
+        {
+            var observation = NewObservation();
+            Track(observation, 11, 0.35f, 0.2f, new Vector3(-0.2f, -0.8f, 0.1f));
+            Track(observation, 12, 0.65f, 0.2f, new Vector3(0.2f, -0.8f, 0.1f));
+            Track(observation, 23, 0.35f, 0.45f, new Vector3(-0.15f, -0.55f, 0.1f));
+            Track(observation, 24, 0.65f, 0.45f, new Vector3(0.15f, -0.55f, 0.1f));
+            Track(observation, 25, 0.35f, 0.65f, new Vector3(-0.15f, -0.35f, 0.1f));
+            Track(observation, 26, 0.65f, 0.65f, new Vector3(0.15f, -0.35f, 0.1f));
+            Track(observation, 27, 0.35f, 0.85f, new Vector3(-0.15f, -0.15f, 0.1f));
+            Track(observation, 28, 0.65f, 0.85f, new Vector3(0.15f, -0.15f, 0.1f));
+            var frame = new CanonicalPoseFrame();
+
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
+
+            var agreement = CanonicalCoordinateAgreementEvaluator.Evaluate(frame);
+            Assert.That(frame.GetJoint(CanonicalJointId.Chest).imagePosition.y, Is.GreaterThan(frame.GetJoint(CanonicalJointId.Pelvis).imagePosition.y));
+            Assert.That(frame.GetJoint(CanonicalJointId.LeftHip).imagePosition.y, Is.GreaterThan(frame.GetJoint(CanonicalJointId.LeftKnee).imagePosition.y));
+            Assert.That(frame.GetJoint(CanonicalJointId.LeftKnee).imagePosition.y, Is.GreaterThan(frame.GetJoint(CanonicalJointId.LeftAnkle).imagePosition.y));
+            Assert.That(frame.GetJoint(CanonicalJointId.Chest).worldPosition.y, Is.GreaterThan(frame.GetJoint(CanonicalJointId.Pelvis).worldPosition.y));
+            Assert.That(frame.GetJoint(CanonicalJointId.LeftHip).worldPosition.y, Is.GreaterThan(frame.GetJoint(CanonicalJointId.LeftKnee).worldPosition.y));
+            Assert.That(frame.GetJoint(CanonicalJointId.LeftKnee).worldPosition.y, Is.GreaterThan(frame.GetJoint(CanonicalJointId.LeftAnkle).worldPosition.y));
+            Assert.That(agreement.yComparisons, Is.GreaterThanOrEqualTo(7));
+            Assert.That(agreement.yMismatches, Is.EqualTo(0));
+            Assert.That(agreement.yPass, Is.True);
+        }
+
+        [Test]
+        public void CanonicalCoordinateAgreementDoesNotFailOnTinyBilateralYNoise()
+        {
+            var observation = NewObservation();
+            Track(observation, 11, 0.2f, 0.300f, new Vector3(-0.2f, -0.500f, 0.1f));
+            Track(observation, 12, 0.8f, 0.301f, new Vector3(0.2f, -0.501f, 0.1f));
+            var frame = new CanonicalPoseFrame();
+
+            MediaPipeCanonicalPoseMapper.Map(observation, frame);
+
+            var agreement = CanonicalCoordinateAgreementEvaluator.Evaluate(frame);
+            Assert.That(agreement.yComparisons, Is.EqualTo(0));
+            Assert.That(agreement.yMismatches, Is.EqualTo(0));
+            Assert.That(agreement.hasYEvidence, Is.False);
+            Assert.That(agreement.yInsufficientComparisons, Is.EqualTo(0));
         }
 
         private static PoseObservation NewObservation()
@@ -139,9 +384,30 @@ namespace GoldenNeedle.Tests
             });
         }
 
-        private static CameraOrientationState DefaultOrientation()
+        private static CameraOrientationState Orientation(
+            bool displayMirrored = false,
+            bool inferenceFlipHorizontally = false,
+            bool inferenceFlipVertically = false,
+            int inferenceRotationDegrees = 0,
+            int sensorRotationDegrees = 0,
+            bool sensorVerticallyMirrored = false,
+            bool frontFacing = false,
+            bool sourceTextureHorizontallyMirrored = false)
         {
-            return new CameraOrientationState(0, false, false, false, false, false, 0);
+            return new CameraOrientationState(
+                sensorRotationDegrees: sensorRotationDegrees,
+                sensorVerticallyMirrored: sensorVerticallyMirrored,
+                frontFacing: frontFacing,
+                sourceTextureHorizontallyMirrored: sourceTextureHorizontallyMirrored,
+                displayMirrored: displayMirrored,
+                inferenceFlipHorizontally: inferenceFlipHorizontally,
+                inferenceFlipVertically: inferenceFlipVertically,
+                inferenceRotationDegrees: inferenceRotationDegrees);
+        }
+
+        private static void AssertCanonicalWorld(Vector3 actual, Vector3 expected)
+        {
+            Assert.That(Vector3.Distance(actual, expected), Is.LessThan(0.0001f));
         }
     }
 }

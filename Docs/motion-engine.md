@@ -1,6 +1,6 @@
 # Planned V1 Motion Engine
 
-Status: **PHASE 3 — USER ACCEPTED — PASS WITH NOTES.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 2 was USER accepted with **PASS WITH NOTES** after the canonical/debug corrections and mapper tests. Phase 3 USER QA passed neutral calibration, T-pose recognition, calibration completion, and visibly smoother stabilized motion with **Good** responsiveness. Focused EditMode coverage passed `15/15`; loss/reacquisition physical coverage remains a later integration-quality check. Rotation reconstruction, retargeting, and locomotion remain unimplemented. Phase 4 has not started.
+Status: **PREVIEW MIRROR CORRECTED / Y-AGREEMENT AUDITED — READY FOR USER QA.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Phase 1–3 were USER accepted with **PASS WITH NOTES**, committed, pushed, and audited by Web Sol. Phase 4 remains blocked/not USER accepted pending preview mirror/Y-agreement QA; retargeting and locomotion remain frozen.
 
 ## Phase 1 spike boundary
 
@@ -10,6 +10,10 @@ Status: **PHASE 3 — USER ACCEPTED — PASS WITH NOTES.** Phase 1 accepted SHA:
 - `PoseTrackingSpikePresenter` is a diagnostic consumer that draws the camera texture, raw and canonical trusted landmarks/connections, a canonical local-space 3D view, and runtime statistics.
 - The current Windows integration uses the repository-local MediaPipeUnityPlugin `0.16.3` CPU prebuilt runtime and a local Pose Landmarker Lite model. Windows support is documented as experimental by the plugin, so the Orchestrator should treat the USER’s physical QA as the acceptance authority.
 - The spike accepts partial bodies through per-landmark trust. Missing or untrusted lower-body landmarks do not invalidate trusted upper-body observations.
+
+## Motion Engine runtime boundary
+
+`ICanonicalPoseSource` is the narrow provider-independent source contract. The MediaPipe adapter maps the latest provider observation into `CanonicalPoseFrame`; `MotionEngineRuntime` then owns the single canonical source -> stabilization -> calibration -> rotation path. The presenter, retargeter, and future gameplay consumers read runtime-owned outputs rather than rebuilding stages or depending on MediaPipe structures.
 
 ## Camera
 
@@ -39,17 +43,30 @@ Phase 2 exposes a smaller engine-owned body representation suitable for later fi
 
 Direct joints are mapped from the required MediaPipe source landmarks. Pelvis is the trusted midpoint of both hips, Chest is the trusted midpoint of both shoulders, and Spine is the trusted midpoint of Pelvis and Chest. Derived confidence is the minimum input confidence. A missing joint leaves that canonical joint unavailable without invalidating the rest of the frame.
 
-Canonical image coordinates are x left-to-right and y bottom-to-top. Canonical 3D uses +X camera/view right, +Y up, and +Z away from the camera. World positions are converted once and are pelvis-relative when a trusted canonical pelvis exists; if the pelvis is unavailable, available source-world data remains in the provider's hip-centered frame. Phase 3 filters canonical image positions and canonical world positions independently per joint, then rebuilds stabilized local/root-relative positions from stabilized world positions. If the pelvis is unavailable, tracked joints remain usable in the available hip-centered frame.
+Canonical image coordinates are x left-to-right and y bottom-to-top. Canonical 3D uses +X camera/view right, +Y up, and +Z away from the camera. The canonical inference frame is the correctly oriented image presented to MediaPipe after sensor/storage and pixel preparation, before optional display-only mirroring. `MediaPipeCanonicalPoseMapper` performs only `canonicalImage=(x,1-y)` and `canonicalWorld=(x,-y,z)`; it does not inverse-transform returned data using input H/V/rotation. World positions are converted once and are pelvis-relative when a trusted canonical pelvis exists; if the pelvis is unavailable, available source-world data remains in the provider's hip-centered frame. Phase 3 filters canonical image positions and canonical world positions independently per joint, then rebuilds stabilized local/root-relative positions from stabilized world positions. If the pelvis is unavailable, tracked joints remain usable in the available hip-centered frame.
+
+### Explicit coordinate spaces
+
+1. **WebCamTexture / sensor space** — physical camera pixels and Unity texture orientation.
+2. **Pixel transport space** — the texture memory/readback layout after Unity-to-MediaPipe H/V preparation.
+3. **Canonical inference/image frame** — the correctly oriented image actually interpreted by MediaPipe.
+4. **Raw MediaPipe normalized coordinates** — normalized landmark output in the canonical inference frame, with Y top-down.
+5. **Raw MediaPipe world coordinates** — metric pose-world output in the canonical inference frame, with Y negative above the hip-centered origin.
+6. **Golden Needle canonical image space** — normalized X right, Y up.
+7. **Golden Needle canonical 3D space** — X right, Y up, Z away.
+8. **Display space** — GUI presentation after optional user-facing mirror/layout.
+
+Every conversion names its input and output space. Pixel preparation is used to construct the canonical inference frame; it is not automatically reapplied to raw world coordinates.
 
 ## Camera orientation and debug views
 
-The provider separates the Unity-to-MediaPipe input transform from display metadata and overlay conversion. The display no longer reuses the inference-only vertical flip. Display mirroring is explicit and disabled by default, while canonical left/right semantics remain unchanged by display mirroring. The debug spike exposes raw, canonical 2D, canonical 3D, and stabilized canonical 2D views with `F1`, `F2`, `F3`, and `F4`; `C` begins calibration, `X` cancels/resets it, and `R` retries camera/model startup.
+The provider separates sensor/storage metadata, pixel preparation, canonical data conversion, and display presentation. On the tested front-facing HP feed, the debug preview applies an explicit raw-source horizontal correction, then sensor rotation and `videoVerticallyMirrored`; this is independent of inference H/V preparation and of the explicit user-facing display mirror. The preview transform is scoped to the texture and raw/canonical overlays are drawn afterward through one shared aspect-fit content rectangle with the same net X presentation transform. Display mirroring is explicit and disabled by default; it mirrors preview and overlays together at presentation only and never changes canonical left/right or world semantics. The debug spike exposes raw, canonical 2D, canonical 3D, and stabilized canonical 2D views with `F1`, `F2`, `F3`, and `F4`; `C` begins calibration, `X` cancels/resets it, `R` retries camera/model startup, and `F6` toggles the raw-world/canonical coordinate inspector with per-pair anatomical and legacy-bilateral Y diagnostics. The Lab reports thresholded anatomical-chain 2D↔3D X/Y agreement counts and PASS/FAIL/PENDING state.
 
 ## Calibration
 
 Phase 3 provides an in-memory `MotionCalibrationSession` with the state flow `Idle -> Awaiting Neutral -> Sampling Neutral -> Awaiting T-Pose -> Sampling T-Pose -> Complete`, plus cancel/reset. Neutral sampling requires both shoulders, both hips, both knees, and both ankles; it uses a continuous stable hold of approximately `1.25 s`. The head is optional and wrists are not required for neutral capture. T-pose sampling requires both shoulders, elbows, wrists, and hips; it checks arm direction, shoulder-height wrists, extension, and an angular tolerance of approximately `25°` over approximately `0.75 s`. Invalid or moving poses reset stage progress and continue waiting.
 
-The in-memory profile stores valid neutral pelvis/chest/shoulder/hip/knee/ankle references, shoulder/hip widths, torso length, neutral body axes, T-pose arm directions/span, timestamp/state/version, and sample counts. These are user reference measurements, not avatar bone lengths; calibration must preserve the avatar's own proportions.
+The in-memory profile stores valid neutral pelvis/chest/shoulder/hip/knee/ankle references, shoulder/hip widths, torso length, neutral body axes, confidence-weighted T-pose shoulder/elbow/wrist geometry for both arms, T-pose arm directions/span, independent left/right arm and leg reaches, timestamp/state/version, and sample counts. The profile schema is version `4`. These are user reference measurements, not avatar bone lengths; calibration must preserve the avatar's own proportions.
 
 ## Confidence and filtering
 
@@ -58,13 +75,49 @@ The in-memory profile stores valid neutral pelvis/chest/shoulder/hip/knee/ankle 
 - Project-owned pure One Euro filters use min cutoff `1.0`, beta `0.05`, and derivative cutoff `1.0`. The derivative is filtered first, then drives the dynamic cutoff for the position low-pass. Actual pose/received timestamps provide delta time; zero, negative, large, and non-finite intervals are sanitized/clamped.
 - Lost or occluded joints fail gracefully without stale indefinite tracking or violent snapping. Quaternion interpolation remains a downstream rotation concern and is not part of Phase 3.
 
-## 3D rotation reconstruction
+## Phase 4 canonical rotation reconstruction
 
-Rotation reconstruction is planned to use pose/world landmarks with vector and quaternion reasoning. Shoulder and hip relationships can assist torso orientation, while adjacent joints determine limb directions. Unreliable axial twist should be constrained or stabilized rather than treated as perfectly observable from a monocular webcam.
+The project-owned `CanonicalRotationFrame` has ten bones: Pelvis, Chest, LeftUpperArm, LeftLowerArm, RightUpperArm, RightLowerArm, LeftUpperLeg, LeftLowerLeg, RightUpperLeg, and RightLowerLeg. Each output includes tracking, confidence, optional vectors, and a `rotationDeltaFromCalibration`; the frame is preallocated and independently partial-body valid. Phase 4 retains this frame for torso orientation, diagnostics, and future orientation consumers; it is not the primary limb-pose contract.
 
-## Retargeting
+Arms use the Phase 3 profile T-pose left/right arm directions as reference directions for both upper and lower segments. Runtime current directions are shoulder -> elbow, elbow -> wrist, and the corresponding right-side pairs. Legs use neutral hip -> knee, knee -> ankle directions. Each solve requires tracked finite joints and uses the minimum required confidence. Limb posing consumes the separate positional `CanonicalKinematicTargets` output.
 
-Unity Humanoid retargeting is planned, with an eventual goal of supporting multiple humanoid-compatible avatars. Cutscene animation and live Motion Engine control need a deliberate authority handoff so neither system fights the other.
+Pelvis and chest bases use Right = right hip/shoulder minus left hip/shoulder and Up = chest minus pelvis, followed by finite validation and orthonormalization. The calibration forward audit records canonical +X right, +Y up, +Z away, with frontal anatomical forward at -Z; `MotionCalibrationProfile` is version 4 and stores the corrected `Up x Right` forward semantic, confidence-weighted T-pose shoulder/elbow/wrist geometry, and independent arm/leg reaches. The solver preserves that reference hemisphere.
+
+All limb and torso outputs are swing-only. Monocular webcam input does not reliably observe forearm pronation/supination or upper-arm axial roll, so the implementation does not invent those twists. Head, hand, and foot orientation are not driven in Phase 4.
+
+## Phase 4 humanoid retargeting
+
+`CanonicalKinematicTargetBuilder` consumes stabilized canonical positions and the valid in-memory profile to produce four independent positional targets: LeftArm, RightArm, LeftLeg, and RightLeg. Each target stores source root/mid/effector positions, source reach, confidence, normalized effector displacement, optional normalized bend-hint displacement, and timing. Root plus effector is the minimum valid chain; the current mid is preferred for the bend plane.
+
+`HumanoidRigBinding` captures the actual root/mid/tip Transform for each explicit or Animator Humanoid chain, bind local rotations, upper/lower world lengths, total reach, and original local positions/scales once. `MotionEngineRuntime` owns the preallocated target output, and `HumanoidRetargeter` consumes it in `LateUpdate`. Pelvis and chest continue to use the full-frame path:
+
+```text
+A = avatarReferenceBodyRotation * inverse(sourceCalibrationBodyRotation)
+avatarWorldDelta = A * D * inverse(A)
+targetBoneWorldRotation = avatarWorldDelta * avatarBindWorldRotation
+```
+
+The four target chains map normalized displacements into the avatar's proportions without changing authored bone lengths. Source displacements are expressed in the current anatomical chest/pelvis parent frame, and each chain uses its own source/target reference-frame mapping:
+
+```text
+M_chain = targetChainReferenceFrame * inverse(sourceChainReferenceFrame)
+mappedEffectorParentLocal = M_chain * normalizedSourceEffectorDisplacement
+mappedHintParentLocal = M_chain * normalizedSourceMidDisplacement
+targetEffector = currentTargetRootPosition + currentTargetParentFrame * (mappedEffectorParentLocal * targetReach)
+targetHint = currentTargetRootPosition + currentTargetParentFrame * (mappedHintParentLocal * targetReach)
+c = clamp(distance(root, targetEffector), abs(a-b)+epsilon, (a+b)-epsilon)
+n = normalize(targetEffector - root)
+x = (a² - b² + c²) / (2c)
+y = sqrt(max(a² - x², 0))
+solvedMid = root + n*x + p*y
+solvedTip = root + n*c
+```
+
+The bend direction `p` uses the current mapped hint, previous valid plane, calibrated/reference body axis, then a deterministic orthogonal fallback. Sign continuity protects near-degenerate planes while a clearly opposite valid hint can intentionally change sides. Pelvis/chest are applied first; each live chain restores root/mid bind-local rotations, rotates the root toward `root -> solvedMid`, then rotates the mid toward `mid -> solvedTip`. The actual Transform hierarchy—not a fake 2D drawing—is the result. Invalid chains return toward bind/reference and do not freeze forever. Diagnostics keep retarget fidelity, IK endpoint residual, and bend-plane error as separate metrics. `CanonicalRotationFrame` remains available for torso orientation, diagnostics, and future orientation layers.
+
+Only rotations are written. Avatar root position, authored local bone positions, and local scales remain unchanged. An unavailable bone returns toward its bind/reference rotation over a centralized approximately `0.20 s` fallback window. No general quaternion smoothing was added on top of Phase 3 positional stabilization.
+
+The procedural `DebugAvatarRoot` is an acceptance harness, not an art asset. Its T-pose hierarchy uses authored local offsets and simple primitive segment visuals. A dedicated runtime camera renders that actual hierarchy into the Lab's procedural-rig panel, with distinct desired wrist/ankle and elbow/knee world-space markers. Compact diagnostics identify rig presence, binding, driving, rotation solve, `Kinematic targets`, `Source chains valid x/4`, `Targets generated x/4`, `IK chains solved x/4`, `Limb bones driven x/8`, and the separate retarget-fidelity, IK-endpoint-residual, and bend-plane metrics. `F5` starts OFF, enables/disables live IK driving, and returns the same rig to bind pose when disabled; `F1`–`F4`, `R`, `C`, and `X` remain available. Directional and geometric EditMode tests inspect actual wrist/ankle positions, elbow/knee bend geometry, asymmetric sides, chain isolation, fixed root, unchanged local positions/scales, current-parent behavior, and torso ordering. The Animator Humanoid path is structural only in this phase and has not been physically tested against a model asset.
 
 ## Locomotion
 
@@ -86,3 +139,4 @@ Exact movement mapping is **OPEN / MAY CHANGE** until prototypes establish respo
 - There is no segmentation in V1 unless later justified.
 - Expensive inference must not stall Unity's rendering loop.
 - Unnecessary allocations and frame copies should be avoided where practical.
+- Phase 4 adds no inference/capture queue, pose history, or per-frame reflection. Rotation output and rig references are preallocated/cached, and the debug hierarchy is built once at startup rather than reconstructed per frame.

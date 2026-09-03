@@ -20,7 +20,7 @@ namespace GoldenNeedle.Core.Motion.Calibration
     [Serializable]
     public sealed class MotionCalibrationProfile
     {
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 4;
 
         public int version = CurrentVersion;
         public bool isValid;
@@ -47,7 +47,17 @@ namespace GoldenNeedle.Core.Motion.Calibration
 
         public Vector3 tPoseLeftArmDirection;
         public Vector3 tPoseRightArmDirection;
+        public Vector3 tPoseLeftShoulderPosition;
+        public Vector3 tPoseLeftElbowPosition;
+        public Vector3 tPoseLeftWristPosition;
+        public Vector3 tPoseRightShoulderPosition;
+        public Vector3 tPoseRightElbowPosition;
+        public Vector3 tPoseRightWristPosition;
         public float tPoseArmSpan;
+        public float leftArmReach;
+        public float rightArmReach;
+        public float leftLegReach;
+        public float rightLegReach;
 
         public int neutralSampleCount;
         public int tPoseSampleCount;
@@ -76,7 +86,17 @@ namespace GoldenNeedle.Core.Motion.Calibration
             neutralBodyForward = Vector3.zero;
             tPoseLeftArmDirection = Vector3.zero;
             tPoseRightArmDirection = Vector3.zero;
+            tPoseLeftShoulderPosition = Vector3.zero;
+            tPoseLeftElbowPosition = Vector3.zero;
+            tPoseLeftWristPosition = Vector3.zero;
+            tPoseRightShoulderPosition = Vector3.zero;
+            tPoseRightElbowPosition = Vector3.zero;
+            tPoseRightWristPosition = Vector3.zero;
             tPoseArmSpan = 0f;
+            leftArmReach = 0f;
+            rightArmReach = 0f;
+            leftLegReach = 0f;
+            rightLegReach = 0f;
             neutralSampleCount = 0;
             tPoseSampleCount = 0;
         }

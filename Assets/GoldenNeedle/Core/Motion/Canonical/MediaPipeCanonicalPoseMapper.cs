@@ -44,7 +44,13 @@ namespace GoldenNeedle.Core.Motion.Canonical
             31, 32,
         };
 
-        public static void Map(PoseObservation source, CanonicalPoseFrame destination, CameraOrientationState orientation)
+        /// <summary>
+        /// INPUT SPACE: Raw MediaPipe normalized/world landmarks already belonging to the
+        /// canonical inference frame.
+        /// OUTPUT SPACE: Engine-owned Golden Needle canonical image and 3D coordinates.
+        /// Sensor/input preparation and display transforms are intentionally absent here.
+        /// </summary>
+        public static void Map(PoseObservation source, CanonicalPoseFrame destination)
         {
             if (destination == null)
             {
@@ -66,7 +72,7 @@ namespace GoldenNeedle.Core.Motion.Canonical
 
             for (var i = 0; i < DirectJointIds.Length; i++)
             {
-                MapDirect(source.GetLandmark(DirectSourceIndices[i]), DirectJointIds[i], orientation, destination);
+                MapDirect(source.GetLandmark(DirectSourceIndices[i]), DirectJointIds[i], destination);
             }
 
             MapDerivedMidpoint(CanonicalJointId.Pelvis, CanonicalJointId.LeftHip, CanonicalJointId.RightHip, destination);
@@ -79,7 +85,6 @@ namespace GoldenNeedle.Core.Motion.Canonical
         private static void MapDirect(
             PoseLandmarkObservation source,
             CanonicalJointId id,
-            CameraOrientationState orientation,
             CanonicalPoseFrame destination)
         {
             if (!source.IsTracked)
@@ -92,13 +97,14 @@ namespace GoldenNeedle.Core.Motion.Canonical
                 id = id,
                 tracking = CanonicalTrackingState.Tracked,
                 confidence = ConfidenceFor(source),
-                imagePosition = orientation.MediaPipeImageToCameraNormalized(new Vector2(source.x, source.y)),
+                imagePosition = CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(source.x, source.y)),
                 hasImagePosition = true,
             };
 
             if (source.hasWorldCoordinates && IsFinite(source.worldX) && IsFinite(source.worldY) && IsFinite(source.worldZ))
             {
-                joint.worldPosition = CanonicalCoordinateSystem.ToCanonicalWorld(source.worldX, source.worldY, source.worldZ);
+                joint.worldPosition = CanonicalCoordinateSystem.MediaPipeWorldToCanonical(
+                    new Vector3(source.worldX, source.worldY, source.worldZ));
                 joint.localPosition = joint.worldPosition;
                 joint.hasWorldPosition = true;
                 joint.hasLocalPosition = true;

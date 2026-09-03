@@ -40,6 +40,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField] private int requestedCameraHeight = 480;
         [SerializeField] private int requestedCameraFps = 30;
         [SerializeField] private float cameraStartupTimeoutSeconds = 8f;
+        [Tooltip("Corrects a known horizontal mirror in a front-facing WebCamTexture source; this is separate from the user-facing display mirror.")]
+        [SerializeField] private bool correctFrontFacingSourceMirror = true;
         [Tooltip("Optional selfie-style display mirror. Canonical left/right semantics are not changed.")]
         [SerializeField] private bool mirrorFrontFacingDisplay;
 
@@ -76,6 +78,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private bool _inferenceRequestLogPublished;
         private ImageProcessingOptions _imageProcessingOptions;
         private CameraOrientationState _orientation;
+        private bool _hasPublishedCoordinateConvention;
+        private int _coordinateConventionVersion;
 
         public PoseProviderStatus Status { get; private set; } = PoseProviderStatus.Starting;
         public string StatusMessage { get; private set; } = "Starting pose-tracking spike";
@@ -87,6 +91,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public int VideoRotationAngle => _webCamTexture == null ? 0 : _webCamTexture.videoRotationAngle;
         public bool VideoVerticallyMirrored => _webCamTexture != null && _webCamTexture.videoVerticallyMirrored;
         public CameraOrientationState Orientation => _orientation;
+        public int CoordinateConventionVersion => _coordinateConventionVersion;
         public bool FlipInputHorizontally => _orientation.InferenceFlipHorizontally;
         public bool FlipInputVertically => _orientation.InferenceFlipVertically;
         public int InputRotationDegrees => _orientation.InferenceRotationDegrees;
@@ -285,6 +290,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             AsyncGPUReadbackRequest request = default;
             try
             {
+                // Readback flips and ImageProcessingOptions rotation construct the canonical
+                // inference image. MediaPipe landmark outputs stay in that frame; they are not
+                // mapped back to WebCamTexture/sensor coordinates downstream.
                 request = textureFrame.ReadTextureAsync(
                     _webCamTexture,
                     _orientation.InferenceFlipHorizontally,
@@ -524,20 +532,37 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
+            // These are pixel/input preparation flags only. They describe the image MediaPipe
+            // sees; they are not display-mirror or world-data conversion instructions.
             var transformation = ImageTransformationOptions.Build(
                 shouldFlipHorizontally: _selectedDevice.isFrontFacing,
                 isVerticallyFlipped: _webCamTexture.videoVerticallyMirrored,
                 rotation: (RotationAngle)_webCamTexture.videoRotationAngle);
 
-            _orientation = new CameraOrientationState(
+            var nextOrientation = new CameraOrientationState(
                 sensorRotationDegrees: _webCamTexture.videoRotationAngle,
                 sensorVerticallyMirrored: _webCamTexture.videoVerticallyMirrored,
                 frontFacing: _selectedDevice.isFrontFacing,
+                sourceTextureHorizontallyMirrored: correctFrontFacingSourceMirror && _selectedDevice.isFrontFacing,
                 displayMirrored: mirrorFrontFacingDisplay,
                 inferenceFlipHorizontally: transformation.flipHorizontally,
                 inferenceFlipVertically: transformation.flipVertically,
                 inferenceRotationDegrees: (int)transformation.rotationAngle);
+            if (!_hasPublishedCoordinateConvention || !SameCoordinateConvention(_orientation, nextOrientation))
+            {
+                _coordinateConventionVersion++;
+                _hasPublishedCoordinateConvention = true;
+            }
+
+            _orientation = nextOrientation;
             _imageProcessingOptions = new ImageProcessingOptions(rotationDegrees: _orientation.InferenceRotationDegrees);
+        }
+
+        private static bool SameCoordinateConvention(CameraOrientationState first, CameraOrientationState second)
+        {
+            return first.InferenceFlipHorizontally == second.InferenceFlipHorizontally &&
+                first.InferenceFlipVertically == second.InferenceFlipVertically &&
+                first.InferenceRotationDegrees == second.InferenceRotationDegrees;
         }
 
         private void UpdateMetrics()

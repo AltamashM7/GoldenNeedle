@@ -12,11 +12,23 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
     public struct PoseLandmarkObservation
     {
         public int index;
+
+        /// <summary>Raw MediaPipe normalized X in the canonical inference image frame.</summary>
         public float x;
+
+        /// <summary>Raw MediaPipe normalized Y in the canonical inference image frame, top-down.</summary>
         public float y;
+
+        /// <summary>Raw MediaPipe normalized landmark depth value.</summary>
         public float z;
+
+        /// <summary>Raw MediaPipe pose-world X in the canonical inference frame, in meters.</summary>
         public float worldX;
+
+        /// <summary>Raw MediaPipe pose-world Y in the canonical inference frame, in meters.</summary>
         public float worldY;
+
+        /// <summary>Raw MediaPipe pose-world Z in the canonical inference frame, in meters.</summary>
         public float worldZ;
         public float visibility;
         public float presence;
