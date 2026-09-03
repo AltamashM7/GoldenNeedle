@@ -95,6 +95,29 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         }
 
         /// <summary>
+        /// INPUT SPACE: MediaPipe inference normalized coordinates with top-left image semantics.
+        /// OUTPUT SPACE: user-facing display normalized coordinates. The method first inverses the
+        /// exact H/V + rotation inference preparation back to sensor/storage coordinates, then
+        /// applies sensor display corrections and the optional explicit display mirror.
+        /// Canonical/world data is not modified.
+        /// </summary>
+        public Vector2 InferenceTopLeftToDisplayNormalized(Vector2 inferenceTopLeftNormalized)
+        {
+            var sensorPoint = RotateTopLeft(inferenceTopLeftNormalized, -InferenceRotationDegrees);
+            if (InferenceFlipVertically)
+            {
+                sensorPoint.y = 1f - sensorPoint.y;
+            }
+
+            if (InferenceFlipHorizontally)
+            {
+                sensorPoint.x = 1f - sensorPoint.x;
+            }
+
+            return SensorTopLeftToDisplayNormalized(sensorPoint);
+        }
+
+        /// <summary>
         /// INPUT SPACE: WebCamTexture sensor/storage normalized coordinates with top-left image
         /// semantics. OUTPUT SPACE: user-facing display normalized coordinates after sensor
         /// vertical correction, raw-source horizontal correction, sensor rotation, and the

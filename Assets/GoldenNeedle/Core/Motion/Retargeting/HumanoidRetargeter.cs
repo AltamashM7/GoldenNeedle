@@ -31,10 +31,10 @@ namespace GoldenNeedle.Core.Motion.Retargeting
     }
 
     /// <summary>
-    /// LateUpdate consumer of MotionEngineRuntime. Pelvis/chest retain their calibrated
-    /// rotation-frame path; the eight limb bones are posed by four positional analytic two-bone
-    /// IK chains. Live limb targets are mapped through current anatomical parent frames and a
-    /// cached per-chain reference characterization.
+    /// LateUpdate consumer of MotionEngineRuntime. The live production path maps stabilized
+    /// canonical torso axes and normalized limb vectors through one signed canonical-to-avatar
+    /// reference-basis transform, then poses the eight limb bones with four positional analytic
+    /// two-bone IK chains. Reflections are represented explicitly rather than by quaternions.
     /// </summary>
     [DefaultExecutionOrder(100)]
     public sealed class HumanoidRetargeter : MonoBehaviour

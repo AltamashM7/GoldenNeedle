@@ -32,7 +32,7 @@ The branch currently contains, among other work:
 - calibration-profile extensions for per-side reach/reference geometry;
 - coordinate-space diagnostics and the permanent Motion Engine Lab controls.
 
-The latest correction keeps the provider/canonical/stabilization/calibration boundaries, per-side reach, positional targets, analytic IK, rig binding, and debug harness. It replaces production current-parent/per-chain quaternion characterization with one explicit signed canonical-to-avatar basis map. This is **still not accepted Phase 4 architecture** until USER QA and Orchestrator audit pass.
+The latest correction keeps the provider/canonical/stabilization/calibration boundaries, per-side reach, positional targets, analytic IK, rig binding, and debug harness. It replaces production current-parent/per-chain quaternion characterization with one explicit signed canonical-to-avatar basis map. The avatar target basis is cached from bind/reference geometry instead of recomputed from already-driven transforms, and 2D debug overlays explicitly inverse inference preparation before entering display space. This is **still not accepted Phase 4 architecture** until USER QA and Orchestrator audit pass.
 
 ## Latest USER QA evidence at the checkpoint
 

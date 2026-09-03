@@ -503,6 +503,46 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
+        public void ProductionSignedAxisPathIsStableAcrossRepeatedYawFrames()
+        {
+            var context = CreateRigContext(Quaternion.Euler(0f, 180f, 0f));
+            try
+            {
+                var profile = RetargetProfile();
+                Assert.That(context.binding.TryGetReferenceBodyBasis(out var referenceBefore), Is.True);
+
+                var sourceFrame = CreateYawedReferenceCanonicalFrame(
+                    profile,
+                    Quaternion.Euler(0f, 70f, 0f));
+                var targets = new CanonicalKinematicTargets();
+                new CanonicalKinematicTargetBuilder().Build(sourceFrame, profile, targets);
+                var frame = ReferenceFrame();
+
+                context.retargeter.ApplyMotionFrame(sourceFrame, frame, targets, profile, 1f / 60f);
+                var firstState = context.retargeter.GetChainDebugState(CanonicalKinematicChainId.LeftArm);
+                var firstTip = context.binding.GetChainTip(CanonicalKinematicChainId.LeftArm).position;
+                Assert.That(firstState.solved, Is.True);
+
+                Assert.That(context.binding.TryGetReferenceBodyBasis(out var referenceAfterFirst), Is.True);
+                Assert.That(Vector3.Angle(referenceBefore.Right, referenceAfterFirst.Right), Is.LessThan(0.001f));
+                Assert.That(Vector3.Angle(referenceBefore.Up, referenceAfterFirst.Up), Is.LessThan(0.001f));
+                Assert.That(Vector3.Angle(referenceBefore.Forward, referenceAfterFirst.Forward), Is.LessThan(0.001f));
+
+                context.retargeter.ApplyMotionFrame(sourceFrame, frame, targets, profile, 1f / 60f);
+                var secondState = context.retargeter.GetChainDebugState(CanonicalKinematicChainId.LeftArm);
+                var secondTip = context.binding.GetChainTip(CanonicalKinematicChainId.LeftArm).position;
+
+                Assert.That(secondState.solved, Is.True);
+                Assert.That(Vector3.Distance(firstState.desiredEffectorPosition, secondState.desiredEffectorPosition), Is.LessThan(0.0001f));
+                Assert.That(Vector3.Distance(firstTip, secondTip), Is.LessThan(0.0001f));
+            }
+            finally
+            {
+                context.Dispose();
+            }
+        }
+
+        [Test]
         public void ProductionSignedAxisPathDrivesAsymmetricArmsOnYaw180Rig()
         {
             var context = CreateRigContext(Quaternion.Euler(0f, 180f, 0f));
@@ -737,6 +777,27 @@ namespace GoldenNeedle.Tests
             SetTracked(frame, CanonicalJointId.RightHip, profile.neutralRightHipPosition);
             SetTracked(frame, CanonicalJointId.RightKnee, profile.neutralRightKneePosition);
             SetTracked(frame, CanonicalJointId.RightAnkle, profile.neutralRightAnklePosition);
+            frame.Complete();
+            return frame;
+        }
+
+        private static CanonicalPoseFrame CreateYawedReferenceCanonicalFrame(
+            MotionCalibrationProfile profile,
+            Quaternion yaw)
+        {
+            var frame = CreateReferenceCanonicalFrame(profile);
+            for (var i = 0; i < CanonicalPoseFrame.JointCount; i++)
+            {
+                var joint = frame.GetJoint((CanonicalJointId)i);
+                if (!joint.IsTracked || !joint.hasLocalPosition)
+                {
+                    continue;
+                }
+
+                joint.localPosition = yaw * joint.localPosition;
+                frame.SetJoint(joint);
+            }
+
             frame.Complete();
             return frame;
         }

@@ -180,7 +180,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 provider.ActualCameraWidth,
                 provider.ActualCameraHeight,
                 orientation.DisplayRotationDegrees);
-            var presentationHorizontalMirror = orientation.PresentationHorizontalMirror;
             var oldMatrix = GUI.matrix;
 
             // The preview uses sensor/display metadata plus any explicitly verified raw-source
@@ -203,17 +202,17 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             if (drawRawLandmarks)
             {
-                DrawRawSkeleton(contentRect, presentationHorizontalMirror);
+                DrawRawSkeleton(contentRect, orientation);
             }
 
             if (drawCanonical2D)
             {
-                DrawCanonical2DSkeleton(runtime == null ? null : runtime.RawCanonicalFrame, contentRect, false, presentationHorizontalMirror);
+                DrawCanonical2DSkeleton(runtime == null ? null : runtime.RawCanonicalFrame, contentRect, false, orientation);
             }
 
             if (drawStabilized2D)
             {
-                DrawCanonical2DSkeleton(runtime == null ? null : runtime.StabilizedFrame, contentRect, true, presentationHorizontalMirror);
+                DrawCanonical2DSkeleton(runtime == null ? null : runtime.StabilizedFrame, contentRect, true, orientation);
             }
             DrawDiagnostics();
             if (drawCanonical3D)
@@ -246,7 +245,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             };
         }
 
-        private void DrawRawSkeleton(Rect contentRect, bool displayMirrored)
+        private void DrawRawSkeleton(Rect contentRect, CameraOrientationState orientation)
         {
             var observation = canonicalSource == null ? null : canonicalSource.LatestObservation;
             if (observation == null || !observation.hasPose)
@@ -261,14 +260,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 if (from.IsTracked && to.IsTracked)
                 {
                     DrawLine(
-                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(
-                            CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(from.x, from.y)),
-                            contentRect,
-                            displayMirrored),
-                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(
-                            CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(to.x, to.y)),
-                            contentRect,
-                            displayMirrored),
+                        InferenceTopLeftToGuiScreen(new Vector2(from.x, from.y), contentRect, orientation),
+                        InferenceTopLeftToGuiScreen(new Vector2(to.x, to.y), contentRect, orientation),
                         new Color(0.1f, 1f, 0.55f, 0.9f),
                         3f);
                 }
@@ -280,27 +273,21 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 if (landmark.IsTracked)
                 {
                     DrawPoint(
-                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(
-                            CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(landmark.x, landmark.y)),
-                            contentRect,
-                            displayMirrored),
+                        InferenceTopLeftToGuiScreen(new Vector2(landmark.x, landmark.y), contentRect, orientation),
                         new Color(0.2f, 1f, 0.7f, 1f),
                         10f);
                 }
                 else if (drawUnavailableLandmarks && IsFinite(landmark.x) && IsFinite(landmark.y))
                 {
                     DrawPoint(
-                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(
-                            CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage(new Vector2(landmark.x, landmark.y)),
-                            contentRect,
-                            displayMirrored),
+                        InferenceTopLeftToGuiScreen(new Vector2(landmark.x, landmark.y), contentRect, orientation),
                         new Color(1f, 0.55f, 0.15f, 0.35f),
                         6f);
                 }
             }
         }
 
-        private void DrawCanonical2DSkeleton(CanonicalPoseFrame frame, Rect contentRect, bool stabilized, bool displayMirrored)
+        private void DrawCanonical2DSkeleton(CanonicalPoseFrame frame, Rect contentRect, bool stabilized, CameraOrientationState orientation)
         {
             if (frame == null || !frame.hasMeaningfulPose)
             {
@@ -317,8 +304,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                         ? new Color(0.15f, 1f, 1f, 0.92f)
                         : new Color(1f, 0.85f, 0.1f, 0.95f);
                     DrawLine(
-                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(from.imagePosition, contentRect, displayMirrored),
-                        CanonicalCoordinateSystem.CanonicalImageToGuiScreen(to.imagePosition, contentRect, displayMirrored),
+                        CanonicalImageToGuiScreen(from.imagePosition, contentRect, orientation),
+                        CanonicalImageToGuiScreen(to.imagePosition, contentRect, orientation),
                         lineColor,
                         stabilized ? 4f : 5f);
                 }
@@ -337,7 +324,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                     : IsDerivedJoint(joint.id)
                         ? new Color(1f, 0.3f, 0.95f, 1f)
                         : new Color(1f, 0.9f, 0.15f, 1f);
-                DrawPoint(CanonicalCoordinateSystem.CanonicalImageToGuiScreen(joint.imagePosition, contentRect, displayMirrored), color, stabilized ? 11f : 14f);
+                DrawPoint(CanonicalImageToGuiScreen(joint.imagePosition, contentRect, orientation), color, stabilized ? 11f : 14f);
             }
         }
 
@@ -467,6 +454,29 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             return joint.IsTracked && joint.hasWorldPosition
                 ? $"{joint.worldPosition.x:0.00},{joint.worldPosition.y:0.00},{joint.worldPosition.z:0.00}"
                 : "--,--,--";
+        }
+
+        private static Vector2 InferenceTopLeftToGuiScreen(
+            Vector2 inferenceTopLeft,
+            Rect contentRect,
+            CameraOrientationState orientation)
+        {
+            var displayTopLeft = orientation.InferenceTopLeftToDisplayNormalized(inferenceTopLeft);
+            return new Vector2(
+                contentRect.x + displayTopLeft.x * contentRect.width,
+                contentRect.y + displayTopLeft.y * contentRect.height);
+        }
+
+        private static Vector2 CanonicalImageToGuiScreen(
+            Vector2 canonicalImage,
+            Rect contentRect,
+            CameraOrientationState orientation)
+        {
+            // Canonical image Y is bottom-up; inference/display normalized Y is top-down.
+            return InferenceTopLeftToGuiScreen(
+                new Vector2(canonicalImage.x, 1f - canonicalImage.y),
+                contentRect,
+                orientation);
         }
 
         private static void ApplyDisplayPreviewTransform(Rect previewRect, CameraOrientationState orientation)

@@ -82,6 +82,8 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         private readonly bool[] _chainAvailable = new bool[ChainCount];
         private Transform _boundAvatarRoot;
         private HumanoidBindingMode _bindingMode;
+        private SignedAxisBasis _referenceBodyBasis;
+        private bool _hasReferenceBodyBasis;
         private bool _isBound;
         public int ReferencePoseVersion { get; private set; }
 
@@ -101,21 +103,8 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         /// </summary>
         public bool TryGetReferenceBodyBasis(out SignedAxisBasis basis)
         {
-            basis = default;
-            if (!_isBound)
-            {
-                return false;
-            }
-
-            var left = _bones[(int)CanonicalBoneId.LeftUpperArm];
-            var right = _bones[(int)CanonicalBoneId.RightUpperArm];
-            var pelvis = _bones[(int)CanonicalBoneId.Pelvis];
-            var chest = _bones[(int)CanonicalBoneId.Chest];
-            return left != null && right != null && pelvis != null && chest != null &&
-                HumanoidRetargetingMath.TryBuildRightHandedBasis(
-                    right.position - left.position,
-                    chest.position - pelvis.position,
-                    out basis);
+            basis = _referenceBodyBasis;
+            return _isBound && _hasReferenceBodyBasis && basis.IsValid;
         }
 
         private void Awake()
@@ -452,8 +441,28 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 _bindLocalScales[i] = _bones[i].localScale;
             }
 
+            CaptureReferenceBodyBasis();
             CaptureParentReferenceFrames();
             CaptureChainReferences();
+        }
+
+        private void CaptureReferenceBodyBasis()
+        {
+            _referenceBodyBasis = default;
+            _hasReferenceBodyBasis = false;
+            var left = _bones[(int)CanonicalBoneId.LeftUpperArm];
+            var right = _bones[(int)CanonicalBoneId.RightUpperArm];
+            var pelvis = _bones[(int)CanonicalBoneId.Pelvis];
+            var chest = _bones[(int)CanonicalBoneId.Chest];
+            if (left != null && right != null && pelvis != null && chest != null &&
+                HumanoidRetargetingMath.TryBuildRightHandedBasis(
+                    right.position - left.position,
+                    chest.position - pelvis.position,
+                    out var basis))
+            {
+                _referenceBodyBasis = basis;
+                _hasReferenceBodyBasis = true;
+            }
         }
 
         private void CaptureParentReferenceFrames()
@@ -630,6 +639,8 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 _chainReferenceBendDirections[i] = Vector3.zero;
             }
 
+            _referenceBodyBasis = default;
+            _hasReferenceBodyBasis = false;
             _boundAvatarRoot = null;
             _bindingMode = HumanoidBindingMode.Unbound;
             _isBound = false;

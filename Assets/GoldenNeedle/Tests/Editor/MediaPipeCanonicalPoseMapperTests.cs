@@ -111,6 +111,26 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
+        public void FrontCameraInferencePointProjectsBackToUnmirroredDisplay()
+        {
+            var sensorPoint = new Vector2(0.2f, 0.3f);
+            var unmirrored = Orientation(
+                frontFacing: true,
+                inferenceFlipHorizontally: true);
+            var mirrored = Orientation(
+                frontFacing: true,
+                displayMirrored: true,
+                inferenceFlipHorizontally: true);
+
+            var inferencePoint = unmirrored.SensorTopLeftToInferenceNormalized(sensorPoint);
+            Assert.That(inferencePoint, Is.EqualTo(new Vector2(0.8f, 0.3f)));
+            Assert.That(unmirrored.InferenceTopLeftToDisplayNormalized(inferencePoint), Is.EqualTo(sensorPoint));
+            Assert.That(
+                mirrored.InferenceTopLeftToDisplayNormalized(inferencePoint),
+                Is.EqualTo(new Vector2(0.8f, 0.3f)));
+        }
+
+        [Test]
         public void DisplayBaselineUsesSensorMetadataOnly()
         {
             var input = new Vector2(0.2f, 0.3f);
