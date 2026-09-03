@@ -40,7 +40,7 @@ The latest visible state before this handoff is:
 
 - F3 canonical 3D appears upright and broadly follows the correct viewer-left/viewer-right motion.
 - The canonical 2D skeleton is human-shaped and aligned over the visible person.
-- Before the correction, the visible webcam preview appeared horizontally mirrored even though display mirroring was intended to be off. The correction removes the automatic front-facing presentation flip; this now requires USER QA.
+- USER QA at `0eda91393bd94f9f621b8d5376df1b507207312f` confirmed the webcam is upright/unmirrored, F3 is upright, and internal 2D↔3D X/Y agreement reports PASS. That QA also exposed one presentation-only regression: the 2D overlay was vertically inverted. The follow-up correction restores the single display-normalized-to-IMGUI Y inversion while preserving the horizontal fix.
 - Earlier and repeated Phase 4 USER QA showed the procedural rig failing to accurately reproduce the F3 articulated pose across multiple arm, leg, asymmetric, and side-view poses.
 - Therefore the procedural retargeter remains **unaccepted** even if individual diagnostics report targets/chains/bones as valid or solved.
 - Coordinate/presentation diagnostics were changed several times during investigation. They are useful observability tools but must not be treated as proof that the foundation is correct without code inspection and fresh USER QA.
@@ -88,8 +88,8 @@ Perform fresh USER QA on the correction, then have the Web Orchestrator audit th
 
 The highest-value QA is:
 
-1. Confirm explicit display mirror OFF shows the webcam without the prior extra horizontal flip while 2D overlays remain registered.
-2. Recalibrate and compare F3 against the procedural rig across neutral/T-pose, asymmetric arms, bent arms, raised/bent legs, depth motion, and large body yaw/side views.
+1. Recheck the upright/unmirrored webcam with the 2D skeleton and confirm both horizontal and vertical overlay registration.
+2. Only after that presentation check passes, recalibrate and compare F3 against the procedural rig across neutral/T-pose, asymmetric arms, bent arms, raised/bent legs, depth motion, and large body yaw/side views.
 3. Keep F5 target/hint markers visible when diagnosing any remaining mismatch.
 4. If the procedural path passes, physically test one real Animator Humanoid asset before Phase 4 acceptance.
 5. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.

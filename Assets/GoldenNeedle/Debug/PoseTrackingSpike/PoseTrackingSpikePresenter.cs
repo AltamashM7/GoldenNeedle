@@ -461,10 +461,10 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             Rect contentRect,
             CameraOrientationState orientation)
         {
-            var displayTopLeft = orientation.InferenceTopLeftToDisplayNormalized(inferenceTopLeft);
+            var guiNormalized = orientation.InferenceTopLeftToGuiNormalized(inferenceTopLeft);
             return new Vector2(
-                contentRect.x + displayTopLeft.x * contentRect.width,
-                contentRect.y + displayTopLeft.y * contentRect.height);
+                contentRect.x + guiNormalized.x * contentRect.width,
+                contentRect.y + guiNormalized.y * contentRect.height);
         }
 
         private static Vector2 CanonicalImageToGuiScreen(
@@ -472,7 +472,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             Rect contentRect,
             CameraOrientationState orientation)
         {
-            // Canonical image Y is bottom-up; inference/display normalized Y is top-down.
+            // Canonical image Y is bottom-up; MediaPipe inference input and the final
+            // normalized IMGUI coordinate are top-down.
             return InferenceTopLeftToGuiScreen(
                 new Vector2(canonicalImage.x, 1f - canonicalImage.y),
                 contentRect,

@@ -131,6 +131,22 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
+        public void InferenceUpperPointProjectsToUpperGuiAfterFrontCameraPreparation()
+        {
+            var orientation = Orientation(
+                frontFacing: true,
+                inferenceFlipHorizontally: true,
+                inferenceFlipVertically: true);
+            var upperInferencePoint = new Vector2(0.8f, 0.2f);
+
+            var guiNormalized = orientation.InferenceTopLeftToGuiNormalized(upperInferencePoint);
+
+            Assert.That(guiNormalized.x, Is.EqualTo(0.2f).Within(0.0001f));
+            Assert.That(guiNormalized.y, Is.EqualTo(0.2f).Within(0.0001f));
+            Assert.That(guiNormalized.y, Is.LessThan(0.5f));
+        }
+
+        [Test]
         public void DisplayBaselineUsesSensorMetadataOnly()
         {
             var input = new Vector2(0.2f, 0.3f);

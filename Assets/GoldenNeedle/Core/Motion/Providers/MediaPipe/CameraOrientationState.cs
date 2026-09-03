@@ -73,6 +73,18 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public bool PresentationHorizontalMirror => SourceTextureHorizontallyMirrored ^ DisplayMirrored;
 
         /// <summary>
+        /// Converts inference-frame coordinates into normalized Unity IMGUI coordinates:
+        /// X increases right and Y increases downward. The final Y reflection is deliberately
+        /// presentation-only and restores the single display-texture-to-IMGUI inversion that the
+        /// canonical GUI projector historically applied.
+        /// </summary>
+        public Vector2 InferenceTopLeftToGuiNormalized(Vector2 inferenceTopLeftNormalized)
+        {
+            var displayNormalized = InferenceTopLeftToDisplayNormalized(inferenceTopLeftNormalized);
+            return new Vector2(displayNormalized.x, 1f - displayNormalized.y);
+        }
+
+        /// <summary>
         /// INPUT SPACE: WebCamTexture sensor/storage normalized coordinates with top-left image
         /// semantics. OUTPUT SPACE: normalized coordinates in the canonical inference image
         /// after the same H/V pixel preparation and quarter-turn rotation used for MediaPipe.
@@ -96,9 +108,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         /// <summary>
         /// INPUT SPACE: MediaPipe inference normalized coordinates with top-left image semantics.
-        /// OUTPUT SPACE: user-facing display normalized coordinates. The method first inverses the
-        /// exact H/V + rotation inference preparation back to sensor/storage coordinates, then
-        /// applies sensor display corrections and the optional explicit display mirror.
+        /// OUTPUT SPACE: normalized display-texture coordinates after inverse inference preparation,
+        /// sensor display corrections, and the optional explicit display mirror. This is not yet
+        /// Unity IMGUI screen space; use InferenceTopLeftToGuiNormalized for overlay placement.
         /// Canonical/world data is not modified.
         /// </summary>
         public Vector2 InferenceTopLeftToDisplayNormalized(Vector2 inferenceTopLeftNormalized)
