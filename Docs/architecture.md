@@ -1,6 +1,8 @@
 # Golden Needle architecture
 
-Status: **PREVIEW MIRROR CORRECTED / Y-AGREEMENT AUDITED — READY FOR USER QA.** Phase 2 was USER accepted with **PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 was USER accepted with **PASS WITH NOTES** at `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Phase 4 remains blocked/not USER accepted pending preview mirror/Y-agreement QA; retargeting is frozen and Phase 5 has not started.
+Status: **PHASE 4 INVESTIGATION CHECKPOINT — NOT USER ACCEPTED.** Phase 2 was USER accepted with **PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 was USER accepted with **PASS WITH NOTES** at `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Current Phase 4 investigation checkpoint: `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. Phase 5 has not started.
+
+**Important:** Phase 4-specific retargeting/coordinate formulas below describe the current investigative implementation, not an accepted/frozen architecture. A fresh Orchestrator must inspect the actual repository before deciding which Phase 4 pieces to retain or replace.
 
 Golden Needle is a CPU-first, webcam-driven embodied-fitness application. The intended runtime uses the user's full-body movement to drive a humanoid 3D avatar while gameplay systems interpret movement separately for world-space action.
 

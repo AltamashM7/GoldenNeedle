@@ -4,32 +4,45 @@ This is a high-level roadmap. Distant phases are intentionally not detailed impl
 
 ## Phase 0 — Project/repository foundation
 
-- durable documentation;
-- Unity MCP development tooling setup.
+Complete: durable documentation, Unity project/tooling foundation.
 
 ## Phase 1 — Minimal Webcam + Pose Tracking Technical Spike
 
-Primary question: can the target PC obtain sufficiently responsive body landmarks without a dedicated GPU?
+**USER ACCEPTED — PASS WITH NOTES**
 
-Current state: **USER ACCEPTED — PASS WITH NOTES**. Built-in laptop webcam, partial-body behavior, continuous request/result progression, and representative performance evidence were accepted. Notes: raw landmark geometry remains jittery/loose in some poses; the observations are not a formal latency benchmark.
+Accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`.
 
 ## Phase 2 — Canonical Skeleton + Debug Visualization
 
-Checkpoint: **USER ACCEPTED — PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. USER QA confirmed the webcam preview is upright, the raw/cyan overlay visually aligns, the corrected canonical 2D/yellow overlay is upright after fixing the double Y inversion, the canonical 3D/local-space visualization behaves plausibly, and partial-body canonical tracking remains valid. The Phase 2 mapper tests passed. The two `UnityEditor.ShaderGraph.ShaderGraphProjectSettings` warnings may occur once during script recompilation or Unity exit, but do not recur during normal Play Mode and are not considered a Golden Needle runtime blocker.
+**USER ACCEPTED — PASS WITH NOTES**
 
-Phase 2 was committed, pushed, USER accepted, and audited by Web Sol at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. The current implementation is **PREVIEW MIRROR CORRECTED / Y-AGREEMENT AUDITED — READY FOR USER QA**. Phase 3 is represented by accepted SHA `2ee4d6eb606a8b845183cc44126ecf9530d8280b`; it was committed, pushed, USER accepted, and audited by Web Sol. Phase 4 retargeting remains frozen pending preview mirror/Y-agreement acceptance. Phase 5 has not started.
+Accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`.
 
 ## Phase 3 — Calibration, confidence handling, and smoothing
 
-Current status: **USER ACCEPTED — PASS WITH NOTES**. Neutral calibration, T-pose recognition, calibration completion, and the visibly smoother stabilized `F4` pose passed USER QA. USER-rated responsiveness was **Good**; observed evidence was approximately `60+ FPS` rendering, `7–8/s` pose requests/results, and approximately `60 ms` inference. Focused EditMode tests passed `15/15`. Loss/reacquisition edge cases were not exhaustively physically tested and remain a later integration-quality check, not a Phase 3 blocker. Accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`.
+**USER ACCEPTED — PASS WITH NOTES**
+
+Accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`.
+
+USER QA passed calibration, T-pose recognition, visible smoothing improvement and Good responsiveness. Loss/reacquisition edge cases were not exhaustively physically tested and remain a later integration-quality check.
 
 ## Phase 4 — Humanoid retargeting
 
-Primary question: does a humanoid convincingly reproduce the user's full-body movement?
+**BLOCKED / INVESTIGATION CHECKPOINT — NOT USER ACCEPTED**
 
-Current status: **PREVIEW MIRROR CORRECTED / Y-AGREEMENT AUDITED — READY FOR USER QA**. The phase retains `MotionEngineRuntime`, the provider-independent canonical source boundary, calibration, stabilization, canonical rotation-frame torso reconstruction, explicit/Animator Humanoid binding, the procedural debug rig, RenderTexture rig view, partial-body behavior, fixed root, authored proportions, and F1–F6 controls. The current foundation defines one canonical inference frame shared by canonical 2D, canonical 3D, calibration, stabilization, and future retargeting input. The physical preview explicitly corrects the tested front-facing source mirror and uses sensor rotation/vertical metadata; its texture transform is kept separate from canonical overlay mapping, and the same net presentation X transform is applied to preview and overlays. MediaPipe normalized/world mapping uses only `x, 1-y` and `x, -y, z`; input H/V/rotation is used for pixel preparation and not mechanically applied to returned world data. F6 exposes raw-world/canonical coordinate samples plus anatomical and legacy-bilateral Y-pair diagnostics, while existing retargeting and IK remain frozen. No Animation Rigging package, external humanoid asset, HumanPoseHandler primary path, locomotion, or Phase 5 work is included. Phase 4 remains uncommitted pending USER QA and acceptance. Phase 5 has not started.
+Current investigative SHA: `5e830dce7ac3de542ab159b8b90992935d9dd0b0`.
+
+The branch contains exploratory runtime/retargeting, analytic IK, procedural-rig, coordinate-foundation and presentation work. Repeated USER QA exposed unresolved retarget accuracy and camera/presentation issues. The latest visible state has F3 substantially improved and canonical 2D aligned, while the webcam preview still appears horizontally mirrored. The procedural rig remains inaccurate/unaccepted from prior multi-pose QA.
+
+The Phase 4 checkpoint exists to preserve the exact working state for repository-first diagnosis. It is not an accepted architecture checkpoint and must not be merged into `main`.
+
+**Immediate next step:** a fresh Web Orchestrator performs a read-only audit of the actual branch/code, then chooses the smallest clean correction or rewrite. Do not continue from old chat hypotheses.
 
 ## Phase 5 — Locomotion prototype
+
+**NOT STARTED.**
+
+Must not begin until Phase 4 is deliberately resolved/accepted. POSE and locomotion remain separate.
 
 ## Phase 6 — End-to-end graybox vertical slice
 
@@ -62,4 +75,4 @@ Launch
 - low-end-hardware validation;
 - robustness;
 - SIH demonstration hardening;
-- presentation and demo preparation.
+- presentation/demo preparation.

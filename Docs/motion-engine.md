@@ -1,6 +1,8 @@
 # Planned V1 Motion Engine
 
-Status: **PREVIEW MIRROR CORRECTED / Y-AGREEMENT AUDITED — READY FOR USER QA.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Phase 1–3 were USER accepted with **PASS WITH NOTES**, committed, pushed, and audited by Web Sol. Phase 4 remains blocked/not USER accepted pending preview mirror/Y-agreement QA; retargeting and locomotion remain frozen.
+Status: **PHASE 4 INVESTIGATION CHECKPOINT — NOT USER ACCEPTED.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Current Phase 4 investigation checkpoint: `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The Phase 4 coordinate/presentation and retargeting implementation is unresolved; Phase 5 locomotion has not started.
+
+> **Phase 4 warning:** sections describing the current canonical-camera, kinematic-target, IK, and retargeting implementation are an investigation snapshot, not USER-accepted design. The latest USER evidence still shows an unintended horizontal preview mirror and the procedural rig remains unaccepted from prior multi-pose QA. Inspect the code directly before changing or relying on those formulas.
 
 ## Phase 1 spike boundary
 

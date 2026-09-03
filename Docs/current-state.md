@@ -1,79 +1,104 @@
 # Current state
 
-This is the concise durable snapshot of what exists. It must remain exceptionally truthful.
+This is the concise durable snapshot. It intentionally distinguishes accepted Motion Engine checkpoints from the current Phase 4 investigation state.
 
-## Current phase
+## Authoritative Git state
 
-**PREVIEW MIRROR CORRECTED / Y-AGREEMENT AUDITED — READY FOR USER QA**
+- Branch: `engine/pose-tracking-spike`
+- Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`
+- Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`
+- Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`
+- Current Phase 4 investigation checkpoint: `5e830dce7ac3de542ab159b8b90992935d9dd0b0` — `feat: checkpoint phase 4 motion retargeting investigation`
+- Phase 4 is **NOT USER ACCEPTED**.
+- Phase 5 has **NOT STARTED**.
+- No Phase 4 PR or merge to `main` is authorized.
 
-Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6` (`feat: add CPU pose-tracking spike`). Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea` (`feat: add canonical pose skeleton and debug visualization`). Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b` (`feat: add motion calibration and pose stabilization`). Phase 1, Phase 2, and Phase 3 were committed, pushed, USER accepted with verdict **PASS WITH NOTES**, and audited by Web Sol. Phase 4 implementation and its kinematic-target/analytic-IK retarget architecture are complete and await USER QA; no Phase 5 work has begun.
+Phase 1, Phase 2, and Phase 3 were committed, pushed, USER accepted with verdict **PASS WITH NOTES**, and audited by Web Sol. The accepted engine baseline remains Phase 3 at `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. The Phase 4 checkpoint preserves an intentionally unfinished investigative state so the next Orchestrator can inspect the actual code rather than reconstruct it from chat history.
 
-## Implemented and verified
+## Phase 4 investigation status
 
-- A Unity project exists at this repository root.
-- Unity version is `6000.5.0f1`, corresponding to Unity 6.5.
-- URP is configured: `com.unity.render-pipelines.universal` is present at `17.5.0`, and `ProjectSettings/GraphicsSettings.asset` references a `UniversalRenderPipeline` asset. URP settings/assets are present under `Assets/Settings`.
-- A Git repository exists on the long-lived Motion Engine branch `engine/pose-tracking-spike`; the accepted Phase 1, Phase 2, and Phase 3 checkpoints are recorded above, with remote `origin` configured for the published GitHub repository. Phase 4 changes are intentionally uncommitted working-tree changes awaiting USER QA.
-- Git LFS is installed and the local repository has LFS filters/endpoint configuration. `.gitattributes` currently contains only `* text=auto`; `git lfs ls-files` reports no LFS-managed files or patterns. This existing state was inspected and preserved.
-- Unity's normal generated/cache directories are ignored, and `.meta` files are not globally ignored.
-- The repository currently contains a small Unity template/sample scene and tutorial files. No product gameplay was found in the inspected project.
-- Durable Phase 0D documentation exists in `AGENTS.md` and `Docs/`.
-- Unity CLI `1.0.0-beta.5` is installed and discoverable.
-- The official Unity Pipeline package `com.unity.pipeline` version `0.5.0-exp.1` is installed in the project. It is development tooling only, not a Golden Needle runtime dependency.
-- The official Unity Codex plugin `unity@unity-agent-plugin` version `0.1.0-beta` is installed and enabled in user-level Codex configuration. Unity-specific skills are present in its installed plugin cache.
-- User-level Codex MCP configuration contains an enabled `unity` server entry targeting this project through `unity mcp --project-path ...`.
-- Live verification succeeded through the official Unity MCP server: handshake `unity-mcp 1.0.0-beta.5`, 142 tools discovered, and the read-only `editor_status` tool returned this project, Unity `6000.5.0f1`, `ready`, not compiling, and Play Mode stopped.
-- A dedicated spike scene exists at `Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity`, created and saved through live Unity Editor tooling. Its root has `MediaPipePoseProvider` and `PoseTrackingSpikePresenter`; a separate `PoseTrackingSpikeCamera` supplies a normal Game View camera. The presenter bootstraps the provider adapter, Motion Engine runtime, procedural debug rig, binding, and retargeter at Play Mode so the scene remains the ongoing Motion Engine Lab harness. The provider/raw observation boundary lives under `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/`, while runtime/rotation/retargeting contracts live under `Assets/GoldenNeedle/Core/Motion/` and diagnostics remain under Debug.
-- The embedded MediaPipeUnityPlugin `0.16.3` runtime is integrated as a repository-local package with the Windows CPU prebuilt native library and required managed runtime assets. It is configured for Pose Landmarker Lite, one pose, CPU inference, and segmentation disabled.
-- The local model is `pose_landmarker_lite.bytes` under `Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/` and is available offline at runtime.
-- The live spike smoke test enumerated two devices, selected the ordinary integrated `HP TrueVision HD Camera` by default, opened it at actual `640x480` with requested `30` FPS, initialized the local CPU landmarker, accepted a live inference request, and received an asynchronous result callback. The console was clear of recurring exceptions after the local fixes.
-- The provider publishes a small spike-only `PoseObservation` with per-landmark normalized/world coordinates, visibility/presence metadata, and `Tracked`/`Unavailable` trust. It uses a short trust grace period and latest-result publication without an unbounded inference queue.
-- USER QA accepted the Phase 1 spike with built-in `HP TrueVision HD Camera` input at approximately `640x480`. Reviewed evidence showed Unity rendering around `56–68 FPS`, camera/capture around `17–31 FPS`, inference samples around `58–93 ms`, and commonly `25/33` trusted landmarks during tracking. Requests and results progressed continuously.
-- When the subject was lost, the diagnostic state transitioned to `WAITING / UNAVAILABLE` with `0/33` trusted landmarks instead of retaining stale tracking.
-- Raw landmark visualization showed jitter and loose geometry in some poses. This is an accepted Phase 1 note because canonical representation, confidence/filtering, smoothing, calibration, retargeting, and locomotion belong to later phases.
-- The QA evidence came from representative frames extracted from the USER's recorded test because ChatGPT's video attachment runtime failed to mount the original MP4. This is an evidence-access limitation, not a Golden Needle application failure. The observations are not a formal latency benchmark.
-- Phase 2 adds the engine-owned 20-joint `CanonicalPoseFrame` and a MediaPipe-to-canonical mapper. Direct joints preserve per-joint trust and confidence; pelvis, chest, and spine are derived only from their specified trusted midpoint inputs. Missing hips/legs or head landmarks do not invalidate other trusted joints.
-- Canonical image coordinates use x left-to-right and y bottom-to-top; canonical 3D uses +X camera/view right, +Y up, and +Z away from the camera. MediaPipe normalized and world landmarks are treated as belonging to the canonical inference frame. The mapper performs only the semantic conversions `canonicalImage=(x,1-y)` and `canonicalWorld=(x,-y,z)`; input H/V/rotation and display mirroring are not reapplied to returned world data. World positions are made pelvis-relative when a trusted canonical pelvis exists.
-- The camera foundation now distinguishes sensor/storage metadata, pixel preparation before MediaPipe, the canonical inference frame, canonical data conversion, and display presentation. On the tested HP front-facing feed, the raw `WebCamTexture` source is horizontally reflected; the explicit `correctFrontFacingSourceMirror` source correction removes that reflection without setting `DisplayMirrored`. The webcam preview uses `WebCamTexture.videoRotationAngle` and `videoVerticallyMirrored` for physical display correction and keeps inference H/V flags out of GUI presentation. Raw/canonical overlays use one shared aspect-fit content rectangle and the same net source-correction/X-mirror transform after the preview matrix is restored. Canonical numeric data and F3 remain unchanged.
-- The Phase 2 QA correction preserves the provider's project-normalized image coordinates (`x` left-to-right, `y` bottom-to-top) through the canonical mapper and applies the canonical-image-to-Unity-IMGUI Y conversion exactly once at the screen boundary. USER QA confirmed the webcam preview is upright, the raw/cyan overlay visually aligns, the canonical 2D/yellow overlay is upright after fixing the double Y inversion, canonical 3D/local-space visualization behaves plausibly, and partial-body canonical tracking remains valid.
-- The Phase 2 debug presenter exposes raw, canonical 2D, and canonical 3D/local-space views with `F1`, `F2`, and `F3` toggles plus `R` retry. Diagnostics include canonical tracked count, pelvis/3D availability, and separate sensor/inference/display orientation values. Phase 2 mapper tests passed. The two `UnityEditor.ShaderGraph.ShaderGraphProjectSettings` warnings may occur once during script recompilation or Unity exit, but do not recur during normal Play Mode and are not considered a Golden Needle runtime blocker.
-- Phase 3 adds a provider-independent `CanonicalPoseFrame` stabilizer with centralized confidence defaults: acquire `0.60`, sustain `0.40`, two consecutive acquire samples, `0.10 s` loss grace, and `0.25 s` reset-after-loss. Each joint has independent acquisition, dropout, loss, and filter state; brief dropouts preserve the last stabilized sample, then become unavailable, and long-loss reacquisition resets filters from the new sample.
-- Phase 3 adds project-owned pure One Euro positional filters for canonical image positions and canonical 3D world positions. Defaults are min cutoff `1.0`, beta `0.05`, and derivative cutoff `1.0`; actual source/received timestamps drive delta time with finite/pathological interval handling. Stabilized local/root-relative positions are rebuilt from stabilized world positions, with partial-body fallback preserved when the pelvis is unavailable.
-- Phase 3 adds an in-memory calibration session with `Idle -> Awaiting Neutral -> Sampling Neutral -> Awaiting T-Pose -> Sampling T-Pose -> Complete`, cancel/reset behavior, stable neutral sampling, semantic T-pose validation, confidence-weighted averaging, and a finite reference profile containing neutral body references and dimensions. No calibration data is persisted, and no avatar bone lengths are inferred.
-- The Phase 3/4 calibration profile is now version `4` and records independent positive `leftArmReach`, `rightArmReach`, `leftLegReach`, and `rightLegReach` values. It also stores confidence-weighted T-pose shoulder, elbow, and wrist reference positions for both arms. Arm reach is the corresponding averaged T-pose shoulder-to-wrist distance; leg reach is the corresponding neutral hip-to-knee plus knee-to-ankle distance. These remain user measurements, not avatar lengths.
-- The debug presenter now exposes `C` to begin calibration, `X` to cancel/reset, and `F4` for the stabilized canonical 2D overlay; `F3` includes stabilized 3D/local-space inspection. Diagnostics show stabilized tracked count, calibration state/progress/validity, and shoulder/hip/torso dimensions.
-- Focused Phase 3 EditMode coverage passes for One Euro initialization/convergence/jitter/step/delta-time/reset behavior, confidence acquisition/sustain/grace/loss/reacquisition/independence, and calibration required joints/stability/invalid poses/T-pose/profile finiteness.
-- USER QA passed neutral calibration, T-pose recognition, and calibration completion. The stabilized `F4` pose was visibly smoother than raw `F2`; USER-rated responsiveness was **Good**. Observed evidence was approximately `60+ FPS` rendering, `7–8/s` pose requests/results, and approximately `60 ms` inference. Focused EditMode coverage passed `15/15`.
-- Loss/reacquisition edge cases were not exhaustively physically tested; they remain a later integration-quality check and are not a Phase 3 blocker.
-- Focused EditMode coverage contains five passing canonical mapper tests. USER QA accepted the Phase 2 result with verdict **PASS WITH NOTES**. The two `UnityEditor.ShaderGraph.ShaderGraphProjectSettings` warnings may occur once during script recompilation or Unity exit, but did not recur during normal Play Mode and are not considered a Golden Needle runtime blocker.
-- Phase 4 adds the provider-independent `ICanonicalPoseSource` boundary and reusable `MotionEngineRuntime`, which owns canonical source, stabilization, calibration, rotation reconstruction, and the preallocated `CanonicalRotationFrame`. The debug presenter is now a consumer, and MediaPipe remains isolated in `MediaPipeCanonicalPoseSource`.
-- Phase 4 retains the ten-bone `CanonicalRotationFrame` for pelvis/chest orientation, diagnostics, and future orientation consumers, but limb posing consumes four provider-independent `CanonicalKinematicTargets`: LeftArm, RightArm, LeftLeg, and RightLeg. `CanonicalKinematicTargetBuilder` now builds continuity-safe current source chest/pelvis anatomical frames, expresses each live root-to-effector and root-to-mid vector in current parent space, and preserves partial-body fallback when torso joints are unavailable.
-- Phase 4 retargeting now characterizes each source and target chain independently. `HumanoidRigBinding` captures target chest/pelvis parent frames and target bind root/mid/tip chain frames from actual rig geometry; the retargeter builds matching source reference chain frames from calibration and uses `Mchain = targetChainReferenceFrame * inverse(sourceChainReferenceFrame)`. Live targets are reconstructed as `currentTargetParentFrame * (Mchain * normalizedSourceVector) * targetChainReach`, then clamped and solved by the unchanged project-owned analytic two-bone IK. Pelvis/chest are applied first; each limb is restored to bind-local rotation before solving. Root position, authored local positions, and local scales remain unchanged.
-- Phase 4 adds the runtime procedural `DebugAvatarRoot` acceptance rig with a clear T-pose hierarchy, actual Hand/Foot endpoints, and the `F5` retargeted-rig control. A dedicated runtime camera renders the same procedural hierarchy and its target/bend markers into the Motion Engine Lab panel. No humanoid model assets were added, and no Animator Humanoid asset was physically tested. The procedural rig is frozen and is not part of the current preview mirror/Y-agreement QA.
-- Phase 4 focused EditMode coverage includes pure analytic IK edge cases, all-four-chain reference characterization, matching/A-pose-like/asymmetric/arbitrary bind directions, current-parent rotation invariants, target normalization/proportion mapping, partial-body targets, asymmetric arm directions, bent arms, raised/lateral legs, actual wrist/ankle endpoint positions, elbow/knee bend geometry, chain isolation, fixed-root and local-pose preservation, torso ordering, and F5 bind-pose fallback. Diagnostics expose `Kinematic targets`, `Source chains valid x/4`, `Targets generated x/4`, `IK chains solved x/4`, `Limb bones driven x/8`, `Max retarget fidelity error`, `Max IK endpoint residual`, `Max bend-plane error`, canonical 2D↔3D agreement, and the toggleable F6 raw-world/canonical coordinate inspector. Production and test sources compile; Unity EditMode execution and USER visual QA remain required.
-- The Phase 4 coordinate foundation reset establishes one canonical camera frame: the correctly oriented image presented to MediaPipe after sensor/storage and pixel preparation, before display-only selfie mirroring. F3 remains a pure `canonicalWorld.x -> screen-right` / `canonicalWorld.y -> screen-up` projector. The mapper no longer inverses input H/V/rotation on image or world landmarks; instead, raw MediaPipe normalized coordinates receive only `x, 1-y`, and raw world coordinates receive only `x, -y, z`. The preview uses sensor rotation/vertical metadata plus explicit tested-source correction for display; overlays use the canonical image-to-IMGUI mapping with one Y inversion and the same net presentation X transform. Y agreement now uses independent `0.025` image/world separation thresholds and anatomical vertical-chain pairs, with per-pair deltas/signs available in F6; insufficient evidence is reported as pending rather than failure. Retargeting, chain IK, binding, target frames, and procedural rig architecture are frozen for this presentation audit.
+Phase 4 attempted to move stabilized canonical pose data into a visibly driven humanoid/debug rig while preserving avatar proportions and keeping pose reproduction separate from locomotion.
 
-## Motion Engine maintainability rule
+The checkpoint currently contains, among other work:
 
-The Golden Needle Motion Engine must remain independently maintainable after the entire game is complete. Gameplay and courses consume stable Motion Engine contracts rather than provider internals; MediaPipe remains isolated behind its provider/mapping boundary; calibration and stabilization remain separately tunable; and later reconstruction, retargeting, and locomotion remain modular. The Motion Engine must remain testable without loading the complete game, dedicated motion-engine debug tooling/scenes must be retained for later inspection and improvement, and replacing or improving one Motion Engine layer must not require rewriting courses or unrelated gameplay.
+- provider-independent `ICanonicalPoseSource` and `MotionEngineRuntime`;
+- canonical rotation/torso reconstruction;
+- four positional limb-chain targets;
+- project-owned analytic two-bone IK;
+- explicit and structural Animator Humanoid rig binding;
+- procedural debug humanoid plus dedicated RenderTexture view;
+- calibration-profile extensions for per-side reach/reference geometry;
+- coordinate-space diagnostics and the permanent Motion Engine Lab controls.
 
-## Not yet implemented
+These are **investigative implementations, not accepted Phase 4 architecture**. Several iterations of direct rotation mapping, bind-axis reconciliation, kinematic targets, IK, current-parent-space mapping, and camera/canonical presentation corrections were tried during USER QA.
 
-- locomotion;
-- finished player controller;
-- Hub;
-- fitness courses;
-- final menu flow;
-- cinematics;
-- progression/results;
-- optimization validation;
+## Latest USER QA evidence at the checkpoint
 
-## Repository activity for Phase 4
+The latest visible state before this handoff is:
 
-This follow-up audits the Phase 4 preview mirror and canonical 2D↔3D Y agreement. It preserves the existing current-parent chain retargeting and analytic-IK work without changing it, and does not change the canonical world conversion, F3 projection, accepted global body handedness, render pipeline, add model assets, add Animation Rigging, or add external packages. Unity MCP/Pipeline remain development tooling and are not part of the runtime product. No commits, branches, pushes, merges, PRs, rebases, resets, or history migrations were performed for this implementation task.
+- F3 canonical 3D appears upright and broadly follows the correct viewer-left/viewer-right motion.
+- The canonical 2D skeleton is human-shaped and aligned over the visible person.
+- The visible webcam preview still appears horizontally mirrored even though display mirroring is intended to be off.
+- Earlier and repeated Phase 4 USER QA showed the procedural rig failing to accurately reproduce the F3 articulated pose across multiple arm, leg, asymmetric, and side-view poses.
+- Therefore the procedural retargeter remains **unaccepted** even if individual diagnostics report targets/chains/bones as valid or solved.
+- Coordinate/presentation diagnostics were changed several times during investigation. They are useful observability tools but must not be treated as proof that the foundation is correct without code inspection and fresh USER QA.
+- The production Animator Humanoid path has not been physically tested against the USER's real character asset.
 
-Phase 1, Phase 2, and Phase 3 USER QA are complete with **PASS WITH NOTES** verdicts; the recorded jitter/loose-geometry observations remain explicit Phase 1 handoff notes, and the loss/reacquisition physical coverage note remains explicit for Phase 3. Phase 2 is represented by accepted SHA `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 is represented by accepted SHA `2ee4d6eb606a8b845183cc44126ecf9530d8280b`; it is committed, pushed, USER accepted, and audited by Web Sol. Phase 4 remains blocked/not USER accepted while the preview mirror/Y-agreement audit awaits USER QA; the procedural rig and retargeting remain frozen.
+Do not infer that the current preview/canonical/retarget formulas are correct merely because they are documented in the Phase 4 checkpoint. The new Orchestrator must inspect the implementation directly.
 
-## Next target
+## Verification state
 
-**Next immediate step: USER QA of the Phase 4 preview mirror/Y-agreement audit.** The USER should judge the preview, canonical 2D, and F3 only; the procedural rig is not yet part of this acceptance. After USER acceptance, the Phase 4 checkpoint commit will represent this audited presentation correction and the preserved implementation. The next planned phase after that checkpoint is Phase 5 — Locomotion prototype. Phase 5 has not started.
+- Unity 6.5 / project version `6000.5.0f1` remains the engine baseline.
+- URP `17.5.0` remains configured.
+- MediaPipeUnityPlugin `0.16.3` and local Pose Landmarker Lite remain the tracking backend.
+- Phase 3 physical QA passed calibration, smoothing and responsiveness with **PASS WITH NOTES**.
+- Phase 4 source/test compilation was repeatedly reported successful by Luna.
+- The expanding Phase 4 EditMode suites were often only **present/source-compiled**, not executed by Unity Test Runner, because another Unity Editor instance/licensing channel blocked batch execution. Do not convert those counts into passing Unity tests without rerunning them.
+- Known one-off ShaderGraph editor warnings around recompilation/exit remain non-blocking unless behavior changes.
+
+## Repository hygiene note
+
+The Phase 4 investigation checkpoint includes changes to:
+
+- `GoldenNeedle.slnx`
+- `ProjectSettings/ProjectSettings.asset`
+
+These had repeatedly been reported as pre-existing/unintended editor differences rather than deliberate Phase 4 product changes. Because the USER checkpointed the working state as-is, the new Orchestrator must inspect these diffs before carrying them into any future accepted checkpoint. In particular, do not silently treat them as approved architecture/settings changes.
+
+## Locked product/architecture rules that survive Phase 4 uncertainty
+
+- CPU-first; no required discrete GPU.
+- Integrated webcam is a valid baseline.
+- Partial-body tracking remains valid.
+- MediaPipe stays behind a replaceable provider boundary.
+- Downstream systems consume engine-owned canonical data.
+- **POSE != LOCOMOTION**.
+- Preserve avatar-authored proportions; do not scale bones to match USER limb lengths.
+- Motion Engine systems must remain modular, independently testable, and inspectable after the game is complete.
+- The Motion Engine Lab/debug scene is permanent engineering infrastructure, not disposable spike code.
+- Courses/Hub/gameplay must not depend on MediaPipe internals.
+- Phase 5 locomotion must not start until Phase 4 is deliberately resolved/accepted.
+
+## Next action for a fresh Web Orchestrator
+
+Start with a **repository-first read-only diagnosis**.
+
+Before directing Luna to modify anything:
+
+1. Verify branch/head and compare `2ee4d6eb606a8b845183cc44126ecf9530d8280b` to `5e830dce7ac3de542ab159b8b90992935d9dd0b0`.
+2. Read `AGENTS.md`, this file, `Docs/orchestrator-handoff.md`, `Docs/decisions.md`, `Docs/architecture.md`, and `Docs/motion-engine.md`.
+3. Inspect the actual current code paths for:
+   - camera capture/input preparation;
+   - preview presentation;
+   - normalized-landmark → canonical 2D mapping;
+   - world-landmark → canonical 3D mapping;
+   - F3 projection;
+   - stabilization/calibration reset/version behavior;
+   - kinematic-target construction;
+   - torso/parent frames;
+   - analytic IK;
+   - Humanoid binding and procedural rig presentation.
+4. Reproduce the unresolved preview mirror and retarget mismatch from code/runtime evidence before proposing another correction.
+5. Prefer simplifying/re-establishing a correct foundation over adding more compensating flips/quaternion patches.
+6. Do not begin Phase 5 and do not merge Phase 4 into `main`.
+
