@@ -30,13 +30,13 @@ USER QA passed calibration, T-pose recognition, visible smoothing improvement an
 
 **BLOCKED / INVESTIGATION CHECKPOINT — NOT USER ACCEPTED**
 
-Current investigative SHA: `5e830dce7ac3de542ab159b8b90992935d9dd0b0`.
+Pre-correction handoff HEAD: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` (runtime parent `5e830dce7ac3de542ab159b8b90992935d9dd0b0`).
 
-The branch contains exploratory runtime/retargeting, analytic IK, procedural-rig, coordinate-foundation and presentation work. Repeated USER QA exposed unresolved retarget accuracy and camera/presentation issues. The latest visible state has F3 substantially improved and canonical 2D aligned, while the webcam preview still appears horizontally mirrored. The procedural rig remains inaccurate/unaccepted from prior multi-pose QA.
+A repository-first correction now removes the unintended automatic front-camera presentation flip and replaces the production reflected/per-chain quaternion mapping with an explicit signed canonical-to-avatar basis map feeding the existing positional analytic IK. The accepted canonical mapping, stabilization, calibration state machine, avatar-authored proportions, partial-body behavior, provider boundary, rig binding, and permanent debug Lab are retained.
 
-The Phase 4 checkpoint exists to preserve the exact working state for repository-first diagnosis. It is not an accepted architecture checkpoint and must not be merged into `main`.
+Phase 4 remains **NOT USER ACCEPTED**. The correction must not be merged into `main` until fresh USER motion/visual QA and Orchestrator audit pass.
 
-**Immediate next step:** a fresh Web Orchestrator performs a read-only audit of the actual branch/code, then chooses the smallest clean correction or rewrite. Do not continue from old chat hypotheses.
+**Immediate next step:** USER QA the corrected preview and procedural retargeting across asymmetric, bent, depth, leg, and large-yaw poses; then audit the exact pushed head. If the procedural harness passes, physically validate the Animator Humanoid path before Phase 4 acceptance.
 
 ## Phase 5 — Locomotion prototype
 

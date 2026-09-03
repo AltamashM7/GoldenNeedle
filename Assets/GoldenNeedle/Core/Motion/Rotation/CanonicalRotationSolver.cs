@@ -131,38 +131,24 @@ namespace GoldenNeedle.Core.Motion.Rotation
 
         public static bool TryBuildBodyRotation(Vector3 right, Vector3 up, Vector3 forwardHint, out Quaternion rotation)
         {
+            // A Quaternion can only represent a proper rotation. The calibration profile keeps its
+            // semantic forward separately (and may therefore describe a reflected anatomical
+            // basis); rotation output derives a proper frame from Right + Up only.
+            _ = forwardHint;
             rotation = Quaternion.identity;
             if (!TryNormalize(right, out right) || !TryNormalize(up, out up))
             {
                 return false;
             }
 
-            // Orthogonalize Up against Right before deriving the frontal axis.
             up -= right * Vector3.Dot(up, right);
             if (!TryNormalize(up, out up))
             {
                 return false;
             }
 
-            var forward = Vector3.Cross(up, right);
+            var forward = Vector3.Cross(right, up);
             if (!TryNormalize(forward, out forward))
-            {
-                return false;
-            }
-
-            if (TryNormalize(forwardHint, out var normalizedForwardHint) && Vector3.Dot(forward, normalizedForwardHint) < 0f)
-            {
-                forward = -forward;
-            }
-
-            up = Vector3.Cross(right, forward);
-            if (!TryNormalize(up, out up))
-            {
-                return false;
-            }
-
-            right = Vector3.Cross(forward, up);
-            if (!TryNormalize(right, out right))
             {
                 return false;
             }

@@ -4,9 +4,63 @@ using UnityEngine;
 namespace GoldenNeedle.Core.Motion.Retargeting
 {
     /// <summary>
-    /// Cached source/target characterization for one semantic limb chain. Chain frames map a
-    /// chain-local reference pose into each side's anatomical parent space; the resulting
-    /// rotation is therefore independent of authored bone-local axes.
+    /// An orthonormal semantic basis. handednessSign is +1 for a proper right-handed basis and -1
+    /// for a reflected basis. Golden Needle canonical anatomy is allowed to use the latter; a
+    /// quaternion is deliberately not used to represent this type.
+    /// </summary>
+    public readonly struct SignedAxisBasis
+    {
+        public SignedAxisBasis(Vector3 right, Vector3 up, Vector3 forward, float handednessSign)
+        {
+            Right = right;
+            Up = up;
+            Forward = forward;
+            HandednessSign = handednessSign;
+        }
+
+        public Vector3 Right { get; }
+        public Vector3 Up { get; }
+        public Vector3 Forward { get; }
+        public float HandednessSign { get; }
+        public bool IsValid => HumanoidRetargetingMath.IsFiniteBasis(this);
+    }
+
+    /// <summary>
+    /// Explicit linear map between a canonical semantic basis and an avatar semantic basis.
+    /// Unlike Quaternion, this map can represent a reflection.
+    /// </summary>
+    public readonly struct CanonicalToAvatarAxisMap
+    {
+        public CanonicalToAvatarAxisMap(SignedAxisBasis source, SignedAxisBasis target)
+        {
+            Source = source;
+            Target = target;
+        }
+
+        public SignedAxisBasis Source { get; }
+        public SignedAxisBasis Target { get; }
+        public bool IsValid => Source.IsValid && Target.IsValid;
+        public float DeterminantSign => Source.HandednessSign * Target.HandednessSign;
+
+        public Vector3 MapVector(Vector3 sourceVector)
+        {
+            return Target.Right * Vector3.Dot(sourceVector, Source.Right) +
+                   Target.Up * Vector3.Dot(sourceVector, Source.Up) +
+                   Target.Forward * Vector3.Dot(sourceVector, Source.Forward);
+        }
+
+        public Vector3 UnmapVector(Vector3 targetVector)
+        {
+            var right = Vector3.Dot(targetVector, Target.Right);
+            var up = Vector3.Dot(targetVector, Target.Up);
+            var forward = Vector3.Dot(targetVector, Target.Forward);
+            return Source.Right * right + Source.Up * up + Source.Forward * forward;
+        }
+    }
+
+    /// <summary>
+    /// Cached source/target characterization retained for compatibility with older Phase 4
+    /// diagnostics. Production limb retargeting no longer uses this quaternion-only mapping.
     /// </summary>
     public struct ChainReferenceCharacterization
     {
@@ -26,14 +80,154 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         public Vector3 targetReferenceBendDirection;
     }
 
-    /// <summary>
-    /// Pure frame and characterization math shared by canonical target construction and target
-    /// adapters. The forward convention intentionally matches the accepted canonical rotation
-    /// solver: Up x Right selects the frontal hemisphere, with continuity supplied by the hint.
-    /// </summary>
     public static class HumanoidRetargetingMath
     {
         private const float MinimumDirectionSquared = 0.000001f;
+
+        /// <summary>
+        /// Builds the source semantic basis without changing its handedness. Forward is
+        /// orthogonalized but never flipped merely to satisfy Quaternion handedness.
+        /// </summary>
+        public static bool TryBuildSignedBasis(
+            Vector3 right,
+            Vector3 up,
+            Vector3 forward,
+            out SignedAxisBasis basis)
+        {
+            basis = default;
+            if (!TryNormalize(right, out right) || !TryNormalize(up, out up))
+            {
+                return false;
+            }
+
+            up -= right * Vector3.Dot(up, right);
+            if (!TryNormalize(up, out up))
+            {
+                return false;
+            }
+
+            forward -= right * Vector3.Dot(forward, right);
+            forward -= up * Vector3.Dot(forward, up);
+            if (!TryNormalize(forward, out forward))
+            {
+                return false;
+            }
+
+            var handedness = Vector3.Dot(Vector3.Cross(right, up), forward);
+            if (!IsFinite(handedness) || Mathf.Abs(handedness) <= 0.5f)
+            {
+                return false;
+            }
+
+            basis = new SignedAxisBasis(right, up, forward, Mathf.Sign(handedness));
+            return basis.IsValid;
+        }
+
+        /// <summary>
+        /// Builds a proper Unity-compatible anatomical basis from target Right and Up.
+        /// </summary>
+        public static bool TryBuildRightHandedBasis(
+            Vector3 right,
+            Vector3 up,
+            out SignedAxisBasis basis)
+        {
+            basis = default;
+            if (!TryNormalize(right, out right) || !TryNormalize(up, out up))
+            {
+                return false;
+            }
+
+            up -= right * Vector3.Dot(up, right);
+            if (!TryNormalize(up, out up))
+            {
+                return false;
+            }
+
+            var forward = Vector3.Cross(right, up);
+            if (!TryNormalize(forward, out forward))
+            {
+                return false;
+            }
+
+            basis = new SignedAxisBasis(right, up, forward, 1f);
+            return basis.IsValid;
+        }
+
+        public static bool TryCreateCanonicalToAvatarMap(
+            MotionCalibrationProfile profile,
+            HumanoidRigBinding binding,
+            out CanonicalToAvatarAxisMap map)
+        {
+            map = default;
+            if (profile == null || !profile.isValid || binding == null || !binding.IsBound ||
+                !TryBuildSignedBasis(
+                    profile.neutralBodyRight,
+                    profile.neutralBodyUp,
+                    profile.neutralBodyForward,
+                    out var sourceBasis) ||
+                !binding.TryGetReferenceBodyBasis(out var targetBasis))
+            {
+                return false;
+            }
+
+            map = new CanonicalToAvatarAxisMap(sourceBasis, targetBasis);
+            return map.IsValid;
+        }
+
+        /// <summary>
+        /// Maps a live source Right/Up body frame through the signed canonical-to-avatar map.
+        /// The source forward is derived using the calibration basis handedness, so large yaw and
+        /// side views do not need a previous-frame or reference-forward hemisphere constraint.
+        /// The mapped result is proper and can therefore be represented by a Unity quaternion.
+        /// </summary>
+        public static bool TryBuildMappedBodyRotation(
+            CanonicalToAvatarAxisMap map,
+            Vector3 currentSourceRight,
+            Vector3 currentSourceUp,
+            out Quaternion rotation)
+        {
+            rotation = Quaternion.identity;
+            if (!map.IsValid ||
+                !TryNormalize(currentSourceRight, out var right) ||
+                !TryNormalize(currentSourceUp, out var up))
+            {
+                return false;
+            }
+
+            up -= right * Vector3.Dot(up, right);
+            if (!TryNormalize(up, out up))
+            {
+                return false;
+            }
+
+            var properForward = Vector3.Cross(right, up);
+            if (!TryNormalize(properForward, out properForward))
+            {
+                return false;
+            }
+
+            var sourceForward = map.Source.HandednessSign < 0f ? -properForward : properForward;
+            var mappedRight = map.MapVector(right);
+            var mappedUp = map.MapVector(up);
+            var mappedForward = map.MapVector(sourceForward);
+            if (!TryNormalize(mappedRight, out mappedRight) ||
+                !TryNormalize(mappedUp, out mappedUp) ||
+                !TryNormalize(mappedForward, out mappedForward))
+            {
+                return false;
+            }
+
+            rotation = Quaternion.LookRotation(mappedForward, mappedUp);
+            if (!IsFinite(rotation))
+            {
+                return false;
+            }
+
+            // A valid map of a basis with the source handedness must become a proper target frame.
+            return Vector3.Dot(rotation * Vector3.right, mappedRight) > 0.999f &&
+                   Vector3.Dot(rotation * Vector3.up, mappedUp) > 0.999f &&
+                   Vector3.Dot(rotation * Vector3.forward, mappedForward) > 0.999f;
+        }
 
         public static Quaternion CalculateAlignment(Quaternion avatarReferenceBodyRotation, Quaternion sourceCalibrationBodyRotation)
         {
@@ -62,49 +256,25 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                    avatarBindWorldRotation;
         }
 
+        /// <summary>
+        /// Legacy proper-frame helper. It intentionally preserves Right and Up and therefore
+        /// cannot encode a reflected forward hint. Production handedness conversion uses
+        /// SignedAxisBasis instead.
+        /// </summary>
         public static bool TryBuildAnatomicalFrame(
             Vector3 right,
             Vector3 up,
             Vector3 forwardHint,
             out Quaternion rotation)
         {
+            _ = forwardHint;
             rotation = Quaternion.identity;
-            if (!TryNormalize(right, out right) || !TryNormalize(up, out up))
+            if (!TryBuildRightHandedBasis(right, up, out var basis))
             {
                 return false;
             }
 
-            up -= right * Vector3.Dot(up, right);
-            if (!TryNormalize(up, out up))
-            {
-                return false;
-            }
-
-            var forward = Vector3.Cross(up, right);
-            if (!TryNormalize(forward, out forward))
-            {
-                return false;
-            }
-
-            if (TryNormalize(forwardHint, out var normalizedForwardHint) &&
-                Vector3.Dot(forward, normalizedForwardHint) < 0f)
-            {
-                forward = -forward;
-            }
-
-            up = Vector3.Cross(right, forward);
-            if (!TryNormalize(up, out up))
-            {
-                return false;
-            }
-
-            right = Vector3.Cross(forward, up);
-            if (!TryNormalize(right, out right))
-            {
-                return false;
-            }
-
-            rotation = Quaternion.LookRotation(forward, up);
+            rotation = Quaternion.LookRotation(basis.Forward, basis.Up);
             return IsFinite(rotation);
         }
 
@@ -145,6 +315,10 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             return IsFinite(chainFrame);
         }
 
+        /// <summary>
+        /// Compatibility-only Phase 4 characterization. Production retargeting uses one explicit
+        /// signed canonical-to-avatar map instead.
+        /// </summary>
         public static bool TryBuildChainCharacterization(
             MotionCalibrationProfile profile,
             HumanoidRigBinding binding,
@@ -229,6 +403,15 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             return true;
         }
 
+        internal static bool IsFiniteBasis(SignedAxisBasis basis)
+        {
+            return IsFinite(basis.Right) && IsFinite(basis.Up) && IsFinite(basis.Forward) &&
+                   IsFinite(basis.HandednessSign) && Mathf.Abs(Mathf.Abs(basis.HandednessSign) - 1f) < 0.001f &&
+                   Mathf.Abs(Vector3.Dot(basis.Right, basis.Up)) < 0.001f &&
+                   Mathf.Abs(Vector3.Dot(basis.Right, basis.Forward)) < 0.001f &&
+                   Mathf.Abs(Vector3.Dot(basis.Up, basis.Forward)) < 0.001f;
+        }
+
         private static bool TryGetSourceReferenceGeometry(
             MotionCalibrationProfile profile,
             CanonicalKinematicChainId chainId,
@@ -278,7 +461,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             }
 
             return IsFinite(rootToMid) && IsFinite(rootToTip) && IsFinite(reach) &&
-                reach > 0.0001f && rootToTip.sqrMagnitude > MinimumDirectionSquared;
+                   reach > 0.0001f && rootToTip.sqrMagnitude > MinimumDirectionSquared;
         }
 
         private static bool IsArm(CanonicalKinematicChainId chainId)

@@ -440,49 +440,22 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void CharacterizationMapsAllFourReferenceChainsIntoTargetBindGeometry()
+        public void SignedAxisMapRepresentsCanonicalReflectionAgainstYaw180Rig()
         {
-            var context = CreateRigContext();
+            var context = CreateRigContext(Quaternion.Euler(0f, 180f, 0f));
             try
             {
-                var profile = CharacterizationProfile();
-                for (var i = 0; i < CanonicalKinematicTargets.ChainCount; i++)
-                {
-                    var chainId = (CanonicalKinematicChainId)i;
-                    Assert.That(
-                        HumanoidRetargetingMath.TryBuildChainCharacterization(
-                            profile,
-                            context.binding,
-                            chainId,
-                            out var characterization),
-                        Is.True,
-                        chainId.ToString());
-                    var mappedDirection = characterization.sourceToTargetChainRotation *
-                                          (characterization.sourceChainReferenceFrame * Vector3.forward);
-                    var targetDirection = characterization.targetChainReferenceFrame * Vector3.forward;
-                    Assert.That(Vector3.Angle(mappedDirection, targetDirection), Is.LessThan(0.01f), chainId.ToString());
-                }
+                var profile = RetargetProfile();
+                Assert.That(
+                    HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(profile, context.binding, out var map),
+                    Is.True);
 
-                var sourceFrame = CreateReferenceCanonicalFrame(profile);
-                var targets = new CanonicalKinematicTargets();
-                new CanonicalKinematicTargetBuilder().Build(sourceFrame, profile, targets);
-                var bindTips = new Vector3[CanonicalKinematicTargets.ChainCount];
-                for (var i = 0; i < bindTips.Length; i++)
-                {
-                    bindTips[i] = context.binding.GetChainTip((CanonicalKinematicChainId)i).position;
-                }
-                ApplyCurrent(context, targets, profile, ReferenceFrame());
-
-                for (var i = 0; i < CanonicalKinematicTargets.ChainCount; i++)
-                {
-                    var chainId = (CanonicalKinematicChainId)i;
-                    var tip = context.binding.GetChainTip(chainId);
-                    Assert.That(
-                        Vector3.Distance(tip.position, bindTips[i]),
-                        Is.LessThan(0.001f),
-                        chainId.ToString());
-                    Assert.That(context.retargeter.GetChainDebugState(chainId).hasCharacterization, Is.True);
-                }
+                Assert.That(map.Source.HandednessSign, Is.EqualTo(-1f));
+                Assert.That(map.Target.HandednessSign, Is.EqualTo(1f));
+                Assert.That(map.DeterminantSign, Is.EqualTo(-1f));
+                Assert.That(Vector3.Angle(map.MapVector(Vector3.right), Vector3.left), Is.LessThan(0.01f));
+                Assert.That(Vector3.Angle(map.MapVector(Vector3.up), Vector3.up), Is.LessThan(0.01f));
+                Assert.That(Vector3.Angle(map.MapVector(Vector3.back), Vector3.back), Is.LessThan(0.01f));
             }
             finally
             {
@@ -491,106 +464,106 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void CharacterizationHandlesMatchingAPoseAsymmetricAndRotatedChainReferences()
+        public void SignedAxisBodyRotationAllowsLargeYawWithoutHemisphereForcing()
         {
-            var sourceRootToTips = new[]
+            var context = CreateRigContext(Quaternion.Euler(0f, 180f, 0f));
+            try
             {
-                new Vector3(-1f, 0f, 0f),
-                new Vector3(1f, 0f, 0f),
-                new Vector3(0f, -1f, 0.12f),
-                new Vector3(0f, -0.92f, -0.18f),
-            };
-            var sourceRootToMids = new[]
-            {
-                new Vector3(-0.52f, 0.04f, 0f),
-                new Vector3(0.52f, 0.04f, 0f),
-                new Vector3(0.01f, -0.48f, 0.05f),
-                new Vector3(-0.04f, -0.43f, -0.08f),
-            };
-            var targetRootToTips = new[]
-            {
-                new Vector3(-0.75f, 0.28f, 0f),
-                new Vector3(0.84f, 0.18f, 0.14f),
-                new Vector3(0.18f, -0.76f, 0.2f),
-                new Vector3(-0.22f, -0.81f, -0.12f),
-            };
-            var targetRootToMids = new[]
-            {
-                new Vector3(-0.38f, 0.17f, 0.02f),
-                new Vector3(0.43f, 0.09f, 0.08f),
-                new Vector3(0.11f, -0.39f, 0.14f),
-                new Vector3(-0.12f, -0.42f, -0.07f),
-            };
+                var profile = RetargetProfile();
+                Assert.That(
+                    HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(profile, context.binding, out var map),
+                    Is.True);
 
-            var sourceParent = Quaternion.Euler(17f, -31f, 12f);
-            var targetParent = Quaternion.Euler(-22f, 48f, 9f);
-            for (var i = 0; i < sourceRootToTips.Length; i++)
-            {
-                Assert.That(HumanoidRetargetingMath.TryBuildChainReferenceFrame(
-                    sourceRootToTips[i],
-                    sourceRootToMids[i],
-                    i < 2 ? Vector3.up : Vector3.forward,
-                    out var sourceChain,
-                    out _), Is.True);
-                Assert.That(HumanoidRetargetingMath.TryBuildChainReferenceFrame(
-                    targetRootToTips[i],
-                    targetRootToMids[i],
-                    i < 2 ? Vector3.up : Vector3.forward,
-                    out var targetChain,
-                    out _), Is.True);
+                var sourceYaw = Quaternion.Euler(0f, 135f, 0f);
+                var currentRight = sourceYaw * profile.neutralBodyRight;
+                var currentUp = sourceYaw * profile.neutralBodyUp;
+                var currentForward = sourceYaw * profile.neutralBodyForward;
+                Assert.That(
+                    HumanoidRetargetingMath.TryBuildMappedBodyRotation(
+                        map,
+                        currentRight,
+                        currentUp,
+                        out var mappedRotation),
+                    Is.True);
 
-                var mapping = targetChain * Quaternion.Inverse(sourceChain);
-                var sourceParentLocal = Quaternion.Inverse(sourceParent) * (sourceParent * sourceRootToTips[i].normalized);
-                var targetParentLocal = mapping * sourceParentLocal;
-                var expectedTarget = targetChain * (Quaternion.Inverse(sourceChain) * sourceRootToTips[i].normalized);
-                Assert.That(Vector3.Angle(targetParentLocal, expectedTarget), Is.LessThan(0.01f));
-                Assert.That(Vector3.Angle(targetParent * targetParentLocal, targetParent * expectedTarget), Is.LessThan(0.01f));
+                Assert.That(
+                    Vector3.Angle(mappedRotation * Vector3.right, map.MapVector(currentRight)),
+                    Is.LessThan(0.01f));
+                Assert.That(
+                    Vector3.Angle(mappedRotation * Vector3.up, map.MapVector(currentUp)),
+                    Is.LessThan(0.01f));
+                Assert.That(
+                    Vector3.Angle(mappedRotation * Vector3.forward, map.MapVector(currentForward)),
+                    Is.LessThan(0.01f));
+            }
+            finally
+            {
+                context.Dispose();
             }
         }
 
         [Test]
-        public void CurrentParentSpacePreservesLimbRelativeMotionWhenTorsoTurns()
+        public void ProductionSignedAxisPathDrivesAsymmetricArmsOnYaw180Rig()
         {
-            var profile = CharacterizationProfile();
-            Assert.That(HumanoidRetargetingMath.TryBuildAnatomicalFrame(
-                profile.neutralBodyRight,
-                profile.neutralBodyUp,
-                profile.neutralBodyForward,
-                out var sourceReference), Is.True);
-            var sourceTurn = Quaternion.Euler(0f, 45f, 0f);
-            var sourceCurrent = sourceTurn * sourceReference;
-            var localEffector = new Vector3(0.2f, 0.7f, -0.1f);
-            var worldEffector = sourceCurrent * localEffector;
-            var recovered = Quaternion.Inverse(sourceCurrent) * worldEffector;
-            Assert.That(Vector3.Distance(recovered, localEffector), Is.LessThan(0.0001f));
+            var context = CreateRigContext(Quaternion.Euler(0f, 180f, 0f));
+            try
+            {
+                var profile = RetargetProfile();
+                var sourceFrame = CreateReferenceCanonicalFrame(profile);
+                var targets = NewTargets();
+                targets.SetTarget(new CanonicalKinematicChainTarget
+                {
+                    id = CanonicalKinematicChainId.LeftArm,
+                    isValid = true,
+                    hasBendHint = true,
+                    confidence = 1f,
+                    sourceReach = profile.leftArmReach,
+                    normalizedEffectorDisplacement = new Vector3(-0.15f, -0.70f, 0.20f),
+                    normalizedBendHintDisplacement = new Vector3(-0.08f, -0.35f, 0.24f),
+                });
+                targets.SetTarget(new CanonicalKinematicChainTarget
+                {
+                    id = CanonicalKinematicChainId.RightArm,
+                    isValid = true,
+                    hasBendHint = true,
+                    confidence = 1f,
+                    sourceReach = profile.rightArmReach,
+                    normalizedEffectorDisplacement = new Vector3(0.20f, 0.62f, -0.18f),
+                    normalizedBendHintDisplacement = new Vector3(0.11f, 0.31f, -0.22f),
+                });
+                targets.Complete();
 
-            var targetReference = Quaternion.Euler(0f, -27f, 0f);
-            var targetCurrent = sourceTurn * targetReference;
-            var targetChain = Quaternion.Euler(0f, 0f, 18f);
-            var sourceChain = Quaternion.Euler(0f, 0f, -11f);
-            var chainMapping = targetChain * Quaternion.Inverse(sourceChain);
-            var targetRelative = Quaternion.Inverse(targetCurrent) *
-                                 (targetCurrent * (chainMapping * recovered));
-            Assert.That(Vector3.Distance(targetRelative, chainMapping * localEffector), Is.LessThan(0.0001f));
+                Assert.That(
+                    HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(profile, context.binding, out var map),
+                    Is.True);
+
+                var frame = ReferenceFrame();
+                context.retargeter.ApplyMotionFrame(sourceFrame, frame, targets, profile, 1f / 60f);
+
+                foreach (var chainId in new[]
+                {
+                    CanonicalKinematicChainId.LeftArm,
+                    CanonicalKinematicChainId.RightArm,
+                })
+                {
+                    var target = targets.GetTarget(chainId);
+                    var root = context.binding.GetChainRoot(chainId);
+                    var tip = context.binding.GetChainTip(chainId);
+                    var reach = context.binding.GetChainTotalReach(chainId);
+                    var expected = root.position + map.MapVector(target.normalizedEffectorDisplacement) * reach;
+                    Assert.That(Vector3.Distance(tip.position, expected), Is.LessThan(0.001f), chainId.ToString());
+                    Assert.That(context.retargeter.GetChainDebugState(chainId).solved, Is.True);
+                }
+            }
+            finally
+            {
+                context.Dispose();
+            }
         }
 
         private static void Apply(RigContext context, CanonicalKinematicTargets targets, CanonicalRotationFrame frame)
         {
             context.retargeter.ApplyRotationFrame(frame, targets, Quaternion.identity, 1f / 60f);
-        }
-
-        private static void ApplyCurrent(
-            RigContext context,
-            CanonicalKinematicTargets targets,
-            MotionCalibrationProfile profile,
-            CanonicalRotationFrame frame)
-        {
-            Assert.That(HumanoidRetargetingMath.TryBuildAnatomicalFrame(
-                profile.neutralBodyRight,
-                profile.neutralBodyUp,
-                profile.neutralBodyForward,
-                out var sourceReference), Is.True);
-            context.retargeter.ApplyRotationFrame(frame, targets, profile, sourceReference, 1f / 60f);
         }
 
         private static CanonicalRotationFrame ReferenceFrame()
@@ -676,8 +649,14 @@ namespace GoldenNeedle.Tests
 
         private static RigContext CreateRigContext()
         {
+            return CreateRigContext(Quaternion.identity);
+        }
+
+        private static RigContext CreateRigContext(Quaternion rootRotation)
+        {
             var rootObject = new GameObject("AnalyticIkRigRoot");
             var root = rootObject.transform;
+            root.rotation = rootRotation;
             var bones = CreateBones(root, out var tips);
             var binding = rootObject.AddComponent<HumanoidRigBinding>();
             binding.ConfigureExplicit(root, bones, tips);
@@ -800,7 +779,7 @@ namespace GoldenNeedle.Tests
             };
         }
 
-        private static MotionCalibrationProfile CharacterizationProfile()
+        private static MotionCalibrationProfile RetargetProfile()
         {
             var profile = ValidProfile();
             profile.leftArmReach = 0.66f;

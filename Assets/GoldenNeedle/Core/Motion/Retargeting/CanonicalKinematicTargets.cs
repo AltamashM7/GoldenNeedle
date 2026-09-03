@@ -16,9 +16,9 @@ namespace GoldenNeedle.Core.Motion.Retargeting
     }
 
     /// <summary>
-    /// One provider-independent positional target. Positions remain useful for diagnostics and
-    /// are kept alongside normalized displacements so the avatar can change proportions without
-    /// changing the user's normalized motion.
+    /// One provider-independent positional chain target. Source vectors stay in Golden Needle
+    /// canonical 3D space. The avatar adapter is responsible for the explicit canonical-to-avatar
+    /// signed-axis conversion and for scaling by avatar-authored reach.
     /// </summary>
     [Serializable]
     public struct CanonicalKinematicChainTarget
@@ -31,10 +31,6 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         public Vector3 sourceMidPosition;
         public Vector3 sourceEffectorPosition;
         public float sourceReach;
-        public bool hasSourceParentFrame;
-        public Quaternion sourceParentFrameRotation;
-        public Vector3 sourceParentLocalMidDisplacement;
-        public Vector3 sourceParentLocalEffectorDisplacement;
         public Vector3 normalizedEffectorDisplacement;
         public Vector3 normalizedBendHintDisplacement;
         public long sourceTimestampMillisec;
@@ -121,10 +117,6 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                     hasBendHint = false,
                     confidence = 0f,
                     sourceReach = 0f,
-                    hasSourceParentFrame = false,
-                    sourceParentFrameRotation = Quaternion.identity,
-                    sourceParentLocalMidDisplacement = Vector3.zero,
-                    sourceParentLocalEffectorDisplacement = Vector3.zero,
                     normalizedEffectorDisplacement = Vector3.zero,
                     normalizedBendHintDisplacement = Vector3.zero,
                 };

@@ -121,18 +121,19 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void FrontFacingSourceCorrectionIsSeparateFromDisplayMirror()
+        public void ExplicitDisplayMirrorIsTheOnlyDefaultHorizontalPresentationTransform()
         {
             var input = new Vector2(0.2f, 0.3f);
-            var corrected = Orientation(frontFacing: true, sourceTextureHorizontallyMirrored: true);
-            var correctedAndMirrored = Orientation(frontFacing: true, sourceTextureHorizontallyMirrored: true, displayMirrored: true);
+            var baseline = Orientation(frontFacing: true);
+            var mirrored = Orientation(frontFacing: true, displayMirrored: true);
 
-            Assert.That(corrected.DisplayMirrored, Is.False);
-            Assert.That(corrected.PresentationHorizontalMirror, Is.True);
-            Assert.That(corrected.SensorTopLeftToDisplayNormalized(input), Is.EqualTo(new Vector2(0.8f, 0.3f)));
-            Assert.That(correctedAndMirrored.DisplayMirrored, Is.True);
-            Assert.That(correctedAndMirrored.PresentationHorizontalMirror, Is.False);
-            Assert.That(correctedAndMirrored.SensorTopLeftToDisplayNormalized(input), Is.EqualTo(input));
+            Assert.That(baseline.DisplayMirrored, Is.False);
+            Assert.That(baseline.SourceTextureHorizontallyMirrored, Is.False);
+            Assert.That(baseline.PresentationHorizontalMirror, Is.False);
+            Assert.That(baseline.SensorTopLeftToDisplayNormalized(input), Is.EqualTo(input));
+            Assert.That(mirrored.DisplayMirrored, Is.True);
+            Assert.That(mirrored.PresentationHorizontalMirror, Is.True);
+            Assert.That(mirrored.SensorTopLeftToDisplayNormalized(input), Is.EqualTo(new Vector2(0.8f, 0.3f)));
         }
 
         [Test]

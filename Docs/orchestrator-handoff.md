@@ -12,9 +12,11 @@ Repository: `AltamashM7/GoldenNeedle`
 
 Current branch: `engine/pose-tracking-spike`
 
-Current branch checkpoint:
+Phase 4 handoff HEAD before the correction:
 
-`5e830dce7ac3de542ab159b8b90992935d9dd0b0` — `feat: checkpoint phase 4 motion retargeting investigation`
+`4a26589ec2f90688b80fb6b1da0b849adda65d6b` — `docs: hand off phase 4 investigation state`
+
+Its runtime parent is `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The branch now contains a Phase 4 coordinate/retarget correction awaiting USER QA and Orchestrator audit.
 
 Accepted Motion Engine baseline:
 
@@ -29,7 +31,8 @@ The previous Web Orchestrator conversation was intentionally retired because the
 - Phase 1 CPU pose spike: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6` — accepted PASS WITH NOTES.
 - Phase 2 canonical skeleton/debug visualization: `f5a15648607adf6034800c6a2b4d685b0e6f03ea` — accepted PASS WITH NOTES.
 - Phase 3 calibration/confidence/smoothing: `2ee4d6eb606a8b845183cc44126ecf9530d8280b` — accepted PASS WITH NOTES.
-- Phase 4 current investigative checkpoint: `5e830dce7ac3de542ab159b8b90992935d9dd0b0` — **not accepted**.
+- Phase 4 handoff-doc checkpoint: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — **not accepted**.
+- Phase 4 correction after that handoff — **awaiting USER QA / Orchestrator audit; not accepted**.
 
 The Motion Engine intentionally remains on the long-lived `engine/pose-tracking-spike` branch through the core-engine train. Intermediate engine phases are not mechanically merged into `main`.
 
@@ -50,24 +53,24 @@ The Motion Engine intentionally remains on the long-lived `engine/pose-tracking-
 
 ## What Phase 4 currently contains
 
-The unaccepted checkpoint contains substantial exploratory work:
+The correction keeps the accepted/upstream Motion Engine boundaries and simplifies the production retarget path:
 
 ```text
 MediaPipe provider
 → canonical pose
 → stabilization
 → calibration
-→ canonical torso/rotation output
-→ positional kinematic targets
-→ per-chain characterization
+→ canonical positional chain vectors
+→ explicit signed canonical-to-avatar basis map
+→ avatar-world positional targets
 → analytic two-bone IK
 → explicit / Animator Humanoid binding
 → procedural debug rig
 ```
 
-It also contains repeated coordinate/presentation revisions and diagnostics intended to compare canonical 2D, canonical 3D/F3, target generation, IK residual, bend plane, and the actual procedural rig.
+`CanonicalRotationFrame` remains available for diagnostics/future orientation work, but the production limb mapping no longer depends on per-chain quaternion characterization or moving parent-frame quaternions. The source semantic basis is allowed to be reflected; reflections are represented explicitly rather than hidden inside `Quaternion` composition.
 
-Do **not** assume this entire pipeline is the correct final Phase 4 architecture merely because the code exists.
+This correction is **not accepted** until USER QA and Orchestrator audit.
 
 ## Phase 4 failure history, condensed
 
@@ -76,8 +79,10 @@ Do **not** assume this entire pipeline is the correct final Phase 4 architecture
 3. The limb path was revised to four positional chains with analytic two-bone IK.
 4. Current-parent-space/per-chain reference mapping was added after USER QA showed generated targets could be self-consistent while the actual pose still differed from F3.
 5. Coordinate/camera foundation work then found inconsistent 2D/3D/presentation behavior. Several transformations were revised.
-6. Latest USER evidence shows F3 substantially better/upright and viewer-side-correct, and the 2D skeleton human-shaped/aligned, but the visible webcam preview still appears horizontally mirrored.
-7. Across earlier multi-pose QA sets, the procedural rig still failed to accurately reproduce F3. It remains unaccepted.
+6. Latest pre-correction USER evidence showed F3 substantially better/upright and viewer-side-correct, and the 2D skeleton human-shaped/aligned, but the visible webcam preview still horizontally mirrored.
+7. Repository audit traced the preview issue to an extra front-facing presentation heuristic, separate from MediaPipe inference preparation.
+8. Repository audit also found the source semantic basis can be reflected (`Right=+X, Up=+Y, Forward=-Z` in the reference case), while the production mapping attempted to encode it through quaternions and forward-hemisphere compensation.
+9. The correction removes that production mapping in favor of explicit signed-axis vector conversion; USER QA has not yet judged the result.
 
 The important lesson is not to continue stacking fixes from this history. Inspect the current code and establish the actual coordinate/presentation/retarget behavior from first principles.
 
@@ -126,19 +131,16 @@ Unity MCP/Pipeline are development tooling only. Use them if they materially imp
 
 The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings.asset` changes that had repeatedly been described as pre-existing/unintended editor state. Inspect these before any next accepted checkpoint. Do not silently bless them.
 
-## Recommended first task
+## Recommended next task
 
-Perform a read-only repository audit against the actual Phase 4 checkpoint and answer:
+Audit the exact pushed correction head, then use USER QA as the gate:
 
-1. What exact orientation does MediaPipe see?
-2. What exact orientation does the preview display?
-3. What spaces do normalized and world landmarks occupy in the current code?
-4. Why is the preview still horizontally mirrored?
-5. Does F3 project the same canonical data retargeting consumes?
-6. Which current Phase 4 retarget pieces are mathematically sound and which are compensating for earlier coordinate mistakes?
-7. What is the smallest clean correction/rewrite that restores a trustworthy foundation?
-
-Only after that audit should a new Luna implementation brief be written.
+1. Verify inference H/V preparation remains unchanged and presentation mirror OFF no longer adds a front-camera X flip.
+2. Verify canonical mapping remains `(x,1-y)` / `(x,-y,z)`.
+3. Verify production retargeting uses the signed basis map rather than per-chain quaternion characterization.
+4. Check the procedural rig against F3 across asymmetric and large-yaw poses.
+5. If that passes, validate the real Animator Humanoid binding path.
+6. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
 
 ## Governance
 

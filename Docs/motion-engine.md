@@ -1,8 +1,8 @@
 # Planned V1 Motion Engine
 
-Status: **PHASE 4 INVESTIGATION CHECKPOINT — NOT USER ACCEPTED.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Current Phase 4 investigation checkpoint: `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The Phase 4 coordinate/presentation and retargeting implementation is unresolved; Phase 5 locomotion has not started.
+Status: **PHASE 4 CORRECTION — AWAITING USER QA / NOT USER ACCEPTED.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. The pre-correction Phase 4 handoff HEAD was `4a26589ec2f90688b80fb6b1da0b849adda65d6b`. Phase 5 locomotion has not started.
 
-> **Phase 4 warning:** sections describing the current canonical-camera, kinematic-target, IK, and retargeting implementation are an investigation snapshot, not USER-accepted design. The latest USER evidence still shows an unintended horizontal preview mirror and the procedural rig remains unaccepted from prior multi-pose QA. Inspect the code directly before changing or relying on those formulas.
+> **Phase 4 warning:** the correction has not yet passed USER visual/motion QA or Orchestrator audit. Treat it as the current candidate architecture, not an accepted checkpoint.
 
 ## Phase 1 spike boundary
 
@@ -62,7 +62,7 @@ Every conversion names its input and output space. Pixel preparation is used to 
 
 ## Camera orientation and debug views
 
-The provider separates sensor/storage metadata, pixel preparation, canonical data conversion, and display presentation. On the tested front-facing HP feed, the debug preview applies an explicit raw-source horizontal correction, then sensor rotation and `videoVerticallyMirrored`; this is independent of inference H/V preparation and of the explicit user-facing display mirror. The preview transform is scoped to the texture and raw/canonical overlays are drawn afterward through one shared aspect-fit content rectangle with the same net X presentation transform. Display mirroring is explicit and disabled by default; it mirrors preview and overlays together at presentation only and never changes canonical left/right or world semantics. The debug spike exposes raw, canonical 2D, canonical 3D, and stabilized canonical 2D views with `F1`, `F2`, `F3`, and `F4`; `C` begins calibration, `X` cancels/resets it, `R` retries camera/model startup, and `F6` toggles the raw-world/canonical coordinate inspector with per-pair anatomical and legacy-bilateral Y diagnostics. The Lab reports thresholded anatomical-chain 2D↔3D X/Y agreement counts and PASS/FAIL/PENDING state.
+The provider separates sensor/storage metadata, MediaPipe pixel preparation, canonical data conversion, and display presentation. Front-facing status still participates in MediaPipe's input transformation, whose H/V flags perform real pixel transforms in the embedded plugin. It no longer implies an additional horizontal *presentation* correction. Display mirroring is explicit and disabled by default; OFF adds no X flip, while ON mirrors preview and overlays together at presentation only and never changes canonical left/right or world semantics. The debug spike exposes raw, canonical 2D, canonical 3D, and stabilized canonical 2D views with `F1`, `F2`, `F3`, and `F4`; `C` begins calibration, `X` cancels/resets it, `R` retries camera/model startup, and `F6` toggles the raw-world/canonical coordinate inspector with per-pair anatomical and legacy-bilateral Y diagnostics. The Lab reports thresholded anatomical-chain 2D↔3D X/Y agreement counts and PASS/FAIL/PENDING state.
 
 ## Calibration
 
@@ -83,7 +83,7 @@ The project-owned `CanonicalRotationFrame` has ten bones: Pelvis, Chest, LeftUpp
 
 Arms use the Phase 3 profile T-pose left/right arm directions as reference directions for both upper and lower segments. Runtime current directions are shoulder -> elbow, elbow -> wrist, and the corresponding right-side pairs. Legs use neutral hip -> knee, knee -> ankle directions. Each solve requires tracked finite joints and uses the minimum required confidence. Limb posing consumes the separate positional `CanonicalKinematicTargets` output.
 
-Pelvis and chest bases use Right = right hip/shoulder minus left hip/shoulder and Up = chest minus pelvis, followed by finite validation and orthonormalization. The calibration forward audit records canonical +X right, +Y up, +Z away, with frontal anatomical forward at -Z; `MotionCalibrationProfile` is version 4 and stores the corrected `Up x Right` forward semantic, confidence-weighted T-pose shoulder/elbow/wrist geometry, and independent arm/leg reaches. The solver preserves that reference hemisphere.
+Pelvis and chest rotation diagnostics use Right = right hip/shoulder minus left hip/shoulder and Up = chest minus pelvis, followed by finite validation and orthonormalization. The calibration profile still records canonical +X right, +Y up, +Z away with semantic frontal forward at -Z. Because that semantic triple may be reflected, `CanonicalRotationSolver` no longer tries to force the semantic forward into a quaternion; its body quaternion is a proper rotation derived from Right + Up. The signed semantic forward is consumed by the explicit retarget map instead.
 
 All limb and torso outputs are swing-only. Monocular webcam input does not reliably observe forearm pronation/supination or upper-arm axial roll, so the implementation does not invent those twists. Head, hand, and foot orientation are not driven in Phase 4.
 
@@ -91,22 +91,20 @@ All limb and torso outputs are swing-only. Monocular webcam input does not relia
 
 `CanonicalKinematicTargetBuilder` consumes stabilized canonical positions and the valid in-memory profile to produce four independent positional targets: LeftArm, RightArm, LeftLeg, and RightLeg. Each target stores source root/mid/effector positions, source reach, confidence, normalized effector displacement, optional normalized bend-hint displacement, and timing. Root plus effector is the minimum valid chain; the current mid is preferred for the bend plane.
 
-`HumanoidRigBinding` captures the actual root/mid/tip Transform for each explicit or Animator Humanoid chain, bind local rotations, upper/lower world lengths, total reach, and original local positions/scales once. `MotionEngineRuntime` owns the preallocated target output, and `HumanoidRetargeter` consumes it in `LateUpdate`. Pelvis and chest continue to use the full-frame path:
+`HumanoidRigBinding` captures the actual root/mid/tip Transform for each explicit or Animator Humanoid chain, bind local rotations, upper/lower world lengths, total reach, original local positions/scales, and a proper target anatomical reference basis from actual bound joint positions. `MotionEngineRuntime` owns the preallocated target output, and `HumanoidRetargeter` consumes stabilized canonical positions plus those targets in `LateUpdate`.
+
+Production mapping uses one explicit signed-axis transform `M`. The source basis preserves calibration Right/Up/Forward even when its handedness is negative; the target basis is proper/right-handed. This is a linear vector map, not a quaternion pretending to represent a reflection.
 
 ```text
-A = avatarReferenceBodyRotation * inverse(sourceCalibrationBodyRotation)
-avatarWorldDelta = A * D * inverse(A)
-targetBoneWorldRotation = avatarWorldDelta * avatarBindWorldRotation
-```
+normalizedEffector = (sourceEffector - sourceRoot) / sourceReach
+normalizedHint = (sourceMid - sourceRoot) / sourceReach
 
-The four target chains map normalized displacements into the avatar's proportions without changing authored bone lengths. Source displacements are expressed in the current anatomical chest/pelvis parent frame, and each chain uses its own source/target reference-frame mapping:
+mappedEffector = M(normalizedEffector)
+mappedHint = M(normalizedHint)
 
-```text
-M_chain = targetChainReferenceFrame * inverse(sourceChainReferenceFrame)
-mappedEffectorParentLocal = M_chain * normalizedSourceEffectorDisplacement
-mappedHintParentLocal = M_chain * normalizedSourceMidDisplacement
-targetEffector = currentTargetRootPosition + currentTargetParentFrame * (mappedEffectorParentLocal * targetReach)
-targetHint = currentTargetRootPosition + currentTargetParentFrame * (mappedHintParentLocal * targetReach)
+targetEffector = currentTargetRootPosition + mappedEffector * targetReach
+targetHint = currentTargetRootPosition + mappedHint * targetReach
+
 c = clamp(distance(root, targetEffector), abs(a-b)+epsilon, (a+b)-epsilon)
 n = normalize(targetEffector - root)
 x = (a² - b² + c²) / (2c)
@@ -114,6 +112,8 @@ y = sqrt(max(a² - x², 0))
 solvedMid = root + n*x + p*y
 solvedTip = root + n*c
 ```
+
+Pelvis/chest are derived from live canonical lateral + up axes, converted through the same signed map to a proper target-body rotation, and applied as a delta from the avatar's reference body basis. This avoids the old reflected source quaternion and avoids forward-hemisphere forcing during large yaw/side views. The previous per-chain quaternion characterization/current-parent implementation remains compatibility-only and is not the production `LateUpdate` path.
 
 The bend direction `p` uses the current mapped hint, previous valid plane, calibrated/reference body axis, then a deterministic orthogonal fallback. Sign continuity protects near-degenerate planes while a clearly opposite valid hint can intentionally change sides. Pelvis/chest are applied first; each live chain restores root/mid bind-local rotations, rotates the root toward `root -> solvedMid`, then rotates the mid toward `mid -> solvedTip`. The actual Transform hierarchy—not a fake 2D drawing—is the result. Invalid chains return toward bind/reference and do not freeze forever. Diagnostics keep retarget fidelity, IK endpoint residual, and bend-plane error as separate metrics. `CanonicalRotationFrame` remains available for torso orientation, diagnostics, and future orientation layers.
 

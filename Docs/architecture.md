@@ -1,8 +1,8 @@
 # Golden Needle architecture
 
-Status: **PHASE 4 INVESTIGATION CHECKPOINT — NOT USER ACCEPTED.** Phase 2 was USER accepted with **PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 was USER accepted with **PASS WITH NOTES** at `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Current Phase 4 investigation checkpoint: `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. Phase 5 has not started.
+Status: **PHASE 4 CORRECTION — AWAITING USER QA / NOT USER ACCEPTED.** Phase 2 was USER accepted with **PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 was USER accepted with **PASS WITH NOTES** at `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. The pre-correction handoff HEAD was `4a26589ec2f90688b80fb6b1da0b849adda65d6b`. Phase 5 has not started.
 
-**Important:** Phase 4-specific retargeting/coordinate formulas below describe the current investigative implementation, not an accepted/frozen architecture. A fresh Orchestrator must inspect the actual repository before deciding which Phase 4 pieces to retain or replace.
+**Important:** the Phase 4 correction below is repository-derived and mathematically explicit, but it is not frozen architecture until USER visual/motion QA and Orchestrator audit pass.
 
 Golden Needle is a CPU-first, webcam-driven embodied-fitness application. The intended runtime uses the user's full-body movement to drive a humanoid 3D avatar while gameplay systems interpret movement separately for world-space action.
 
@@ -61,7 +61,7 @@ MediaPipe-specific structures stay inside the provider/integration boundary. Pla
 
 The current implementation uses `PoseObservation` only at the MediaPipe provider boundary. `MediaPipeCanonicalPoseSource` adapts it into `ICanonicalPoseSource`, and `MotionEngineRuntime` owns the canonical source -> stabilization -> calibration -> rotation pipeline. `CanonicalPoseFrame` exposes the fixed 20-joint engine-owned representation, per-joint trust/confidence, partial-body validity, optional image/world/local positions, and derived pelvis/chest/spine midpoints. `CanonicalPoseStabilizer` consumes that frame using actual source/received timestamps, independent per-joint One Euro position filters, confidence hysteresis, dropout grace, and reset-aware reacquisition. `MotionCalibrationSession` consumes canonical frames only and keeps its neutral/T-pose profile in memory. Canonical consumers do not need MediaPipe classes or raw landmark indices.
 
-The camera path defines one canonical inference frame: the correctly oriented image presented to MediaPipe after sensor/storage and pixel preparation, before optional display-only mirroring. Sensor/storage metadata, pixel preparation, canonical data conversion, and display presentation remain separate. On the tested HP front-facing feed, the raw `WebCamTexture` is corrected with an explicit source-horizontal correction; this does not set the explicit `DisplayMirrored` policy. `MediaPipeCanonicalPoseMapper` converts normalized landmarks with `x, 1-y` and world landmarks with `x, -y, z`; `CameraOrientationState` keeps inference preparation separate from display metadata, and never inverses returned world coordinates. The presenter corrects the physical preview from sensor rotation/vertical metadata and source correction, restores its GUI matrix before drawing overlays, and maps canonical 2D points through one shared content rectangle with one Y inversion and the same net presentation X transform. The debug scene is the only current consumer and draws raw landmarks, canonical 2D landmarks, stabilized canonical 2D landmarks, and canonical/stabilized local-space 3D views, with thresholded anatomical-chain 2D↔3D X/Y agreement diagnostics. `POSE != LOCOMOTION` remains unchanged.
+The camera path defines one canonical inference frame: the correctly oriented image presented to MediaPipe after sensor/storage and pixel preparation, before optional display-only mirroring. Sensor/storage metadata, pixel preparation, canonical data conversion, and display presentation remain separate. MediaPipe input H/V preparation still performs real pixel transforms through the embedded plugin. The provider no longer assumes a front-facing `WebCamTexture` needs an additional horizontal *presentation* correction; explicit display mirror OFF therefore adds no horizontal preview flip. `MediaPipeCanonicalPoseMapper` remains `x,1-y` for normalized landmarks and `x,-y,z` for world landmarks. The presenter uses sensor rotation/vertical metadata plus the explicit display mirror, restores its GUI matrix before overlays, and maps canonical 2D points through one shared content rectangle. The debug scene is the only current consumer and draws raw landmarks, canonical 2D landmarks, stabilized canonical 2D landmarks, and canonical/stabilized local-space 3D views, with thresholded anatomical-chain 2D↔3D X/Y agreement diagnostics. `POSE != LOCOMOTION` remains unchanged.
 
 ## Motion Engine maintainability rule
 
@@ -77,16 +77,24 @@ The solver is deliberately swing-only for the retained rotation-frame path. A mo
 
 `CanonicalKinematicTargetBuilder` consumes only the stabilized canonical frame and valid in-memory calibration profile. It produces one sample for each of four chains—LeftArm, RightArm, LeftLeg, and RightLeg—with source root/mid/effector positions, source reach, confidence, normalized effector displacement, optional normalized bend-hint displacement, and timing. Root plus effector is the minimum valid chain; the current mid is preferred for bend selection.
 
-The retargeter maps those normalized displacements into the target avatar without changing authored proportions. The source builder expresses each displacement in the current source chest/pelvis parent frame. Each chain has an independently characterized source and target reference frame; with per-chain mapping `M_chain`, current target parent frame `P_t`, target root `R`, target chain reach `L`, normalized effector displacement `e`, and normalized mid displacement `m`:
+The retargeter maps those normalized displacements into the target avatar without changing authored proportions. The source builder keeps root-to-mid and root-to-effector vectors directly in stabilized Golden Needle canonical 3D space.
+
+Golden Needle calibration may describe a reflected semantic anatomical basis. For example, a reference case can be `Right=+X, Up=+Y, Forward=-Z`, whose determinant is negative. A quaternion cannot represent that reflection. Production retargeting therefore builds:
+
+- a signed source basis that preserves canonical Right/Up/Forward and records handedness;
+- a proper right-handed target basis from the bound avatar's actual shoulder/hip and pelvis/chest reference geometry;
+- one explicit linear canonical-to-avatar map `M` between those bases.
+
+For target root `R`, avatar chain reach `L`, normalized canonical effector vector `e`, and normalized canonical mid vector `m`:
 
 ```text
-mappedEffectorParentLocal = M_chain * e
-mappedHintParentLocal = M_chain * m
-desiredEffector = R + P_t * (mappedEffectorParentLocal * L)
-targetHint = R + P_t * (mappedHintParentLocal * L)
+mappedEffector = M(e)
+mappedHint = M(m)
+desiredEffector = R + mappedEffector * L
+targetHint = R + mappedHint * L
 ```
 
-`M_chain` is `targetChainReferenceFrame * inverse(sourceChainReferenceFrame)`. The mapping is explicit per chain and does not assume one global canonical limb axis or fixed target body alignment. If the current torso source frame is incomplete, the builder uses a continuity-safe or calibrated parent-frame fallback; the target uses the current target parent frame after torso application.
+The same signed map converts live canonical torso Right/Up axes into a proper target body rotation. Large yaw is derived from the live axes plus the source basis handedness; no previous/reference forward-hemisphere forcing is used in the production path. Per-chain quaternion characterization/current-target-parent mapping remains only as compatibility code for older callers/tests and is not the live `LateUpdate` architecture.
 
 `HumanoidRigBinding` captures the actual root/mid/tip Transform for each Animator Humanoid chain or explicit procedural chain, bind local rotations, upper/lower world lengths, total reach, and original local positions/scales once. For each live chain, the retargeter first applies pelvis/chest, restores that chain's root and mid to cached bind-local rotations, then solves from the current root world position. The analytic solver clamps the desired endpoint to `abs(a-b)+epsilon .. (a+b)-epsilon`, preserves its direction, and computes:
 

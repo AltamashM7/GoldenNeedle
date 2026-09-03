@@ -141,21 +141,17 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void ForwardBasisUsesFrontalNegativeZHemisphere()
+        public void BodyQuaternionPreservesRightAndUpWhenSemanticForwardIsReflected()
         {
             Assert.That(CanonicalRotationSolver.TryBuildBodyRotation(
                 Vector3.right,
                 Vector3.up,
-                Vector3.forward,
-                out var rotation), Is.True);
-            Assert.That(Vector3.Dot(rotation * Vector3.forward, Vector3.forward), Is.GreaterThan(0f));
-
-            Assert.That(CanonicalRotationSolver.TryBuildBodyRotation(
-                Vector3.right,
-                Vector3.up,
                 Vector3.back,
-                out rotation), Is.True);
-            Assert.That(Vector3.Dot(rotation * Vector3.forward, Vector3.back), Is.GreaterThan(0.99f));
+                out var rotation), Is.True);
+
+            Assert.That(Vector3.Dot(rotation * Vector3.right, Vector3.right), Is.GreaterThan(0.99f));
+            Assert.That(Vector3.Dot(rotation * Vector3.up, Vector3.up), Is.GreaterThan(0.99f));
+            Assert.That(Vector3.Dot(rotation * Vector3.forward, Vector3.forward), Is.GreaterThan(0.99f));
         }
 
         private static MotionCalibrationProfile ReferenceProfile()

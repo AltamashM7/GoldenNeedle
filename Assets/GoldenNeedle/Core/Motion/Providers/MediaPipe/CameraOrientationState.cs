@@ -6,8 +6,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
     /// Describes four separate camera concepts: sensor/storage metadata, the input preparation
     /// applied before MediaPipe inference, the resulting canonical inference frame, and the
     /// optional user-facing display mirror. The canonical data mapper does not use this state to
-    /// undo inference transforms. The presenter uses input-preparation metadata only for MediaPipe,
-    /// and sensor/display metadata plus explicit source correction for the physical camera view.
+    /// undo inference transforms. SourceTextureHorizontallyMirrored is reserved for a physically
+    /// verified source condition; front-facing status alone must not set it.
     /// </summary>
     public readonly struct CameraOrientationState
     {
@@ -40,8 +40,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public bool FrontFacing { get; }
 
         /// <summary>
-        /// Explicit correction for a known horizontally mirrored raw WebCamTexture source.
-        /// This is source normalization, not the user-facing display mirror.
+        /// Optional correction for a physically verified horizontally mirrored raw source.
+        /// The current MediaPipe provider does not infer this from front-facing status.
         /// </summary>
         public bool SourceTextureHorizontallyMirrored { get; }
 

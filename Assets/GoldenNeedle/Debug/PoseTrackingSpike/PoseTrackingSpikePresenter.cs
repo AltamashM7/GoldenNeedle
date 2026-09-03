@@ -183,8 +183,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var presentationHorizontalMirror = orientation.PresentationHorizontalMirror;
             var oldMatrix = GUI.matrix;
 
-            // The preview uses sensor/display metadata plus the explicit raw-source correction.
-            // Inference readback flags are not GUI instructions. Restore the caller's matrix
+            // The preview uses sensor/display metadata plus any explicitly verified raw-source
+            // correction. Inference readback flags are not GUI instructions. Restore the caller's matrix
             // before drawing any overlay so its coordinates are transformed exactly once by the
             // shared content rectangle.
             ApplyDisplayPreviewTransform(previewRect, orientation);

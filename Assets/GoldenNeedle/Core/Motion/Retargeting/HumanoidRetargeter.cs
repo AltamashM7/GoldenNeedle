@@ -1,5 +1,6 @@
 using System;
 using GoldenNeedle.Core.Motion.Calibration;
+using GoldenNeedle.Core.Motion.Canonical;
 using GoldenNeedle.Core.Motion.Rotation;
 using GoldenNeedle.Core.Motion.Runtime;
 using UnityEngine;
@@ -117,24 +118,96 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 return;
             }
 
+            var sourceFrame = runtime.StabilizedFrame;
             var frame = runtime.RotationFrame;
             var targets = runtime.KinematicTargets;
             var profile = runtime.Calibration == null ? null : runtime.Calibration.Profile;
-            if (frame == null || targets == null || profile == null || !frame.calibrationValid ||
-                !targets.calibrationValid || !profile.isValid || runtime.RotationSolver == null ||
-                !runtime.RotationSolver.HasReferenceBodyRotation)
+            if (sourceFrame == null || frame == null || targets == null || profile == null ||
+                !frame.calibrationValid || !targets.calibrationValid || !profile.isValid)
             {
                 ClearDiagnostics();
                 binding.ResetToReferencePose();
                 return;
             }
 
-            ApplyRotationFrame(
+            ApplyMotionFrame(
+                sourceFrame,
                 frame,
                 targets,
                 profile,
-                runtime.RotationSolver.ReferenceBodyRotation,
                 Mathf.Max(Time.unscaledDeltaTime, 0f));
+        }
+
+        /// <summary>
+        /// Production Phase 4 path. Canonical positions are converted through one explicit signed
+        /// axis map, then limb endpoints are solved positionally. Reflections never pass through
+        /// quaternion characterization.
+        /// </summary>
+        public void ApplyMotionFrame(
+            CanonicalPoseFrame sourceFrame,
+            CanonicalRotationFrame frame,
+            CanonicalKinematicTargets targets,
+            MotionCalibrationProfile profile,
+            float deltaTime)
+        {
+            runtime = runtime == null ? GetComponent<MotionEngineRuntime>() : runtime;
+            binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
+            if (binding == null || !binding.IsBound || sourceFrame == null || frame == null ||
+                targets == null || profile == null || !frame.calibrationValid ||
+                !targets.calibrationValid || !profile.isValid ||
+                !HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(profile, binding, out var axisMap))
+            {
+                ClearDiagnostics();
+                binding?.ResetToReferencePose();
+                return;
+            }
+
+            if (!driveRig)
+            {
+                ClearDiagnostics();
+                binding.ResetToReferencePose();
+                return;
+            }
+
+            var returnStep = Mathf.Clamp01(Mathf.Max(0f, deltaTime) / Mathf.Max(0.15f, unavailableReturnSeconds));
+            ApplyMappedTorsoBone(
+                CanonicalBoneId.Pelvis,
+                sourceFrame,
+                CanonicalJointId.LeftHip,
+                CanonicalJointId.RightHip,
+                axisMap,
+                returnStep);
+            ApplyMappedTorsoBone(
+                CanonicalBoneId.Chest,
+                sourceFrame,
+                CanonicalJointId.LeftShoulder,
+                CanonicalJointId.RightShoulder,
+                axisMap,
+                returnStep);
+
+            ClearKinematicDiagnostics(targets);
+            if (!targets.calibrationValid)
+            {
+                for (var i = 0; i < CanonicalKinematicTargets.ChainCount; i++)
+                {
+                    ReturnChainToReference((CanonicalKinematicChainId)i, returnStep);
+                }
+
+                return;
+            }
+
+            KinematicTargetsLive = targets.hasMeaningfulTargets;
+            SourceChainsValid = targets.validChainCount;
+            TargetsGenerated = targets.validChainCount;
+            for (var i = 0; i < CanonicalKinematicTargets.ChainCount; i++)
+            {
+                ApplyMappedChain(
+                    (CanonicalKinematicChainId)i,
+                    targets.GetTarget((CanonicalKinematicChainId)i),
+                    axisMap,
+                    returnStep,
+                    Mathf.Max(0f, deltaTime));
+            }
         }
 
         /// <summary>
@@ -228,6 +301,217 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                     returnStep,
                     Mathf.Max(0f, deltaTime));
             }
+        }
+
+        private void ApplyMappedTorsoBone(
+            CanonicalBoneId id,
+            CanonicalPoseFrame sourceFrame,
+            CanonicalJointId leftSide,
+            CanonicalJointId rightSide,
+            CanonicalToAvatarAxisMap axisMap,
+            float returnStep)
+        {
+            var target = binding.GetBoneTransform(id);
+            if (target == null)
+            {
+                return;
+            }
+
+            var left = sourceFrame.GetJoint(leftSide);
+            var right = sourceFrame.GetJoint(rightSide);
+            var pelvis = sourceFrame.GetJoint(CanonicalJointId.Pelvis);
+            var chest = sourceFrame.GetJoint(CanonicalJointId.Chest);
+            if (TryGetPosition(left, out var leftPosition) &&
+                TryGetPosition(right, out var rightPosition) &&
+                TryGetPosition(pelvis, out var pelvisPosition) &&
+                TryGetPosition(chest, out var chestPosition) &&
+                HumanoidRetargetingMath.TryBuildMappedBodyRotation(
+                    axisMap,
+                    rightPosition - leftPosition,
+                    chestPosition - pelvisPosition,
+                    out var currentBodyRotation))
+            {
+                var targetReferenceBodyRotation = Quaternion.LookRotation(
+                    axisMap.Target.Forward,
+                    axisMap.Target.Up);
+                var bodyDelta = currentBodyRotation * Quaternion.Inverse(targetReferenceBodyRotation);
+                target.rotation = bodyDelta * binding.GetBindWorldRotation(id);
+                return;
+            }
+
+            if (returnStep > 0f)
+            {
+                target.localRotation = Quaternion.Slerp(
+                    target.localRotation,
+                    binding.GetBindLocalRotation(id),
+                    returnStep);
+            }
+        }
+
+        private void ApplyMappedChain(
+            CanonicalKinematicChainId chainId,
+            CanonicalKinematicChainTarget sourceTarget,
+            CanonicalToAvatarAxisMap axisMap,
+            float returnStep,
+            float deltaTime)
+        {
+            var index = (int)chainId;
+            var debug = new HumanoidChainDebugState
+            {
+                sourceValid = sourceTarget.isValid,
+                targetGenerated = sourceTarget.isValid,
+                hasCharacterization = axisMap.IsValid,
+            };
+            _chainDebugStates[index] = debug;
+
+            if (!sourceTarget.isValid || !binding.IsChainAvailable(chainId) || !axisMap.IsValid)
+            {
+                _missingChainSeconds[index] += deltaTime;
+                if (_missingChainSeconds[index] > Mathf.Max(0.15f, unavailableReturnSeconds))
+                {
+                    _hasPreviousBendDirections[index] = false;
+                }
+
+                ReturnChainToReference(chainId, returnStep);
+                return;
+            }
+
+            _missingChainSeconds[index] = 0f;
+            binding.RestoreChainReferencePose(chainId);
+            var root = binding.GetChainRoot(chainId);
+            var mid = binding.GetChainMid(chainId);
+            var tip = binding.GetChainTip(chainId);
+            var targetReach = binding.GetChainTotalReach(chainId);
+            if (root == null || mid == null || tip == null || !IsFinite(targetReach) || targetReach <= 0.000001f)
+            {
+                ReturnChainToReference(chainId, returnStep);
+                return;
+            }
+
+            var mappedEffector = axisMap.MapVector(sourceTarget.normalizedEffectorDisplacement);
+            var mappedHint = axisMap.MapVector(sourceTarget.normalizedBendHintDisplacement);
+            if (!IsFinite(mappedEffector) || !IsFinite(mappedHint))
+            {
+                ReturnChainToReference(chainId, returnStep);
+                return;
+            }
+
+            var rootPosition = root.position;
+            var desiredEffector = rootPosition + mappedEffector * targetReach;
+            var bendHint = rootPosition + mappedHint * targetReach;
+            debug.desiredEffectorPosition = desiredEffector;
+            debug.bendHintPosition = bendHint;
+            debug.mappedEffectorParentLocal = mappedEffector;
+            debug.mappedHintParentLocal = mappedHint;
+            debug.hasBendHint = sourceTarget.hasBendHint && mappedHint.sqrMagnitude > MinimumDirectionSquared;
+            _chainDebugStates[index] = debug;
+
+            if (debug.hasBendHint)
+            {
+                _missingHintSeconds[index] = 0f;
+            }
+            else
+            {
+                _missingHintSeconds[index] += deltaTime;
+                if (_missingHintSeconds[index] > Mathf.Max(0.15f, unavailableReturnSeconds))
+                {
+                    _hasPreviousBendDirections[index] = false;
+                }
+            }
+
+            var referenceBend = axisMap.Target.Forward;
+            var fallbackEffector = mappedEffector.sqrMagnitude > MinimumDirectionSquared
+                ? mappedEffector
+                : referenceBend;
+            var request = new TwoBoneIkRequest
+            {
+                rootPosition = rootPosition,
+                targetEffectorPosition = desiredEffector,
+                bendHintPosition = bendHint,
+                hasBendHint = debug.hasBendHint,
+                previousBendDirection = _previousBendDirections[index],
+                hasPreviousBendDirection = _hasPreviousBendDirections[index],
+                referenceBendDirection = referenceBend,
+                fallbackEffectorDirection = fallbackEffector,
+                upperLength = binding.GetChainUpperLength(chainId),
+                lowerLength = binding.GetChainLowerLength(chainId),
+            };
+
+            if (!_ikSolver.TrySolve(request, out var result) || !ApplySolvedChain(root, mid, tip, result))
+            {
+                ReturnChainToReference(chainId, returnStep);
+                return;
+            }
+
+            _previousBendDirections[index] = result.bendDirection;
+            _hasPreviousBendDirections[index] = true;
+            IkChainsSolved++;
+            _drivenLimbBoneCount += 2;
+
+            var clamped = Mathf.Abs(result.clampedTargetDistance - result.targetDistance) > 0.0001f;
+            var endpointResidual = Vector3.Distance(tip.position, result.solvedEffectorPosition);
+            var normalizedEndpointResidual = endpointResidual / Mathf.Max(targetReach, 0.000001f);
+            debug = _chainDebugStates[index];
+            debug.solved = true;
+            debug.targetWasClamped = clamped;
+            debug.actualTipPosition = tip.position;
+            debug.endpointError = IsFinite(endpointResidual) ? endpointResidual : 0f;
+            debug.normalizedEndpointError = IsFinite(normalizedEndpointResidual) ? normalizedEndpointResidual : 0f;
+            debug.ikEndpointResidual = debug.endpointError;
+            debug.normalizedIkEndpointResidual = debug.normalizedEndpointError;
+            MaxEndpointError = Mathf.Max(MaxEndpointError, debug.endpointError);
+            MaxNormalizedEndpointError = Mathf.Max(MaxNormalizedEndpointError, debug.normalizedEndpointError);
+            MaxIkEndpointResidual = Mathf.Max(MaxIkEndpointResidual, debug.endpointError);
+            MaxNormalizedIkEndpointResidual = Mathf.Max(MaxNormalizedIkEndpointResidual, debug.normalizedEndpointError);
+
+            if (!clamped)
+            {
+                var actualTargetNormalized = (tip.position - rootPosition) / Mathf.Max(targetReach, 0.000001f);
+                var actualSourceNormalized = axisMap.UnmapVector(actualTargetNormalized);
+                var fidelityError = Vector3.Distance(actualSourceNormalized, sourceTarget.normalizedEffectorDisplacement);
+                debug.fidelityComparable = IsFinite(fidelityError);
+                debug.retargetFidelityError = debug.fidelityComparable ? fidelityError : 0f;
+                debug.normalizedRetargetFidelityError = debug.retargetFidelityError;
+                MaxRetargetFidelityError = Mathf.Max(MaxRetargetFidelityError, debug.retargetFidelityError);
+                MaxNormalizedRetargetFidelityError = Mathf.Max(MaxNormalizedRetargetFidelityError, debug.normalizedRetargetFidelityError);
+            }
+
+            if (debug.hasBendHint && TryCalculateBendPlaneError(
+                    rootPosition,
+                    result.solvedEffectorPosition,
+                    bendHint,
+                    mid.position,
+                    out var bendError))
+            {
+                debug.bendPlaneErrorDegrees = bendError;
+                MaxBendPlaneErrorDegrees = Mathf.Max(MaxBendPlaneErrorDegrees, bendError);
+            }
+
+            _chainDebugStates[index] = debug;
+        }
+
+        private static bool TryGetPosition(CanonicalPoseJoint joint, out Vector3 position)
+        {
+            if (!joint.IsTracked)
+            {
+                position = Vector3.zero;
+                return false;
+            }
+
+            if (joint.hasLocalPosition && IsFinite(joint.localPosition))
+            {
+                position = joint.localPosition;
+                return true;
+            }
+
+            if (joint.hasWorldPosition && IsFinite(joint.worldPosition))
+            {
+                position = joint.worldPosition;
+                return true;
+            }
+
+            position = Vector3.zero;
+            return false;
         }
 
         private void EnsureCharacterizations(MotionCalibrationProfile profile)

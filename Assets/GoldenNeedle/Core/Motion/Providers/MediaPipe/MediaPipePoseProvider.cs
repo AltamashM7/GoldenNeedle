@@ -40,8 +40,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField] private int requestedCameraHeight = 480;
         [SerializeField] private int requestedCameraFps = 30;
         [SerializeField] private float cameraStartupTimeoutSeconds = 8f;
-        [Tooltip("Corrects a known horizontal mirror in a front-facing WebCamTexture source; this is separate from the user-facing display mirror.")]
-        [SerializeField] private bool correctFrontFacingSourceMirror = true;
         [Tooltip("Optional selfie-style display mirror. Canonical left/right semantics are not changed.")]
         [SerializeField] private bool mirrorFrontFacingDisplay;
 
@@ -543,7 +541,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 sensorRotationDegrees: _webCamTexture.videoRotationAngle,
                 sensorVerticallyMirrored: _webCamTexture.videoVerticallyMirrored,
                 frontFacing: _selectedDevice.isFrontFacing,
-                sourceTextureHorizontallyMirrored: correctFrontFacingSourceMirror && _selectedDevice.isFrontFacing,
+                // WebCamTexture is presented from its sensor metadata as-is. Do not infer an
+                // extra display mirror merely because the selected device is front-facing.
+                sourceTextureHorizontallyMirrored: false,
                 displayMirrored: mirrorFrontFacingDisplay,
                 inferenceFlipHorizontally: transformation.flipHorizontally,
                 inferenceFlipVertically: transformation.flipVertically,

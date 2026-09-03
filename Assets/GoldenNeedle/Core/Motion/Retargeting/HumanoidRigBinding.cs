@@ -94,6 +94,30 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         public Transform AvatarRoot => _boundAvatarRoot;
         public Quaternion AvatarReferenceBodyRotation => _boundAvatarRoot == null ? Quaternion.identity : _boundAvatarRoot.rotation;
 
+        /// <summary>
+        /// Returns the avatar's bind/reference anatomical basis using actual bound joint positions.
+        /// Unlike the canonical source basis, this target basis is a proper right-handed Unity
+        /// basis and can safely be converted to a Quaternion after signed-axis mapping.
+        /// </summary>
+        public bool TryGetReferenceBodyBasis(out SignedAxisBasis basis)
+        {
+            basis = default;
+            if (!_isBound)
+            {
+                return false;
+            }
+
+            var left = _bones[(int)CanonicalBoneId.LeftUpperArm];
+            var right = _bones[(int)CanonicalBoneId.RightUpperArm];
+            var pelvis = _bones[(int)CanonicalBoneId.Pelvis];
+            var chest = _bones[(int)CanonicalBoneId.Chest];
+            return left != null && right != null && pelvis != null && chest != null &&
+                HumanoidRetargetingMath.TryBuildRightHandedBasis(
+                    right.position - left.position,
+                    chest.position - pelvis.position,
+                    out basis);
+        }
+
         private void Awake()
         {
             animator = animator == null ? GetComponentInChildren<Animator>() : animator;
