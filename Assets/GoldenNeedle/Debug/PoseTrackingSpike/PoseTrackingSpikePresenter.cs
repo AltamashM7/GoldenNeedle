@@ -71,6 +71,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         [SerializeField] private HumanoidRetargeter retargeter;
         [SerializeField] private ProceduralDebugRigView rigView;
 
+        private HumanoidRigBinding _rigBinding;
+
         private float _renderFps;
         private GUIStyle _labelStyle;
         private GUIStyle _smallLabelStyle;
@@ -101,9 +103,10 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 rigView = gameObject.AddComponent<ProceduralDebugRigView>();
             }
 
-            if (GetComponent<HumanoidRigBinding>() == null)
+            _rigBinding = GetComponent<HumanoidRigBinding>();
+            if (_rigBinding == null)
             {
-                gameObject.AddComponent<HumanoidRigBinding>();
+                _rigBinding = gameObject.AddComponent<HumanoidRigBinding>();
             }
 
             retargeter = retargeter == null ? GetComponent<HumanoidRetargeter>() : retargeter;
@@ -470,31 +473,255 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
         private void DrawCoordinateDiagnostic()
         {
-            var width = Mathf.Min(620f, Mathf.Max(360f, Screen.width - 32f));
-            var height = Mathf.Min(430f, Mathf.Max(278f, Screen.height - 32f));
+            var width = Mathf.Min(840f, Mathf.Max(620f, Screen.width - 32f));
+            var height = Mathf.Min(780f, Mathf.Max(560f, Screen.height - 32f));
             var panel = new Rect(Screen.width - width - 16f, 16f, width, height);
-            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.96f);
+            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.97f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = Color.white;
 
             var observation = canonicalSource == null ? null : canonicalSource.LatestObservation;
             var rawFrame = runtime == null ? null : runtime.RawCanonicalFrame;
-            var orientation = provider == null ? default(CameraOrientationState) : provider.Orientation;
+            var stabilizedFrame = runtime == null ? null : runtime.StabilizedFrame;
+            var calibration = runtime == null ? null : runtime.Calibration;
+            var profile = calibration == null ? null : calibration.Profile;
+            var orientation = provider == null
+                ? default(CameraOrientationState)
+                : provider.Orientation;
+
+            var sourceReference = default(SignedAxisBasis);
+            var hasSourceReference = profile != null &&
+                HumanoidRetargetingMath.TryBuildSignedBasis(
+                    profile.neutralBodyRight,
+                    profile.neutralBodyUp,
+                    profile.neutralBodyForward,
+                    out sourceReference);
+
+            var leftShoulder = Vector3.zero;
+            var rightShoulder = Vector3.zero;
+            var leftHip = Vector3.zero;
+            var rightHip = Vector3.zero;
+            var pelvis = Vector3.zero;
+            var chest = Vector3.zero;
+            var hasLivePositions =
+                TryGetRetargetPosition(stabilizedFrame, CanonicalJointId.LeftShoulder, out leftShoulder) &&
+                TryGetRetargetPosition(stabilizedFrame, CanonicalJointId.RightShoulder, out rightShoulder) &&
+                TryGetRetargetPosition(stabilizedFrame, CanonicalJointId.LeftHip, out leftHip) &&
+                TryGetRetargetPosition(stabilizedFrame, CanonicalJointId.RightHip, out rightHip) &&
+                TryGetRetargetPosition(stabilizedFrame, CanonicalJointId.Pelvis, out pelvis) &&
+                TryGetRetargetPosition(stabilizedFrame, CanonicalJointId.Chest, out chest);
+
+            var targetReference = default(SignedAxisBasis);
+            var hasTargetBasis = _rigBinding != null &&
+                _rigBinding.TryGetReferenceBodyBasis(out targetReference);
+
+            var axisMap = default(CanonicalToAvatarAxisMap);
+            var liveSource = default(SignedAxisBasis);
+            var hasMap = profile != null &&
+                hasLivePositions &&
+                _rigBinding != null &&
+                HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(
+                    profile,
+                    _rigBinding,
+                    out axisMap) &&
+                HumanoidRetargetingMath.TryBuildLiveSourceBasisForDiagnostics(
+                    axisMap,
+                    rightShoulder - leftShoulder,
+                    chest - pelvis,
+                    out liveSource);
+
             var text =
-                "CANONICAL FRAME / RAW WORLD INSPECTOR\n" +
-                $"Canonical view: inference frame   Display mirror: {orientation.DisplayMirrored}\n" +
-                $"Source H correction: {orientation.SourceTextureHorizontallyMirrored}   Presentation H: {orientation.PresentationHorizontalMirror}\n" +
+                "F6 CANONICAL Z / BODY-YAW TRACE (READ-ONLY)\n" +
+                "Yaw sign: 0 = reference Forward; + = Forward turns toward that basis +Right around +Up\n" +
+                "Joint labels are MediaPipe/Golden Needle semantic Left/Right, not screen side.\n" +
+                $"Display mirror: {orientation.DisplayMirrored}   Inference H flip: {orientation.InferenceFlipHorizontally}\n\n";
+
+            text += "A. SOURCE CALIBRATION BASIS\n";
+            if (hasSourceReference)
+            {
+                text +=
+                    $"Source ref R = {FormatVector(sourceReference.Right)}\n" +
+                    $"Source ref U = {FormatVector(sourceReference.Up)}\n" +
+                    $"Source ref F = {FormatVector(sourceReference.Forward)}\n" +
+                    $"Source handedness = {sourceReference.HandednessSign:+0;-0;0}\n\n";
+            }
+            else
+            {
+                text += "unavailable\n\n";
+            }
+
+            text += "B. LIVE SOURCE BODY BASIS (same handedness rule as production torso mapping)\n";
+            if (hasMap)
+            {
+                text +=
+                    $"Live R = {FormatVector(liveSource.Right)}\n" +
+                    $"Live U = {FormatVector(liveSource.Up)}\n" +
+                    $"Live F = {FormatVector(liveSource.Forward)}\n\n";
+            }
+            else
+            {
+                text += "unavailable until body calibration + stabilized torso + rig binding are valid\n\n";
+            }
+
+            text += "C. STABILIZED CANONICAL DEPTH (production retarget positions; +Z documented away from camera)\n";
+            if (hasLivePositions)
+            {
+                text +=
+                    $"L shoulder XYZ = {FormatVector(leftShoulder)}\n" +
+                    $"R shoulder XYZ = {FormatVector(rightShoulder)}\n" +
+                    $"Shoulder Z: L={leftShoulder.z:0.000}  R={rightShoulder.z:0.000}  dZ R-L={(rightShoulder.z - leftShoulder.z):+0.000;-0.000;0.000}\n" +
+                    $"Hip Z:      L={leftHip.z:0.000}  R={rightHip.z:0.000}  dZ R-L={(rightHip.z - leftHip.z):+0.000;-0.000;0.000}\n\n";
+            }
+            else
+            {
+                text += "unavailable / missing stabilized torso joints\n\n";
+            }
+
+            text += "D. TARGET AVATAR REFERENCE BASIS (cached production basis)\n";
+            if (hasTargetBasis)
+            {
+                text +=
+                    $"Target R = {FormatVector(targetReference.Right)}\n" +
+                    $"Target U = {FormatVector(targetReference.Up)}\n" +
+                    $"Target F = {FormatVector(targetReference.Forward)}\n" +
+                    $"Target handedness = {targetReference.HandednessSign:+0;-0;0}\n";
+                if (_rigBinding.TryGetAnimatorFootForwardForDiagnostics(out var footForward))
+                {
+                    text +=
+                        $"Target foot/toe forward = {FormatVector(footForward)}\n" +
+                        $"Dot(Target F, foot forward) = {Vector3.Dot(targetReference.Forward, footForward):0.000}\n\n";
+                }
+                else
+                {
+                    text += "Target foot/toe forward = unavailable\n\n";
+                }
+            }
+            else
+            {
+                text += "unavailable / rig not bound\n\n";
+            }
+
+            text += "E. SOURCE -> TARGET MAP\n";
+            if (hasMap)
+            {
+                var mappedRefRight = axisMap.MapVector(axisMap.Source.Right);
+                var mappedRefUp = axisMap.MapVector(axisMap.Source.Up);
+                var mappedRefForward = axisMap.MapVector(axisMap.Source.Forward);
+                var mappedLiveRight = axisMap.MapVector(liveSource.Right);
+                var mappedLiveUp = axisMap.MapVector(liveSource.Up);
+                var mappedLiveForward = axisMap.MapVector(liveSource.Forward);
+
+                text +=
+                    $"Map determinant sign = {axisMap.DeterminantSign:+0;-0;0}\n" +
+                    $"Mapped ref R = {FormatVector(mappedRefRight)}\n" +
+                    $"Mapped ref U = {FormatVector(mappedRefUp)}\n" +
+                    $"Mapped ref F = {FormatVector(mappedRefForward)}\n" +
+                    $"Mapped live R = {FormatVector(mappedLiveRight)}\n" +
+                    $"Mapped live U = {FormatVector(mappedLiveUp)}\n" +
+                    $"Mapped live F = {FormatVector(mappedLiveForward)}\n\n" +
+                    "F. BODY YAW EVIDENCE\n" +
+                    $"Source yaw from calibration = {TryFormatYaw(axisMap.Source, liveSource.Forward)}\n" +
+                    $"Mapped target yaw = {TryFormatYaw(axisMap.Target, mappedLiveForward)}\n";
+
+                var appliedYawText = "unavailable";
+                if (HumanoidRetargetingMath.TryBuildMappedBodyRotation(
+                        axisMap,
+                        rightShoulder - leftShoulder,
+                        chest - pelvis,
+                        out var currentBodyRotation))
+                {
+                    var targetReferenceBodyRotation = Quaternion.LookRotation(
+                        axisMap.Target.Forward,
+                        axisMap.Target.Up);
+                    var bodyDelta = currentBodyRotation *
+                        Quaternion.Inverse(targetReferenceBodyRotation);
+                    appliedYawText = TryFormatYaw(
+                        axisMap.Target,
+                        bodyDelta * axisMap.Target.Forward);
+                }
+
+                text += $"Applied torso delta yaw = {appliedYawText}\n\n";
+            }
+            else
+            {
+                text +=
+                    "unavailable until body calibration + stabilized torso + rig binding are valid\n\n" +
+                    "F. BODY YAW EVIDENCE\n" +
+                    "unavailable\n\n";
+            }
+
+            text +=
+                "EXISTING RAW/CANONICAL SAMPLE\n" +
                 CanonicalCoordinateAgreementEvaluator.DescribeYComparisons(rawFrame) +
                 "joint          image x,y       raw world x,y,z          canonical world x,y,z\n";
-
             for (var i = 0; i < CoordinateDiagnosticJointIds.Length; i++)
             {
-                var raw = observation == null ? default : observation.GetLandmark(CoordinateDiagnosticSourceIndices[i]);
-                var canonical = rawFrame == null ? default : rawFrame.GetJoint(CoordinateDiagnosticJointIds[i]);
+                var raw = observation == null
+                    ? default
+                    : observation.GetLandmark(CoordinateDiagnosticSourceIndices[i]);
+                var canonical = rawFrame == null
+                    ? default
+                    : rawFrame.GetJoint(CoordinateDiagnosticJointIds[i]);
                 text += $"{CoordinateDiagnosticLabels[i],-12} {FormatImage(canonical),-15} {FormatRawWorld(raw),-24} {FormatWorld(canonical)}\n";
             }
 
-            GUI.Label(new Rect(panel.x + 10f, panel.y + 8f, panel.width - 20f, panel.height - 16f), text, _smallLabelStyle);
+            GUI.Label(
+                new Rect(
+                    panel.x + 10f,
+                    panel.y + 8f,
+                    panel.width - 20f,
+                    panel.height - 16f),
+                text,
+                _smallLabelStyle);
+        }
+
+        private static bool TryGetRetargetPosition(
+            CanonicalPoseFrame frame,
+            CanonicalJointId id,
+            out Vector3 position)
+        {
+            position = Vector3.zero;
+            if (frame == null)
+            {
+                return false;
+            }
+
+            var joint = frame.GetJoint(id);
+            if (!joint.IsTracked)
+            {
+                return false;
+            }
+
+            if (joint.hasLocalPosition && IsFinite(joint.localPosition))
+            {
+                position = joint.localPosition;
+                return true;
+            }
+
+            if (joint.hasWorldPosition && IsFinite(joint.worldPosition))
+            {
+                position = joint.worldPosition;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string TryFormatYaw(
+            SignedAxisBasis referenceBasis,
+            Vector3 liveForward)
+        {
+            return HumanoidRetargetingMath.TryCalculateSignedYawDegreesForDiagnostics(
+                    referenceBasis,
+                    liveForward,
+                    out var yaw)
+                ? $"{yaw:+0.0;-0.0;0.0} deg"
+                : "unavailable";
+        }
+
+        private static string FormatVector(Vector3 value)
+        {
+            return $"({value.x:+0.000;-0.000;0.000}, {value.y:+0.000;-0.000;0.000}, {value.z:+0.000;-0.000;0.000})";
         }
 
         private static string FormatImage(CanonicalPoseJoint joint)

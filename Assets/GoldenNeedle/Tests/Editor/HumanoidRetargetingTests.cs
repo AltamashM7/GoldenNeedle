@@ -464,6 +464,42 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
+        public void DiagnosticSignedYawIsPositiveTowardReferenceRight()
+        {
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildSignedBasis(
+                    Vector3.right,
+                    Vector3.up,
+                    Vector3.back,
+                    out var basis),
+                Is.True);
+
+            Assert.That(
+                HumanoidRetargetingMath.TryCalculateSignedYawDegreesForDiagnostics(
+                    basis,
+                    basis.Forward,
+                    out var neutralYaw),
+                Is.True);
+            Assert.That(neutralYaw, Is.EqualTo(0f).Within(0.001f));
+
+            Assert.That(
+                HumanoidRetargetingMath.TryCalculateSignedYawDegreesForDiagnostics(
+                    basis,
+                    basis.Right,
+                    out var positiveYaw),
+                Is.True);
+            Assert.That(positiveYaw, Is.EqualTo(90f).Within(0.001f));
+
+            Assert.That(
+                HumanoidRetargetingMath.TryCalculateSignedYawDegreesForDiagnostics(
+                    basis,
+                    -basis.Right,
+                    out var negativeYaw),
+                Is.True);
+            Assert.That(negativeYaw, Is.EqualTo(-90f).Within(0.001f));
+        }
+
+        [Test]
         public void SignedAxisBodyRotationAllowsLargeYawWithoutHemisphereForcing()
         {
             var context = CreateRigContext(Quaternion.Euler(0f, 180f, 0f));

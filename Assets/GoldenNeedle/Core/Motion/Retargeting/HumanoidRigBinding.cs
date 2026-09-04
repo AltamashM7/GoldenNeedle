@@ -107,6 +107,48 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             return _isBound && _hasReferenceBodyBasis && basis.IsValid;
         }
 
+        /// <summary>
+        /// Diagnostic-only Animator Humanoid foot/toe forward evidence. Reads current Humanoid
+        /// bone positions, projects toe-mid minus foot-mid onto the cached target reference ground
+        /// plane, and never affects binding validity or production retarget behavior.
+        /// </summary>
+        public bool TryGetAnimatorFootForwardForDiagnostics(out Vector3 footForward)
+        {
+            footForward = Vector3.zero;
+            if (!_isBound ||
+                _bindingMode != HumanoidBindingMode.AnimatorHumanoid ||
+                animator == null ||
+                !_hasReferenceBodyBasis)
+            {
+                return false;
+            }
+
+            var leftFootTransform = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+            var rightFootTransform = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+            var leftToesTransform = animator.GetBoneTransform(HumanBodyBones.LeftToes);
+            var rightToesTransform = animator.GetBoneTransform(HumanBodyBones.RightToes);
+            if (leftFootTransform == null ||
+                rightFootTransform == null ||
+                leftToesTransform == null ||
+                rightToesTransform == null)
+            {
+                return false;
+            }
+
+            var footMid = (leftFootTransform.position + rightFootTransform.position) * 0.5f;
+            var toeMid = (leftToesTransform.position + rightToesTransform.position) * 0.5f;
+            var direction = toeMid - footMid;
+            direction -= _referenceBodyBasis.Up *
+                Vector3.Dot(direction, _referenceBodyBasis.Up);
+            if (!IsFinite(direction) || direction.sqrMagnitude <= 0.000001f)
+            {
+                return false;
+            }
+
+            footForward = direction.normalized;
+            return IsFinite(footForward);
+        }
+
         private void Awake()
         {
             animator = animator == null ? GetComponentInChildren<Animator>() : animator;

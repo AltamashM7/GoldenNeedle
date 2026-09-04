@@ -229,6 +229,81 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                    Vector3.Dot(rotation * Vector3.forward, mappedForward) > 0.999f;
         }
 
+        /// <summary>
+        /// Diagnostic-only reconstruction of the live source semantic basis using the exact
+        /// handedness rule used by TryBuildMappedBodyRotation. This helper does not mutate state
+        /// and is not used by production retargeting.
+        /// </summary>
+        public static bool TryBuildLiveSourceBasisForDiagnostics(
+            CanonicalToAvatarAxisMap map,
+            Vector3 currentSourceRight,
+            Vector3 currentSourceUp,
+            out SignedAxisBasis liveBasis)
+        {
+            liveBasis = default;
+            if (!map.IsValid ||
+                !TryNormalize(currentSourceRight, out var right) ||
+                !TryNormalize(currentSourceUp, out var up))
+            {
+                return false;
+            }
+
+            up -= right * Vector3.Dot(up, right);
+            if (!TryNormalize(up, out up))
+            {
+                return false;
+            }
+
+            var properForward = Vector3.Cross(right, up);
+            if (!TryNormalize(properForward, out properForward))
+            {
+                return false;
+            }
+
+            var forward = map.Source.HandednessSign < 0f ? -properForward : properForward;
+            liveBasis = new SignedAxisBasis(
+                right,
+                up,
+                forward,
+                map.Source.HandednessSign);
+            return liveBasis.IsValid;
+        }
+
+        /// <summary>
+        /// Diagnostic-only signed yaw around the reference basis Up axis. Zero means the live
+        /// Forward matches reference Forward; positive means Forward turns toward reference Right.
+        /// </summary>
+        public static bool TryCalculateSignedYawDegreesForDiagnostics(
+            SignedAxisBasis referenceBasis,
+            Vector3 liveForward,
+            out float yawDegrees)
+        {
+            yawDegrees = 0f;
+            if (!referenceBasis.IsValid ||
+                !TryNormalize(referenceBasis.Up, out var up) ||
+                !TryNormalize(referenceBasis.Forward, out var referenceForward) ||
+                !TryNormalize(referenceBasis.Right, out var referenceRight) ||
+                !IsFinite(liveForward))
+            {
+                return false;
+            }
+
+            referenceForward -= up * Vector3.Dot(referenceForward, up);
+            referenceRight -= up * Vector3.Dot(referenceRight, up);
+            liveForward -= up * Vector3.Dot(liveForward, up);
+            if (!TryNormalize(referenceForward, out referenceForward) ||
+                !TryNormalize(referenceRight, out referenceRight) ||
+                !TryNormalize(liveForward, out liveForward))
+            {
+                return false;
+            }
+
+            var towardRight = Vector3.Dot(liveForward, referenceRight);
+            var alongForward = Vector3.Dot(liveForward, referenceForward);
+            yawDegrees = Mathf.Atan2(towardRight, alongForward) * Mathf.Rad2Deg;
+            return IsFinite(yawDegrees);
+        }
+
         public static Quaternion CalculateAlignment(Quaternion avatarReferenceBodyRotation, Quaternion sourceCalibrationBodyRotation)
         {
             return avatarReferenceBodyRotation * Quaternion.Inverse(sourceCalibrationBodyRotation);

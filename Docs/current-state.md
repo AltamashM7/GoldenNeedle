@@ -46,7 +46,10 @@ The latest visible state before this handoff is:
 - **REAL-AVATAR BODY/FACING ORIENTATION — UNRESOLVED**: the original Neko test at root Y=0 showed the relative facing/orientation problem.
 - Commit `83239b00e891f7e8273e1449a26a6030f68334df` attempted to disambiguate Animator Forward from `HumanPose.bodyRotation`; fresh USER QA showed the same relative orientation problem, so that experiment is rejected and removed.
 - During that failed HumanPose experiment the USER also rotated the Neko root to Y=180. That flipped the whole avatar but preserved the same relative orientation problem; this does **not** prove the next test combination will fail.
-- The next deliberate test is the restored exact pre-HumanPose retarget behavior from `161ef4dbacb4a8c7e930d4e65200c3c69d0dc366` with the real Neko avatar intentionally placed at root Y=180, matching the procedural Lab's authored facing convention. That exact combination has **not yet been USER-tested**.
+- Changing the Neko root between Y=0 and Y=180 has been rejected as an explanatory fix by itself: it rotates anatomy, target basis, and bind rotations together while the relative facing mismatch remains.
+- Neko target anatomy is internally coherent: bind shoulders/chest imply target Right≈+X, Up≈+Y, Forward≈+Z, and independent foot/toe geometry also points toward +Z. Target Forward is therefore not being changed in the current investigation.
+- The remaining unknown is the runtime **Z/yaw polarity** across front-camera inference preparation → MediaPipe pose-world → canonical world → calibration source basis → signed source→target map → applied torso delta.
+- The current task adds **diagnostic-only F6 Z/yaw tracing**. No new orientation correction has been selected and production mapping remains unchanged.
 - Coordinate/presentation diagnostics remain observability tools rather than proof of correctness.
 
 Do not infer that the correction is visually correct merely because the signed-axis math is internally consistent. USER visual/motion QA remains the decisive gate, followed by Orchestrator audit.
@@ -59,7 +62,8 @@ Do not infer that the correction is visually correct merely because the signed-a
 - Phase 3 physical QA historically passed the then-current T-pose calibration, smoothing and responsiveness with **PASS WITH NOTES**; Phase 4 now deliberately supersedes the hard T-pose calibration architecture.
 - Phase 4 2D presentation QA has **PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
 - The pre-correction Phase 4 source/test compilation was repeatedly reported successful by Luna.
-- The `83239b...` HumanPose semantic-forward experiment **FAILED USER QA** and has been deliberately rolled back from production code/tests. The remaining decisive runtime gate is the restored pre-HumanPose behavior tested with Neko root Y=180.
+- The `83239b...` HumanPose semantic-forward experiment **FAILED USER QA** and has been deliberately rolled back from production code/tests.
+- Current investigation is diagnostics-only: runtime source depth/basis, signed map, mapped basis, and torso-yaw evidence must localize the sign divergence before any new production correction is considered.
 - The expanding Phase 4 EditMode suites were often only **present/source-compiled**, not executed by Unity Test Runner, because another Unity Editor instance/licensing channel blocked batch execution. Do not convert those counts into passing Unity tests without rerunning them.
 - Known one-off ShaderGraph editor warnings around recompilation/exit remain non-blocking unless behavior changes.
 
@@ -92,9 +96,9 @@ Perform fresh USER QA on the correction, then have the Web Orchestrator audit th
 
 The highest-value QA is:
 
-1. Keep the restored pre-HumanPose retarget code unchanged and place the real Neko avatar root at **Y=180** in the USER's local Lab setup.
-2. Re-run the smallest real-avatar check: neutral stance, one asymmetric arm pose, then a moderate body yaw.
-3. Verify whether facing now matches the procedural/F3 convention while the already-passing left/right limb response remains intact.
-4. Treat this combination as **unproven until USER QA**; do not infer success from the root rotation alone.
+1. Enable **F6** and capture the neutral diagnostic values while facing the camera.
+2. Turn so the USER's **physical right shoulder moves toward the webcam** and the left shoulder moves away; capture the F6 values again.
+3. If useful, repeat the opposite turn.
+4. Compare shoulder/hip canonical dZ, source yaw, mapped target yaw, and applied torso-delta yaw. Do not select a production fix until these runtime signs localize the divergence.
 5. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.
 

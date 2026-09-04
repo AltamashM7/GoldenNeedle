@@ -124,7 +124,10 @@ At the checkpoint:
 - Initial Neko test at root Y=0 exposed the orientation problem.
 - `83239b00e891f7e8273e1449a26a6030f68334df` used `HumanPose.bodyRotation` as a semantic-forward experiment; fresh USER QA showed the same relative problem, so the experiment is rejected and removed.
 - Rotating Neko root to Y=180 while that failed experiment was active merely flipped the avatar and did not solve the relative issue.
-- The next untested combination is **restored pre-HumanPose production behavior + Neko root Y=180**, chosen to match the procedural Lab's authored facing convention. Do not treat it as proven.
+- Root Y=0 versus Y=180 is no longer being treated as an explanatory fix: rotating the root rotates the target anatomy/reference basis/bind rotations together and preserves the relative mismatch.
+- Repository anatomy evidence supports Neko target Forward≈+Z from both torso basis and foot/toe geometry.
+- The unresolved question is runtime Z/yaw polarity through source world coordinates, source-body yaw, signed map, and applied torso delta.
+- A diagnostic-only F6 trace now exposes those stages live; no new production orientation correction has been selected.
 
 Do not judge the real avatar path until the tracking/presentation foundation and procedural acceptance harness are trustworthy.
 
@@ -142,10 +145,10 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 Audit the exact pushed correction head, then use USER QA as the gate:
 
-1. Use the restored exact pre-HumanPose retarget behavior and set Neko root Y=180 in the USER's local Lab wiring.
-2. Recheck neutral facing, one asymmetric arm pose, and moderate yaw.
-3. Confirm whether facing now matches F3/procedural convention without regressing the already-passing limb side/response.
-4. This exact combination is untested; if it passes, perform the final Phase 4 Orchestrator audit.
+1. Turn on F6 and record neutral source/target basis, canonical shoulder/hip depth, map, and yaw values.
+2. Turn the USER's physical right shoulder toward the webcam while the left moves away; record the same values.
+3. Optionally repeat the opposite turn.
+4. Use the runtime sign progression to localize the divergence before proposing any production correction.
 5. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
 
 ## Governance
