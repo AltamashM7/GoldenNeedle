@@ -325,12 +325,16 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 TryGetPosition(right, out var rightPosition) &&
                 TryGetPosition(pelvis, out var pelvisPosition) &&
                 TryGetPosition(chest, out var chestPosition) &&
-                HumanoidRetargetingMath.TryBuildMappedBodyDelta(
+                HumanoidRetargetingMath.TryBuildMappedBodyRotation(
                     axisMap,
                     rightPosition - leftPosition,
                     chestPosition - pelvisPosition,
-                    out var bodyDelta))
+                    out var currentBodyRotation))
             {
+                var targetReferenceBodyRotation = Quaternion.LookRotation(
+                    axisMap.Target.Forward,
+                    axisMap.Target.Up);
+                var bodyDelta = currentBodyRotation * Quaternion.Inverse(targetReferenceBodyRotation);
                 target.rotation = bodyDelta * binding.GetBindWorldRotation(id);
                 return;
             }

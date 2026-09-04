@@ -124,22 +124,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         }
 
         /// <summary>
-        /// Builds a target semantic reference basis while deliberately preserving the supplied
-        /// Forward sign. Animator Humanoid avatars can therefore disambiguate body-facing
-        /// orientation without flipping anatomical Right or Up.
-        /// </summary>
-        public static bool TryBuildTargetReferenceBasis(
-            Vector3 right,
-            Vector3 up,
-            Vector3 semanticForward,
-            out SignedAxisBasis basis)
-        {
-            return TryBuildSignedBasis(right, up, semanticForward, out basis);
-        }
-
-        /// <summary>
-        /// Builds a proper Unity-compatible anatomical basis from target Right and Up. Explicit
-        /// procedural/debug binding retains this deterministic geometry-only contract.
+        /// Builds a proper Unity-compatible anatomical basis from target Right and Up.
         /// </summary>
         public static bool TryBuildRightHandedBasis(
             Vector3 right,
@@ -242,71 +227,6 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             return Vector3.Dot(rotation * Vector3.right, mappedRight) > 0.999f &&
                    Vector3.Dot(rotation * Vector3.up, mappedUp) > 0.999f &&
                    Vector3.Dot(rotation * Vector3.forward, mappedForward) > 0.999f;
-        }
-
-        /// <summary>
-        /// Builds the proper world-space rotation delta that moves the cached target reference
-        /// semantic basis to the mapped live source basis. This remains representable by a
-        /// Quaternion even when the target semantic basis itself is reflected, because reference
-        /// and live target bases have the same handedness.
-        /// </summary>
-        public static bool TryBuildMappedBodyDelta(
-            CanonicalToAvatarAxisMap map,
-            Vector3 currentSourceRight,
-            Vector3 currentSourceUp,
-            out Quaternion delta)
-        {
-            delta = Quaternion.identity;
-            if (!map.IsValid ||
-                !TryNormalize(currentSourceRight, out var right) ||
-                !TryNormalize(currentSourceUp, out var up))
-            {
-                return false;
-            }
-
-            up -= right * Vector3.Dot(up, right);
-            if (!TryNormalize(up, out up))
-            {
-                return false;
-            }
-
-            var properForward = Vector3.Cross(right, up);
-            if (!TryNormalize(properForward, out properForward))
-            {
-                return false;
-            }
-
-            var sourceForward = map.Source.HandednessSign < 0f ? -properForward : properForward;
-            var mappedRight = map.MapVector(right);
-            var mappedUp = map.MapVector(up);
-            var mappedForward = map.MapVector(sourceForward);
-            if (!TryNormalize(mappedRight, out mappedRight) ||
-                !TryNormalize(mappedUp, out mappedUp) ||
-                !TryNormalize(mappedForward, out mappedForward) ||
-                !TryBuildRightHandedBasis(map.Target.Right, map.Target.Up, out var referenceProper) ||
-                !TryBuildRightHandedBasis(mappedRight, mappedUp, out var currentProper))
-            {
-                return false;
-            }
-
-            var mappedHandedness = Vector3.Dot(Vector3.Cross(mappedRight, mappedUp), mappedForward);
-            if (!IsFinite(mappedHandedness) ||
-                Mathf.Sign(mappedHandedness) != Mathf.Sign(map.Target.HandednessSign))
-            {
-                return false;
-            }
-
-            var referenceRotation = Quaternion.LookRotation(referenceProper.Forward, referenceProper.Up);
-            var currentRotation = Quaternion.LookRotation(currentProper.Forward, currentProper.Up);
-            delta = currentRotation * Quaternion.Inverse(referenceRotation);
-            if (!IsFinite(delta))
-            {
-                return false;
-            }
-
-            return Vector3.Dot(delta * map.Target.Right, mappedRight) > 0.999f &&
-                   Vector3.Dot(delta * map.Target.Up, mappedUp) > 0.999f &&
-                   Vector3.Dot(delta * map.Target.Forward, mappedForward) > 0.999f;
         }
 
         public static Quaternion CalculateAlignment(Quaternion avatarReferenceBodyRotation, Quaternion sourceCalibrationBodyRotation)

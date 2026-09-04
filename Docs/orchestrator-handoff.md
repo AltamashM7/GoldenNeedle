@@ -16,7 +16,7 @@ Phase 4 handoff HEAD before the correction:
 
 `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — `docs: hand off phase 4 investigation state`
 
-Its runtime parent is `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The branch now contains the Phase 4 coordinate/retarget correction plus a modular calibration redesign awaiting USER QA and Orchestrator audit.
+Its runtime parent is `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The branch contains the Phase 4 coordinate/retarget correction, modular calibration redesign, passed procedural harness, Neko Animator Humanoid asset, and the focused rollback of the failed `83239b...` HumanPose semantic-forward experiment. Phase 4 still awaits final real-avatar orientation QA and Orchestrator audit.
 
 Accepted Motion Engine baseline:
 
@@ -119,8 +119,12 @@ At the checkpoint:
 - Modular calibration: **USER QA PASSED**.
 - Procedural F3/F5 retarget: **USER QA PASSED**.
 - Real Neko Animator Humanoid binding and limb responsiveness: **PASS**.
-- Real Animator Humanoid body-forward/facing orientation: **FAIL at the starting checkpoint; focused semantic-forward correction pending USER recheck**.
-- NekoLegends `android01.fbx` is now the first real Animator Humanoid validation asset. Unity binds it successfully; limb responsiveness matches the procedural path, while semantic facing was reversed at the starting checkpoint.
+- Real Animator Humanoid body-forward/facing orientation: **UNRESOLVED**.
+- NekoLegends `android01.fbx` binds successfully and its limb responsiveness matches the procedural path.
+- Initial Neko test at root Y=0 exposed the orientation problem.
+- `83239b00e891f7e8273e1449a26a6030f68334df` used `HumanPose.bodyRotation` as a semantic-forward experiment; fresh USER QA showed the same relative problem, so the experiment is rejected and removed.
+- Rotating Neko root to Y=180 while that failed experiment was active merely flipped the avatar and did not solve the relative issue.
+- The next untested combination is **restored pre-HumanPose production behavior + Neko root Y=180**, chosen to match the procedural Lab's authored facing convention. Do not treat it as proven.
 
 Do not judge the real avatar path until the tracking/presentation foundation and procedural acceptance harness are trustworthy.
 
@@ -138,10 +142,11 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 Audit the exact pushed correction head, then use USER QA as the gate:
 
-1. Repeat the smallest real Animator Humanoid facing QA after the semantic-forward correction: neutral facing, asymmetric arm, moderate yaw.
-2. Confirm left/right and procedural behavior remain unchanged.
-3. If the real Humanoid facing issue is resolved, perform the final Phase 4 Orchestrator audit.
-4. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
+1. Use the restored exact pre-HumanPose retarget behavior and set Neko root Y=180 in the USER's local Lab wiring.
+2. Recheck neutral facing, one asymmetric arm pose, and moderate yaw.
+3. Confirm whether facing now matches F3/procedural convention without regressing the already-passing limb side/response.
+4. This exact combination is untested; if it passes, perform the final Phase 4 Orchestrator audit.
+5. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
 
 ## Governance
 

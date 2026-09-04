@@ -32,11 +32,11 @@ USER QA historically passed the Phase 3 calibration/T-pose implementation, visib
 
 Pre-correction handoff HEAD: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` (runtime parent `5e830dce7ac3de542ab159b8b90992935d9dd0b0`).
 
-A repository-first correction removed the unintended front-camera presentation flip and replaced reflected/per-chain quaternion production mapping with an explicit signed canonical-to-avatar basis map feeding positional analytic IK. The corrected 2D presentation has now passed USER QA. The old hard T-pose calibration state machine is being replaced with a comfortable body reference plus independent arm/leg geometry modules while preserving canonical mapping, stabilization, avatar-authored proportions, partial-body behavior, provider boundary, rig binding, and the permanent debug Lab.
+A repository-first correction removed the unintended front-camera presentation flip and replaced reflected/per-chain quaternion production mapping with an explicit signed canonical-to-avatar basis map feeding positional analytic IK. USER QA has now passed 2D presentation, modular calibration, procedural F3/F5 retargeting, real Animator Humanoid binding, and real Humanoid limb response. Real-avatar body/facing orientation remains unresolved. The `83239b...` HumanPose semantic-forward experiment failed USER QA and has been removed.
 
 Phase 4 remains **NOT USER ACCEPTED**. The correction must not be merged into `main` until fresh USER motion/visual QA and Orchestrator audit pass.
 
-**Immediate next step:** repeat the smallest real Animator Humanoid facing QA after the semantic-forward correction. 2D presentation, modular calibration, procedural F3/F5 retargeting, real Humanoid binding, and real Humanoid limb responsiveness have already passed; only semantic body-facing orientation remains to recheck before final Phase 4 audit.
+**Immediate next step:** test the restored pre-HumanPose retarget behavior with the real Neko avatar deliberately placed at root Y=180, matching the procedural Lab's authored facing convention. That exact combination is not yet USER-tested. If facing is corrected without regressing limb response, proceed to the final Phase 4 audit.
 
 ## Phase 5 — Locomotion prototype
 

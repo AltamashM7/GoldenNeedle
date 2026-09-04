@@ -10,7 +10,7 @@ This is the concise durable snapshot. It intentionally distinguishes accepted Mo
 - Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`
 - Phase 4 runtime investigation parent: `5e830dce7ac3de542ab159b8b90992935d9dd0b0`.
 - Phase 4 handoff-doc HEAD before the correction: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — `docs: hand off phase 4 investigation state`.
-- The branch contains the Phase 4 coordinate/retarget correction plus a modular calibration redesign **awaiting USER QA and Orchestrator audit**.
+- The branch contains the Phase 4 coordinate/retarget correction, modular calibration redesign, procedural retarget validation, Neko Animator Humanoid asset, and the rollback of the failed HumanPose semantic-forward experiment. Phase 4 remains **awaiting USER QA and Orchestrator audit**.
 - Phase 4 is **NOT USER ACCEPTED**.
 - Phase 5 has **NOT STARTED**.
 - No Phase 4 PR or merge to `main` is authorized.
@@ -32,7 +32,7 @@ The branch currently contains, among other work:
 - modular body-reference plus independent per-chain calibration geometry;
 - coordinate-space diagnostics and the permanent Motion Engine Lab controls.
 
-The coordinate/retarget correction keeps the provider/canonical/stabilization boundaries, positional targets, analytic IK, rig binding, and debug harness. Production limb mapping uses the explicit signed canonical-to-avatar basis map with an immutable avatar reference basis, and the corrected 2D presentation path is now USER-QA-passed. Calibration has subsequently been redesigned so body-reference readiness is separate from four independently sampled limb geometries. This is **still not accepted Phase 4 architecture** until calibration and procedural retarget USER QA plus Orchestrator audit pass.
+The coordinate/retarget correction keeps the provider/canonical/stabilization boundaries, positional targets, analytic IK, rig binding, and debug harness. Production limb mapping uses the explicit signed canonical-to-avatar basis map with the immutable pre-HumanPose target-reference behavior. 2D presentation, modular calibration, and procedural F3/F5 retargeting have now passed USER QA. The real Animator Humanoid path binds and drives limbs correctly, but its facing/orientation remains unresolved. Phase 4 is **still not accepted** until that real-avatar orientation gate is deliberately resolved and audited.
 
 ## Latest USER QA evidence at the checkpoint
 
@@ -40,11 +40,14 @@ The latest visible state before this handoff is:
 
 - **2D PRESENTATION QA — PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
 - **MODULAR CALIBRATION QA — PASSED** after the version-5 body-reference/per-chain redesign.
-- **PROCEDURAL F3/F5 RETARGET QA — PASSED**: the signed-axis positional/analytic-IK path is accepted as behaving correctly on the explicit debug rig.
-- The first real Animator Humanoid test uses `Assets/NekoLegends/Humanoids/Androids/Type01/Models/android01.fbx`. Binding and limb responsiveness PASS, but body-forward/facing orientation is reversed.
-- The Animator correction preserves geometric anatomical Right/Up and disambiguates target Forward from Unity Humanoid `HumanPose.bodyRotation` at immutable reference capture time. Procedural/explicit geometry-only reference characterization is intentionally unchanged.
-- Coordinate/presentation diagnostics were changed several times during investigation. They are useful observability tools but must not be treated as proof that the foundation is correct without code inspection and fresh USER QA.
-- The production Animator Humanoid path has now been physically tested with NekoLegends: binding and limb retarget responsiveness PASS; semantic body-forward orientation is the remaining correction pending USER recheck.
+- **PROCEDURAL F3/F5 RETARGET QA — PASSED** on the explicit/procedural rig.
+- **ANIMATOR HUMANOID BINDING — PASSED** with NekoLegends `android01.fbx`.
+- **ANIMATOR HUMANOID LIMB RESPONSE — PASSED**: correct side and sensible limb response remain consistent with the procedural path.
+- **REAL-AVATAR BODY/FACING ORIENTATION — UNRESOLVED**: the original Neko test at root Y=0 showed the relative facing/orientation problem.
+- Commit `83239b00e891f7e8273e1449a26a6030f68334df` attempted to disambiguate Animator Forward from `HumanPose.bodyRotation`; fresh USER QA showed the same relative orientation problem, so that experiment is rejected and removed.
+- During that failed HumanPose experiment the USER also rotated the Neko root to Y=180. That flipped the whole avatar but preserved the same relative orientation problem; this does **not** prove the next test combination will fail.
+- The next deliberate test is the restored exact pre-HumanPose retarget behavior from `161ef4dbacb4a8c7e930d4e65200c3c69d0dc366` with the real Neko avatar intentionally placed at root Y=180, matching the procedural Lab's authored facing convention. That exact combination has **not yet been USER-tested**.
+- Coordinate/presentation diagnostics remain observability tools rather than proof of correctness.
 
 Do not infer that the correction is visually correct merely because the signed-axis math is internally consistent. USER visual/motion QA remains the decisive gate, followed by Orchestrator audit.
 
@@ -56,7 +59,7 @@ Do not infer that the correction is visually correct merely because the signed-a
 - Phase 3 physical QA historically passed the then-current T-pose calibration, smoothing and responsiveness with **PASS WITH NOTES**; Phase 4 now deliberately supersedes the hard T-pose calibration architecture.
 - Phase 4 2D presentation QA has **PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
 - The pre-correction Phase 4 source/test compilation was repeatedly reported successful by Luna.
-- The current semantic-forward correction was produced repository-first; targeted source/math checks are documented in the handoff, and the remaining decisive runtime gate is the focused real-Humanoid facing USER recheck.
+- The `83239b...` HumanPose semantic-forward experiment **FAILED USER QA** and has been deliberately rolled back from production code/tests. The remaining decisive runtime gate is the restored pre-HumanPose behavior tested with Neko root Y=180.
 - The expanding Phase 4 EditMode suites were often only **present/source-compiled**, not executed by Unity Test Runner, because another Unity Editor instance/licensing channel blocked batch execution. Do not convert those counts into passing Unity tests without rerunning them.
 - Known one-off ShaderGraph editor warnings around recompilation/exit remain non-blocking unless behavior changes.
 
@@ -89,8 +92,9 @@ Perform fresh USER QA on the correction, then have the Web Orchestrator audit th
 
 The highest-value QA is:
 
-1. Repeat only the real Animator Humanoid facing check with Neko: neutral facing, one asymmetric arm pose, then a moderate body yaw.
-2. Confirm the avatar faces the same semantic direction as F3/the user while left/right limb mapping remains unchanged.
-3. If that passes, Phase 4 can return to the Orchestrator for final acceptance audit.
-4. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.
+1. Keep the restored pre-HumanPose retarget code unchanged and place the real Neko avatar root at **Y=180** in the USER's local Lab setup.
+2. Re-run the smallest real-avatar check: neutral stance, one asymmetric arm pose, then a moderate body yaw.
+3. Verify whether facing now matches the procedural/F3 convention while the already-passing left/right limb response remains intact.
+4. Treat this combination as **unproven until USER QA**; do not infer success from the root rotation alone.
+5. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.
 

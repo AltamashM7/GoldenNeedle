@@ -90,7 +90,7 @@ The retargeter maps those normalized displacements into the target avatar withou
 Golden Needle calibration may describe a reflected semantic anatomical basis. For example, a reference case can be `Right=+X, Up=+Y, Forward=-Z`, whose determinant is negative. A quaternion cannot represent that reflection. Production retargeting therefore builds:
 
 - a signed source basis that preserves canonical Right/Up/Forward and records handedness;
-- an immutable target semantic basis: explicit/procedural binding uses the existing geometry-only proper basis, while Animator Humanoid preserves geometric Right/Up and disambiguates Forward from reference-time Humanoid body orientation;
+- a proper right-handed target basis captured once from the bound avatar's actual shoulder/hip and pelvis/chest bind/reference geometry;
 - one explicit linear canonical-to-avatar map `M` between those bases.
 
 For target root `R`, avatar chain reach `L`, normalized canonical effector vector `e`, and normalized canonical mid vector `m`:
@@ -102,7 +102,7 @@ desiredEffector = R + mappedEffector * L
 targetHint = R + mappedHint * L
 ```
 
-The target semantic basis is immutable for the lifetime of that binding capture and is invalidated/rebuilt only when the binding/reference pose is rebuilt. Animator Humanoid semantic Forward comes from `HumanPose.bodyRotation` captured through `HumanPoseHandler`; because Right/Up remain anatomical joint geometry, the semantic target basis may be proper or reflected. Live torso motion is therefore applied as a proper Quaternion delta from the cached target semantic reference basis to the mapped live basis. Large yaw still uses live axes only; no previous/reference forward-hemisphere forcing is used. Per-chain quaternion characterization/current-target-parent mapping remains compatibility-only and is not the live `LateUpdate` architecture.
+The target basis is immutable for the lifetime of that binding capture and is invalidated/rebuilt only when the binding/reference pose is rebuilt. The same signed map converts live canonical torso Right/Up axes into a proper target body rotation. Large yaw is derived from the live axes plus the source basis handedness; no previous/reference forward-hemisphere forcing is used in the production path. Per-chain quaternion characterization/current-target-parent mapping remains only as compatibility code for older callers/tests and is not the live `LateUpdate` architecture.
 
 `HumanoidRigBinding` captures the actual root/mid/tip Transform for each Animator Humanoid chain or explicit procedural chain, bind local rotations, upper/lower world lengths, total reach, and original local positions/scales once. For each live chain, the retargeter first applies pelvis/chest, restores that chain's root and mid to cached bind-local rotations, then solves from the current root world position. The analytic solver clamps the desired endpoint to `abs(a-b)+epsilon .. (a+b)-epsilon`, preserves its direction, and computes:
 
