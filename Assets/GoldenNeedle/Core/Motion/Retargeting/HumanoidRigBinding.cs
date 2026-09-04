@@ -97,9 +97,9 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         public Quaternion AvatarReferenceBodyRotation => _boundAvatarRoot == null ? Quaternion.identity : _boundAvatarRoot.rotation;
 
         /// <summary>
-        /// Returns the avatar's bind/reference anatomical basis using actual bound joint positions.
-        /// Unlike the canonical source basis, this target basis is a proper right-handed Unity
-        /// basis and can safely be converted to a Quaternion after signed-axis mapping.
+        /// Returns the immutable avatar bind/reference semantic basis. Explicit/debug binding uses
+        /// deterministic geometry-only Forward; Animator Humanoid preserves geometric Right/Up but
+        /// disambiguates Forward from Unity Humanoid body orientation captured at reference time.
         /// </summary>
         public bool TryGetReferenceBodyBasis(out SignedAxisBasis basis)
         {
@@ -454,19 +454,85 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             var right = _bones[(int)CanonicalBoneId.RightUpperArm];
             var pelvis = _bones[(int)CanonicalBoneId.Pelvis];
             var chest = _bones[(int)CanonicalBoneId.Chest];
-            if (left != null && right != null && pelvis != null && chest != null &&
-                HumanoidRetargetingMath.TryBuildRightHandedBasis(
-                    right.position - left.position,
-                    chest.position - pelvis.position,
-                    out var basis))
+            if (left == null || right == null || pelvis == null || chest == null)
             {
-                _referenceBodyBasis = basis;
+                return;
+            }
+
+            var referenceRight = right.position - left.position;
+            var referenceUp = chest.position - pelvis.position;
+            if (_bindingMode == HumanoidBindingMode.AnimatorHumanoid)
+            {
+                if (TryCaptureAnimatorHumanoidForward(out var semanticForward) &&
+                    HumanoidRetargetingMath.TryBuildTargetReferenceBasis(
+                        referenceRight,
+                        referenceUp,
+                        semanticForward,
+                        out var humanoidBasis))
+                {
+                    _referenceBodyBasis = humanoidBasis;
+                    _hasReferenceBodyBasis = true;
+                }
+
+                return;
+            }
+
+            if (HumanoidRetargetingMath.TryBuildRightHandedBasis(
+                    referenceRight,
+                    referenceUp,
+                    out var explicitBasis))
+            {
+                _referenceBodyBasis = explicitBasis;
                 _hasReferenceBodyBasis = true;
+            }
+        }
+
+        private bool TryCaptureAnimatorHumanoidForward(out Vector3 semanticForward)
+        {
+            semanticForward = Vector3.zero;
+            if (animator == null ||
+                animator.avatar == null ||
+                !animator.avatar.isValid ||
+                !animator.isHuman)
+            {
+                return false;
+            }
+
+            HumanPoseHandler poseHandler = null;
+            try
+            {
+                // HumanPoseHandler requires the root transform that owns the Avatar skeleton.
+                // Animator.transform is that Humanoid hierarchy root; avatarRoot may intentionally
+                // be a separate Golden Needle binding/root-control transform.
+                poseHandler = new HumanPoseHandler(animator.avatar, animator.transform);
+                var humanPose = new HumanPose
+                {
+                    muscles = new float[HumanTrait.MuscleCount],
+                };
+                poseHandler.GetHumanPose(ref humanPose);
+                if (!IsFinite(humanPose.bodyRotation))
+                {
+                    return false;
+                }
+
+                semanticForward = humanPose.bodyRotation * Vector3.forward;
+                return IsFinite(semanticForward) && semanticForward.sqrMagnitude > 0.000001f;
+            }
+            catch (System.Exception)
+            {
+                return false;
+            }
+            finally
+            {
+                poseHandler?.Dispose();
             }
         }
 
         private void CaptureParentReferenceFrames()
         {
+            // Compatibility-only parent frames remain proper Quaternion frames. Animator semantic
+            // Forward is preserved in the signed production target basis above; a reflected
+            // semantic basis cannot be encoded directly by this legacy Quaternion path.
             var referenceForward = _boundAvatarRoot == null
                 ? Vector3.forward
                 : _boundAvatarRoot.rotation * Vector3.forward;

@@ -36,7 +36,7 @@ A repository-first correction removed the unintended front-camera presentation f
 
 Phase 4 remains **NOT USER ACCEPTED**. The correction must not be merged into `main` until fresh USER motion/visual QA and Orchestrator audit pass.
 
-**Immediate next step:** USER QA the modular calibration flow with comfortable/non-T-pose poses and partial visibility. Once body/per-chain readiness is trustworthy, resume F3/F5 procedural retarget QA across asymmetric, bent, depth, leg, and large-yaw poses; then validate the Animator Humanoid path before Phase 4 acceptance.
+**Immediate next step:** repeat the smallest real Animator Humanoid facing QA after the semantic-forward correction. 2D presentation, modular calibration, procedural F3/F5 retargeting, real Humanoid binding, and real Humanoid limb responsiveness have already passed; only semantic body-facing orientation remains to recheck before final Phase 4 audit.
 
 ## Phase 5 — Locomotion prototype
 

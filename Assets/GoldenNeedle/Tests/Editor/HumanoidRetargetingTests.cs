@@ -464,6 +464,74 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
+        public void TargetReferenceBasisUsesSemanticForwardWithoutFlippingRightOrUp()
+        {
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildTargetReferenceBasis(
+                    Vector3.right,
+                    Vector3.up,
+                    Vector3.forward,
+                    out var forwardBasis),
+                Is.True);
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildTargetReferenceBasis(
+                    Vector3.right,
+                    Vector3.up,
+                    Vector3.back,
+                    out var backwardBasis),
+                Is.True);
+
+            Assert.That(Vector3.Angle(forwardBasis.Right, backwardBasis.Right), Is.LessThan(0.01f));
+            Assert.That(Vector3.Angle(forwardBasis.Up, backwardBasis.Up), Is.LessThan(0.01f));
+            Assert.That(Vector3.Angle(forwardBasis.Forward, Vector3.forward), Is.LessThan(0.01f));
+            Assert.That(Vector3.Angle(backwardBasis.Forward, Vector3.back), Is.LessThan(0.01f));
+            Assert.That(forwardBasis.HandednessSign, Is.EqualTo(1f));
+            Assert.That(backwardBasis.HandednessSign, Is.EqualTo(-1f));
+        }
+
+        [Test]
+        public void MappedBodyDeltaSupportsReflectedHumanoidTargetBasis()
+        {
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildSignedBasis(
+                    Vector3.right,
+                    Vector3.up,
+                    Vector3.back,
+                    out var source),
+                Is.True);
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildTargetReferenceBasis(
+                    Vector3.right,
+                    Vector3.up,
+                    Vector3.back,
+                    out var target),
+                Is.True);
+
+            var map = new CanonicalToAvatarAxisMap(source, target);
+            var sourceYaw = Quaternion.Euler(0f, 70f, 0f);
+            var currentRight = sourceYaw * source.Right;
+            var currentUp = sourceYaw * source.Up;
+            var currentForward = sourceYaw * source.Forward;
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildMappedBodyDelta(
+                    map,
+                    currentRight,
+                    currentUp,
+                    out var delta),
+                Is.True);
+
+            Assert.That(
+                Vector3.Angle(delta * target.Right, map.MapVector(currentRight)),
+                Is.LessThan(0.01f));
+            Assert.That(
+                Vector3.Angle(delta * target.Up, map.MapVector(currentUp)),
+                Is.LessThan(0.01f));
+            Assert.That(
+                Vector3.Angle(delta * target.Forward, map.MapVector(currentForward)),
+                Is.LessThan(0.01f));
+        }
+
+        [Test]
         public void SignedAxisBodyRotationAllowsLargeYawWithoutHemisphereForcing()
         {
             var context = CreateRigContext(Quaternion.Euler(0f, 180f, 0f));

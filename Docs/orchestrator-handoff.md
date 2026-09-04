@@ -115,11 +115,12 @@ Trace coordinate spaces explicitly from camera pixels through inference, normali
 
 At the checkpoint:
 
-- Webcam/2D presentation: **USER QA PASSED** — upright, unmirrored, and correctly registered.
-- F3: previously appeared upright/sensible with 2D↔3D X/Y diagnostics passing.
-- Calibration: current redesign target. The former bilateral T-pose gate was the immediate blocker and is being removed.
-- Procedural rig: not accepted; F3/F5 retarget QA has not resumed after the calibration blocker.
-- The USER has a real humanoid character asset available for later import, but it has not yet been used to validate the structural Animator Humanoid binding.
+- Webcam/2D presentation: **USER QA PASSED**.
+- Modular calibration: **USER QA PASSED**.
+- Procedural F3/F5 retarget: **USER QA PASSED**.
+- Real Neko Animator Humanoid binding and limb responsiveness: **PASS**.
+- Real Animator Humanoid body-forward/facing orientation: **FAIL at the starting checkpoint; focused semantic-forward correction pending USER recheck**.
+- NekoLegends `android01.fbx` is now the first real Animator Humanoid validation asset. Unity binds it successfully; limb responsiveness matches the procedural path, while semantic facing was reversed at the starting checkpoint.
 
 Do not judge the real avatar path until the tracking/presentation foundation and procedural acceptance harness are trustworthy.
 
@@ -137,11 +138,10 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 Audit the exact pushed correction head, then use USER QA as the gate:
 
-1. USER-QA the modular calibration only: comfortable body reference, bent/non-horizontal arm geometry, and independent partial-chain readiness.
-2. Confirm the Lab reports useful per-module READY/sample/waiting reasons and never requires a bilateral T-pose.
-3. Then resume procedural F3/F5 comparison across asymmetric and large-yaw poses.
-4. If that passes, validate the real Animator Humanoid binding path.
-5. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
+1. Repeat the smallest real Animator Humanoid facing QA after the semantic-forward correction: neutral facing, asymmetric arm, moderate yaw.
+2. Confirm left/right and procedural behavior remain unchanged.
+3. If the real Humanoid facing issue is resolved, perform the final Phase 4 Orchestrator audit.
+4. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
 
 ## Governance
 

@@ -38,13 +38,13 @@ The coordinate/retarget correction keeps the provider/canonical/stabilization bo
 
 The latest visible state before this handoff is:
 
-- **2D PRESENTATION QA — PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`: webcam upright, unwanted horizontal presentation mirror fixed, 2D skeleton upright, and 2D skeleton registered correctly over the user.
-- F3 canonical 3D had already appeared upright/sensible, with internal 2D↔3D X/Y agreement reporting PASS.
-- Calibration then became the next blocker: the old hard bilateral T-pose stage could remain at `AwaitingTPose 0%` in the USER's limited physical space.
-- The approved redesign removes that hard T-pose gate in favor of a comfortable body-reference capture plus independently sampled LeftArm, RightArm, LeftLeg, and RightLeg geometry.
-- Procedural F3/F5 retarget USER QA has **not resumed yet** after the calibration blocker and remains unaccepted.
+- **2D PRESENTATION QA — PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
+- **MODULAR CALIBRATION QA — PASSED** after the version-5 body-reference/per-chain redesign.
+- **PROCEDURAL F3/F5 RETARGET QA — PASSED**: the signed-axis positional/analytic-IK path is accepted as behaving correctly on the explicit debug rig.
+- The first real Animator Humanoid test uses `Assets/NekoLegends/Humanoids/Androids/Type01/Models/android01.fbx`. Binding and limb responsiveness PASS, but body-forward/facing orientation is reversed.
+- The Animator correction preserves geometric anatomical Right/Up and disambiguates target Forward from Unity Humanoid `HumanPose.bodyRotation` at immutable reference capture time. Procedural/explicit geometry-only reference characterization is intentionally unchanged.
 - Coordinate/presentation diagnostics were changed several times during investigation. They are useful observability tools but must not be treated as proof that the foundation is correct without code inspection and fresh USER QA.
-- The production Animator Humanoid path has not been physically tested against the USER's real character asset.
+- The production Animator Humanoid path has now been physically tested with NekoLegends: binding and limb retarget responsiveness PASS; semantic body-forward orientation is the remaining correction pending USER recheck.
 
 Do not infer that the correction is visually correct merely because the signed-axis math is internally consistent. USER visual/motion QA remains the decisive gate, followed by Orchestrator audit.
 
@@ -56,7 +56,7 @@ Do not infer that the correction is visually correct merely because the signed-a
 - Phase 3 physical QA historically passed the then-current T-pose calibration, smoothing and responsiveness with **PASS WITH NOTES**; Phase 4 now deliberately supersedes the hard T-pose calibration architecture.
 - Phase 4 2D presentation QA has **PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
 - The pre-correction Phase 4 source/test compilation was repeatedly reported successful by Luna.
-- This correction was produced repository-first; targeted source/math checks are documented in the handoff, but USER Unity QA is still required.
+- The current semantic-forward correction was produced repository-first; targeted source/math checks are documented in the handoff, and the remaining decisive runtime gate is the focused real-Humanoid facing USER recheck.
 - The expanding Phase 4 EditMode suites were often only **present/source-compiled**, not executed by Unity Test Runner, because another Unity Editor instance/licensing channel blocked batch execution. Do not convert those counts into passing Unity tests without rerunning them.
 - Known one-off ShaderGraph editor warnings around recompilation/exit remain non-blocking unless behavior changes.
 
@@ -89,9 +89,8 @@ Perform fresh USER QA on the correction, then have the Web Orchestrator audit th
 
 The highest-value QA is:
 
-1. Run the smallest modular-calibration QA: press `C`, stand comfortably until **Body reference: READY**, then confirm visible chains independently advance/READY without requiring a T-pose or all four limbs simultaneously.
-2. Verify one naturally bent arm can reach READY and that an unavailable opposite arm/lower body does not invalidate the body reference or completed chain.
-3. Only after calibration behaves correctly, resume F3/F5 procedural retarget QA across asymmetric, bent, depth, leg, and large-yaw poses.
-4. If the procedural path passes, physically test one real Animator Humanoid asset before Phase 4 acceptance.
-5. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.
+1. Repeat only the real Animator Humanoid facing check with Neko: neutral facing, one asymmetric arm pose, then a moderate body yaw.
+2. Confirm the avatar faces the same semantic direction as F3/the user while left/right limb mapping remains unchanged.
+3. If that passes, Phase 4 can return to the Orchestrator for final acceptance audit.
+4. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.
 
