@@ -1,0 +1,121 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1001 &3296997820775384090
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_Name
+      value: android01
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 52a3263ab4267ce49bc125abb3e5a194, type: 2}
+    - target: {fileID: 5866666021909216657, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 94c438338a55e8d45a5c24764491ffd8,
+        type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1945991494989483456}
+  m_SourcePrefab: {fileID: 100100000, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+--- !u!137 &1627274978845755741 stripped
+SkinnedMeshRenderer:
+  m_CorrespondingSourceObject: {fileID: 4275173836228808007, guid: 94c438338a55e8d45a5c24764491ffd8,
+    type: 3}
+  m_PrefabInstance: {fileID: 3296997820775384090}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &2377940036831213899 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 94c438338a55e8d45a5c24764491ffd8,
+    type: 3}
+  m_PrefabInstance: {fileID: 3296997820775384090}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1945991494989483456
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2377940036831213899}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a25af52db912b1a4da3a8ca77f4c4ba1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  animations:
+  - {fileID: 1474744063889944348, guid: b5b088f422e9970438abde562a173943, type: 3}
+  - {fileID: -7551964380084998518, guid: f1f81a1eec154854a976966a9f1d67ce, type: 3}
+  - {fileID: -1957309743605940829, guid: fac59f23779276e4888e7d5c01226ffb, type: 3}
+  - {fileID: 980975289698695961, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+  skinnedMeshRendererBody: {fileID: 1627274978845755741}
+  bodyMaterialList:
+  - {fileID: 2100000, guid: bdde9a0a492d4774eab2ef4f17471f20, type: 2}
+  - {fileID: 2100000, guid: 0809309f2a35a2044871b8138268a2df, type: 2}
+  - {fileID: 2100000, guid: 51c1695ba6a6dda4f97c5599ec318896, type: 2}
+  - {fileID: 2100000, guid: 198ca69b72f5ed94eb27dc630d51010f, type: 2}
+  LeftHandItem: {fileID: 0}
+  RightHandItem: {fileID: 0}
