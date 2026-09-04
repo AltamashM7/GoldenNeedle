@@ -921,6 +921,13 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             return id == CanonicalJointId.Pelvis || id == CanonicalJointId.Spine || id == CanonicalJointId.Chest;
         }
 
+        private static bool IsFinite(Vector3 value)
+        {
+            return IsFinite(value.x) &&
+                IsFinite(value.y) &&
+                IsFinite(value.z);
+        }
+
         private static bool IsFinite(float value)
         {
             return !float.IsNaN(value) && !float.IsInfinity(value);
