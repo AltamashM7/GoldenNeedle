@@ -28,21 +28,19 @@ USER QA historically passed the Phase 3 calibration/T-pose implementation, visib
 
 ## Phase 4 — Humanoid retargeting
 
-**BLOCKED / INVESTIGATION CHECKPOINT — NOT USER ACCEPTED**
+**USER ACCEPTED — PASS**
 
-Pre-correction handoff HEAD: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` (runtime parent `5e830dce7ac3de542ab159b8b90992935d9dd0b0`).
+Accepted implementation SHA: `f0c81e84d0a482c40448505f2904af93ef4aa881`.
 
-A repository-first correction removed the unintended front-camera presentation flip and replaced handedness-sensitive/per-chain quaternion production mapping with an explicit signed canonical-to-avatar basis map feeding positional analytic IK. USER QA has passed 2D presentation, modular calibration, procedural F3/F5 retargeting, real Animator Humanoid binding, and real Humanoid limb response. F6 then localized a front-camera semantic side inversion; the inference H mirror was removed, followed by a calibration-basis correction from `Cross(Up, Right)` to `Cross(Right, Up)` so an unmirrored frontal subject yields `R≈-X, U≈+Y, F≈-Z`. Real-avatar body/facing orientation remains pending corrected runtime QA. The `83239b...` HumanPose semantic-forward experiment failed USER QA and remains removed.
+Phase 4 now includes modular measurement calibration, stabilized positional chain targets, explicit canonical-to-avatar basis mapping, analytic two-bone IK, procedural rig validation, and structural Animator Humanoid binding. Repository-first debugging localized the final real-avatar orientation defect to front-camera source semantics: the automatic inference H mirror reversed anatomical Left/Right, and the body basis then used the wrong cross-product order for the unmirrored frontal convention. The accepted correction keeps front-camera inference unmirrored and derives semantic Forward with `Cross(Right, Up)`, giving approximately `R≈-X, U≈+Y, F≈-Z` for a frontal user.
 
-Phase 4 remains **NOT USER ACCEPTED**. The correction must not be merged into `main` until fresh USER motion/visual QA and Orchestrator audit pass.
-
-**Immediate next step:** test the restored pre-HumanPose retarget behavior with the real Neko avatar deliberately placed at root Y=180, matching the procedural Lab's authored facing convention. That exact combination is not yet USER-tested. If facing is corrected without regressing limb response, proceed to the final Phase 4 audit.
+Final USER QA passed real Neko facing/orientation and approximately 45° torso yaw left/right without avatar-side rotation compensation. The failed `83239b...` HumanPose semantic-forward experiment remains removed.
 
 ## Phase 5 — Locomotion prototype
 
 **NOT STARTED.**
 
-Must not begin until Phase 4 is deliberately resolved/accepted. POSE and locomotion remain separate.
+Phase 4 is accepted, so Phase 5 may now begin. POSE and locomotion remain separate.
 
 ## Phase 6 — End-to-end graybox vertical slice
 

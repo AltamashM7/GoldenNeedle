@@ -1,8 +1,6 @@
 # Planned V1 Motion Engine
 
-Status: **PHASE 4 CORRECTION — AWAITING USER QA / NOT USER ACCEPTED.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. The pre-correction Phase 4 handoff HEAD was `4a26589ec2f90688b80fb6b1da0b849adda65d6b`. Phase 5 locomotion has not started.
-
-> **Phase 4 warning:** the correction has not yet passed USER visual/motion QA or Orchestrator audit. Treat it as the current candidate architecture, not an accepted checkpoint.
+Status: **PHASE 4 USER ACCEPTED — PASS.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Phase 4 accepted implementation SHA: `f0c81e84d0a482c40448505f2904af93ef4aa881`. Phase 5 locomotion has not started.
 
 ## Phase 1 spike boundary
 
@@ -123,7 +121,7 @@ The bend direction `p` uses the current mapped hint, previous valid plane, calib
 
 Only rotations are written. Avatar root position, authored local bone positions, and local scales remain unchanged. An unavailable bone returns toward its bind/reference rotation over a centralized approximately `0.20 s` fallback window. No general quaternion smoothing was added on top of Phase 3 positional stabilization.
 
-The procedural `DebugAvatarRoot` is an acceptance harness, not an art asset. Its T-pose hierarchy uses authored local offsets and simple primitive segment visuals. A dedicated runtime camera renders that actual hierarchy into the Lab's procedural-rig panel, with distinct desired wrist/ankle and elbow/knee world-space markers. Compact diagnostics identify rig presence, binding, driving, rotation solve, `Kinematic targets`, `Source chains valid x/4`, `Targets generated x/4`, `IK chains solved x/4`, `Limb bones driven x/8`, and the separate retarget-fidelity, IK-endpoint-residual, and bend-plane metrics. `F5` starts OFF, enables/disables live IK driving, and returns the same rig to bind pose when disabled; `F1`–`F4`, `R`, `C`, and `X` remain available. Directional and geometric EditMode tests inspect actual wrist/ankle positions, elbow/knee bend geometry, asymmetric sides, chain isolation, fixed root, unchanged local positions/scales, current-parent behavior, and torso ordering. The Animator Humanoid path is structural only in this phase and has not been physically tested against a model asset.
+The procedural `DebugAvatarRoot` is an acceptance harness, not an art asset. Its T-pose hierarchy uses authored local offsets and simple primitive segment visuals. A dedicated runtime camera renders that actual hierarchy into the Lab's procedural-rig panel, with distinct desired wrist/ankle and elbow/knee world-space markers. Compact diagnostics identify rig presence, binding, driving, rotation solve, `Kinematic targets`, `Source chains valid x/4`, `Targets generated x/4`, `IK chains solved x/4`, `Limb bones driven x/8`, and the separate retarget-fidelity, IK-endpoint-residual, and bend-plane metrics. `F5` starts OFF, enables/disables live IK driving, and returns the same rig to bind pose when disabled; `F1`–`F4`, `R`, `C`, and `X` remain available. Directional and geometric EditMode tests inspect actual wrist/ankle positions, elbow/knee bend geometry, asymmetric sides, chain isolation, fixed root, unchanged local positions/scales, current-parent behavior, and torso ordering. The Animator Humanoid path has been physically tested with the NekoLegends `android01.fbx`: binding, limb response, neutral facing/orientation, and approximately 45° left/right torso yaw all passed USER QA.
 
 ## Locomotion
 
