@@ -16,13 +16,13 @@ Phase 4 handoff HEAD before the correction:
 
 `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — `docs: hand off phase 4 investigation state`
 
-Its runtime parent is `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The branch contains the Phase 4 coordinate/retarget correction, modular calibration redesign, passed procedural harness, Neko Animator Humanoid asset, and the focused rollback of the failed `83239b...` HumanPose semantic-forward experiment. Phase 4 still awaits final real-avatar orientation QA and Orchestrator audit.
+Its runtime parent is `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The branch now contains the accepted Phase 4 source/retarget correction, modular calibration redesign, passed procedural harness, Neko Animator Humanoid asset, and the focused rollback of the failed `83239b...` HumanPose semantic-forward experiment.
 
 Accepted Motion Engine baseline:
 
-`2ee4d6eb606a8b845183cc44126ecf9530d8280b` — Phase 3, USER ACCEPTED — PASS WITH NOTES.
+`f0c81e84d0a482c40448505f2904af93ef4aa881` — Phase 4 implementation, **USER ACCEPTED — PASS**.
 
-Phase 4 is **NOT ACCEPTED**. Phase 5 has **NOT STARTED**. Do not create/merge a Phase 4 PR into `main`.
+Phase 5 has **NOT STARTED**. The long-lived engine branch remains authoritative for the core-engine train; do not merge to `main` unless the USER explicitly changes that workflow.
 
 The previous Web Orchestrator conversation was intentionally retired because the Phase 4 debugging thread became long and hypothesis-heavy. The USER explicitly wants the new Orchestrator to inspect the repository itself before deciding on a solution.
 
@@ -31,8 +31,8 @@ The previous Web Orchestrator conversation was intentionally retired because the
 - Phase 1 CPU pose spike: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6` — accepted PASS WITH NOTES.
 - Phase 2 canonical skeleton/debug visualization: `f5a15648607adf6034800c6a2b4d685b0e6f03ea` — accepted PASS WITH NOTES.
 - Phase 3 calibration/confidence/smoothing: `2ee4d6eb606a8b845183cc44126ecf9530d8280b` — accepted PASS WITH NOTES.
-- Phase 4 handoff-doc checkpoint: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — **not accepted**.
-- Phase 4 correction after that handoff — **awaiting USER QA / Orchestrator audit; not accepted**.
+- Phase 4 handoff-doc checkpoint: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — historical investigation checkpoint, not accepted.
+- Phase 4 final implementation: `f0c81e84d0a482c40448505f2904af93ef4aa881` — **USER ACCEPTED — PASS**.
 
 The Motion Engine intentionally remains on the long-lived `engine/pose-tracking-spike` branch through the core-engine train. Intermediate engine phases are not mechanically merged into `main`.
 
@@ -70,7 +70,7 @@ MediaPipe provider
 
 `CanonicalRotationFrame` remains available for diagnostics/future orientation work, but the production limb mapping no longer depends on per-chain quaternion characterization or moving parent-frame quaternions. The signed source basis records handedness explicitly. Under the corrected unmirrored front-camera convention, calibration should produce a proper source basis (`R≈-X, U≈+Y, F≈-Z`, handedness +1); reflected bases remain representable for diagnostics/generic math but are not the intended frontal production baseline.
 
-The coordinate/presentation correction direction is retained. **2D PRESENTATION QA has PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`. Phase 4 as a whole is still not accepted; modular calibration and procedural retarget QA remain.
+The coordinate/presentation correction is retained. **2D presentation, modular calibration, procedural F3/F5 retargeting, Animator Humanoid binding/limb response, real-avatar facing, and torso yaw have all passed USER QA. Phase 4 is accepted.**
 
 ## Phase 4 failure history, condensed
 
@@ -119,7 +119,7 @@ At the checkpoint:
 - Modular calibration: **USER QA PASSED**.
 - Procedural F3/F5 retarget: **USER QA PASSED**.
 - Real Neko Animator Humanoid binding and limb responsiveness: **PASS**.
-- Real Animator Humanoid body-forward/facing orientation: **UNRESOLVED**.
+- Real Animator Humanoid body-forward/facing orientation: **PASS** after the source-semantics/body-basis correction.
 - NekoLegends `android01.fbx` binds successfully and its limb responsiveness matches the procedural path.
 - Initial Neko test at root Y=0 exposed the orientation problem.
 - `83239b00e891f7e8273e1449a26a6030f68334df` used `HumanPose.bodyRotation` as a semantic-forward experiment; fresh USER QA showed the same relative problem, so the experiment is rejected and removed.
@@ -131,9 +131,10 @@ At the checkpoint:
 - The focused correction keeps that automatic inference H mirror removed while preserving vertical/rotation transport and unmirrored presentation.
 - The Orchestrator then identified the remaining basis-order error: after semantic Left/Right is fixed, anatomical Right is approximately -X for a front-facing subject, so the old `Cross(Up, Right)` still yields +Z. Calibration is corrected to `Cross(Right, Up)`, consistent with the rotation solver and frontal -Z convention.
 - Canonical mapper, signed-axis architecture, target/avatar basis, Humanoid binding, and IK remain unchanged.
-- F6 remains available to prove corrected runtime semantics and source handedness.
+- F6 remains available for future regression diagnosis.
+- Final USER QA confirmed the Neko avatar faces correctly and follows approximately 45° left/right torso yaw in the correct direction without avatar-side compensation.
 
-Do not judge the real avatar path until the tracking/presentation foundation and procedural acceptance harness are trustworthy.
+The committed Lab scene does not currently serialize the local Neko child / Animator Humanoid binding setup used for that final QA. A second machine receives the runtime code and Neko assets from Git, but the Lab wiring must be committed from the original machine or recreated.
 
 ## Tests and tooling
 
@@ -147,15 +148,11 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 ## Recommended next task
 
-Audit the exact pushed correction head, then use USER QA as the gate:
+Phase 4 is accepted. Begin Phase 5 locomotion design/prototyping while keeping pose reproduction and locomotion interpretation separate.
 
-1. Re-run the hard presentation gate first: display mirror OFF, upright/unmirrored webcam, and physically registered raw/canonical/stabilized overlays.
-2. Recalibrate and inspect F6 neutral basis; expect anatomical Right toward -X, Up toward +Y, frontal Forward toward -Z, and source handedness +1.
-3. Repeat the controlled physical-right-shoulder-toward-camera turn; semantic RightShoulder/RightHip must be the near/depth-smaller side.
-4. If source semantics pass, recheck the already-passed procedural F5 path and then the real Neko facing/yaw without target/avatar hacks.
-5. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
+If development moves to another laptop, first reproduce the exact Unity/toolchain baseline and either commit or recreate the uncommitted Neko Lab wiring before relying on the real-avatar QA scene.
 
 ## Governance
 
-The USER primarily uses GitHub Desktop for Git mutations. Do not merge without explicit USER approval. Keep Phase 4 on the engine branch. Do not start Phase 5 until Phase 4 has a deliberate USER acceptance decision.
+The USER primarily uses GitHub Desktop for Git mutations. Do not merge without explicit USER approval. Continue the core-engine train on `engine/pose-tracking-spike` unless the USER explicitly changes that workflow. Phase 4 is accepted; Phase 5 may start.
 
