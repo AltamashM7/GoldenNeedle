@@ -98,5 +98,5 @@ These had repeatedly been reported as pre-existing/unintended editor differences
 
 Phase 4 is accepted. Phase 5 locomotion may now be planned/started on the long-lived engine branch while preserving **POSE != LOCOMOTION**.
 
-Before moving the project to another laptop, note that the committed `PoseTrackingSpike.unity` scene does **not** currently serialize the local Neko child / Animator Humanoid binding setup used for final real-avatar QA. The runtime code and Neko assets are in Git, but that local Lab wiring must either be deliberately committed from the original laptop or recreated on the new machine.
+The committed `PoseTrackingSpike.unity` scene now serializes the accepted Neko `android01` child and Animator Humanoid binding used for final Phase 4 QA. A second machine receives the runtime code, Neko assets, and Lab wiring from Git; after checking out the engine branch with the matching Unity version, only machine-specific package import/cache/camera selection work should remain.
 

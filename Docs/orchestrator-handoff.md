@@ -134,7 +134,7 @@ At the checkpoint:
 - F6 remains available for future regression diagnosis.
 - Final USER QA confirmed the Neko avatar faces correctly and follows approximately 45° left/right torso yaw in the correct direction without avatar-side compensation.
 
-The committed Lab scene does not currently serialize the local Neko child / Animator Humanoid binding setup used for that final QA. A second machine receives the runtime code and Neko assets from Git, but the Lab wiring must be committed from the original machine or recreated.
+The committed Lab scene now serializes the accepted Neko `android01` child and Animator Humanoid binding used for final QA. A second machine receives the runtime code, Neko assets, and Lab wiring from Git.
 
 ## Tests and tooling
 
@@ -150,7 +150,7 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 Phase 4 is accepted. Begin Phase 5 locomotion design/prototyping while keeping pose reproduction and locomotion interpretation separate.
 
-If development moves to another laptop, first reproduce the exact Unity/toolchain baseline and either commit or recreate the uncommitted Neko Lab wiring before relying on the real-avatar QA scene.
+If development moves to another laptop, reproduce the exact Unity/toolchain baseline, check out the current `engine/pose-tracking-spike` branch, let Unity regenerate machine-local caches/imports, and run the already-committed Neko Lab setup.
 
 ## Governance
 
