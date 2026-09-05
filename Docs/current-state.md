@@ -48,8 +48,11 @@ The latest visible state before this handoff is:
 - During that failed HumanPose experiment the USER also rotated the Neko root to Y=180. That flipped the whole avatar but preserved the same relative orientation problem; this does **not** prove the next test combination will fail.
 - Changing the Neko root between Y=0 and Y=180 has been rejected as an explanatory fix by itself: it rotates anatomy, target basis, and bind rotations together while the relative facing mismatch remains.
 - Neko target anatomy is internally coherent: bind shoulders/chest imply target Right≈+X, Up≈+Y, Forward≈+Z, and independent foot/toe geometry also points toward +Z. Target Forward is therefore not being changed in the current investigation.
-- The remaining unknown is the runtime **Z/yaw polarity** across front-camera inference preparation → MediaPipe pose-world → canonical world → calibration source basis → signed source→target map → applied torso delta.
-- The current task adds **diagnostic-only F6 Z/yaw tracing**. No new orientation correction has been selected and production mapping remains unchanged.
+- F6 runtime evidence localized the earliest proven inversion to the front-camera source boundary: with the USER's physical right shoulder moved toward the webcam, semantic `LeftShoulder` and `LeftHip` became the near/depth-smaller side while semantic right became farther. Neutral source Right correspondingly pointed approximately -X and `Cross(Up, Right)` produced approximately +Z Forward.
+- The provider was still passing `_selectedDevice.isFrontFacing` as `shouldFlipHorizontally` into `ImageTransformationOptions.Build`. The embedded `TextureFrame.ReadTextureAsync` performs that flag as a literal horizontal pixel mirror before MediaPipe inference, while the canonical mapper preserves MediaPipe anatomical IDs directly.
+- The source correction removes that automatic front-camera inference H mirror. Front-facing remains metadata; inference still applies the required vertical/rotation transport correction. The canonical mapper, calibration cross-product, signed-axis map, target/avatar basis, and retarget application are unchanged.
+- Neko target anatomy remains independently coherent with Forward≈+Z from torso and foot/toe evidence; root-rotation and HumanPose experiments remain rejected.
+- F6 diagnostics are retained as the runtime regression evidence for corrected semantic Right/Forward/yaw.
 - Coordinate/presentation diagnostics remain observability tools rather than proof of correctness.
 
 Do not infer that the correction is visually correct merely because the signed-axis math is internally consistent. USER visual/motion QA remains the decisive gate, followed by Orchestrator audit.
@@ -63,7 +66,7 @@ Do not infer that the correction is visually correct merely because the signed-a
 - Phase 4 2D presentation QA has **PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
 - The pre-correction Phase 4 source/test compilation was repeatedly reported successful by Luna.
 - The `83239b...` HumanPose semantic-forward experiment **FAILED USER QA** and has been deliberately rolled back from production code/tests.
-- Current investigation is diagnostics-only: runtime source depth/basis, signed map, mapped basis, and torso-yaw evidence must localize the sign divergence before any new production correction is considered.
+- F6 completed the diagnostic localization: front-camera inference H mirroring reversed anatomical semantics before canonical mapping. A focused source-boundary correction is now awaiting USER runtime QA.
 - The expanding Phase 4 EditMode suites were often only **present/source-compiled**, not executed by Unity Test Runner, because another Unity Editor instance/licensing channel blocked batch execution. Do not convert those counts into passing Unity tests without rerunning them.
 - Known one-off ShaderGraph editor warnings around recompilation/exit remain non-blocking unless behavior changes.
 
@@ -96,9 +99,9 @@ Perform fresh USER QA on the correction, then have the Web Orchestrator audit th
 
 The highest-value QA is:
 
-1. Enable **F6** and capture the neutral diagnostic values while facing the camera.
-2. Turn so the USER's **physical right shoulder moves toward the webcam** and the left shoulder moves away; capture the F6 values again.
-3. If useful, repeat the opposite turn.
-4. Compare shoulder/hip canonical dZ, source yaw, mapped target yaw, and applied torso-delta yaw. Do not select a production fix until these runtime signs localize the divergence.
+1. Re-run the previously passed webcam/2D presentation check with display mirror OFF: upright, unmirrored preview and raw/canonical/stabilized overlays aligned to the physical user.
+2. Calibrate normally and open F6. Neutral source basis should move toward anatomical Right≈+X, Up≈+Y, Forward≈-Z.
+3. Repeat the controlled turn with the USER's physical right shoulder toward the webcam. Semantic `RightShoulder` and `RightHip` must now be the near/depth-smaller side.
+4. If source semantics pass, enable F5 and confirm procedural retargeting still behaves as before, then recheck Neko facing/yaw without changing avatar-side code.
 5. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.
 

@@ -530,10 +530,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
-            // These are pixel/input preparation flags only. They describe the image MediaPipe
-            // sees; they are not display-mirror or world-data conversion instructions.
+            // These are pixel/input preparation flags only. Front-facing is camera metadata,
+            // not a semantic request to mirror the inference image. Golden Needle presents this
+            // WebCamTexture as an unmirrored physical camera view, and MediaPipe's landmark IDs
+            // are anatomical. Mirroring the inference pixels here would make those semantic IDs
+            // describe the opposite physical side. Keep only the transport/orientation correction.
             var transformation = ImageTransformationOptions.Build(
-                shouldFlipHorizontally: _selectedDevice.isFrontFacing,
+                shouldFlipHorizontally: false,
                 isVerticallyFlipped: _webCamTexture.videoVerticallyMirrored,
                 rotation: (RotationAngle)_webCamTexture.videoRotationAngle);
 

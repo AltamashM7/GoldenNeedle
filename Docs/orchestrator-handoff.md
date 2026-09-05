@@ -126,8 +126,10 @@ At the checkpoint:
 - Rotating Neko root to Y=180 while that failed experiment was active merely flipped the avatar and did not solve the relative issue.
 - Root Y=0 versus Y=180 is no longer being treated as an explanatory fix: rotating the root rotates the target anatomy/reference basis/bind rotations together and preserves the relative mismatch.
 - Repository anatomy evidence supports Neko target Forward≈+Z from both torso basis and foot/toe geometry.
-- The unresolved question is runtime Z/yaw polarity through source world coordinates, source-body yaw, signed map, and applied torso delta.
-- A diagnostic-only F6 trace now exposes those stages live; no new production orientation correction has been selected.
+- F6 runtime evidence then localized the source-side defect: during a known physical right-shoulder-toward-camera turn, semantic `LeftShoulder`/`LeftHip` became the near side. Neutral source Right was correspondingly approximately -X and source Forward approximately +Z.
+- Repository tracing found front-facing status was the sole trigger for a literal horizontal inference pixel mirror via `ImageTransformationOptions.Build(... shouldFlipHorizontally:true ...)` → `TextureFrame.ReadTextureAsync(... flipHorizontally:true ...)`.
+- The focused correction removes that automatic inference H mirror while preserving vertical/rotation transport, unmirrored display presentation, canonical mapping, calibration math, signed-axis mapping, and all avatar-side behavior.
+- F6 remains available to prove corrected runtime semantics.
 
 Do not judge the real avatar path until the tracking/presentation foundation and procedural acceptance harness are trustworthy.
 
@@ -145,10 +147,10 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 Audit the exact pushed correction head, then use USER QA as the gate:
 
-1. Turn on F6 and record neutral source/target basis, canonical shoulder/hip depth, map, and yaw values.
-2. Turn the USER's physical right shoulder toward the webcam while the left moves away; record the same values.
-3. Optionally repeat the opposite turn.
-4. Use the runtime sign progression to localize the divergence before proposing any production correction.
+1. Re-run the hard presentation gate first: display mirror OFF, upright/unmirrored webcam, and physically registered raw/canonical/stabilized overlays.
+2. Recalibrate and inspect F6 neutral basis; expect anatomical Right to return toward +X and frontal Forward toward -Z.
+3. Repeat the controlled physical-right-shoulder-toward-camera turn; semantic RightShoulder/RightHip must be the near/depth-smaller side.
+4. If source semantics pass, recheck the already-passed procedural F5 path and then the real Neko facing/yaw without target/avatar hacks.
 5. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.
 
 ## Governance

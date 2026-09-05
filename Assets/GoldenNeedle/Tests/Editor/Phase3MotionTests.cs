@@ -129,6 +129,8 @@ namespace GoldenNeedle.Tests
             Assert.That(session.Profile.bodyReferenceSampleCount, Is.EqualTo(3));
             Assert.That(session.Profile.leftLegGeometry.isValid, Is.False);
             Assert.That(session.Profile.rightLegGeometry.isValid, Is.False);
+            Assert.That(Vector3.Dot(session.Profile.neutralBodyRight, Vector3.right), Is.GreaterThan(0.99f));
+            Assert.That(Vector3.Dot(session.Profile.neutralBodyUp, Vector3.up), Is.GreaterThan(0.99f));
             Assert.That(Vector3.Dot(session.Profile.neutralBodyForward, Vector3.back), Is.GreaterThan(0.99f));
         }
 
