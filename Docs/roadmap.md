@@ -32,7 +32,7 @@ USER QA historically passed the Phase 3 calibration/T-pose implementation, visib
 
 Pre-correction handoff HEAD: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` (runtime parent `5e830dce7ac3de542ab159b8b90992935d9dd0b0`).
 
-A repository-first correction removed the unintended front-camera presentation flip and replaced reflected/per-chain quaternion production mapping with an explicit signed canonical-to-avatar basis map feeding positional analytic IK. USER QA has now passed 2D presentation, modular calibration, procedural F3/F5 retargeting, real Animator Humanoid binding, and real Humanoid limb response. Real-avatar body/facing orientation remains unresolved. The `83239b...` HumanPose semantic-forward experiment failed USER QA and has been removed.
+A repository-first correction removed the unintended front-camera presentation flip and replaced handedness-sensitive/per-chain quaternion production mapping with an explicit signed canonical-to-avatar basis map feeding positional analytic IK. USER QA has passed 2D presentation, modular calibration, procedural F3/F5 retargeting, real Animator Humanoid binding, and real Humanoid limb response. F6 then localized a front-camera semantic side inversion; the inference H mirror was removed, followed by a calibration-basis correction from `Cross(Up, Right)` to `Cross(Right, Up)` so an unmirrored frontal subject yields `R≈-X, U≈+Y, F≈-Z`. Real-avatar body/facing orientation remains pending corrected runtime QA. The `83239b...` HumanPose semantic-forward experiment failed USER QA and remains removed.
 
 Phase 4 remains **NOT USER ACCEPTED**. The correction must not be merged into `main` until fresh USER motion/visual QA and Orchestrator audit pass.
 

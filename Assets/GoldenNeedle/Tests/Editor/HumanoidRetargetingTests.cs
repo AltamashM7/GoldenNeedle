@@ -440,9 +440,9 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void SignedAxisMapRepresentsCanonicalReflectionAgainstYaw180Rig()
+        public void SignedAxisMapUsesCorrectedFrontCameraBasisAgainstProperTarget()
         {
-            var context = CreateRigContext(Quaternion.Euler(0f, 180f, 0f));
+            var context = CreateRigContext();
             try
             {
                 var profile = RetargetProfile();
@@ -450,12 +450,15 @@ namespace GoldenNeedle.Tests
                     HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(profile, context.binding, out var map),
                     Is.True);
 
-                Assert.That(map.Source.HandednessSign, Is.EqualTo(-1f));
+                Assert.That(map.Source.HandednessSign, Is.EqualTo(1f));
                 Assert.That(map.Target.HandednessSign, Is.EqualTo(1f));
-                Assert.That(map.DeterminantSign, Is.EqualTo(-1f));
-                Assert.That(Vector3.Angle(map.MapVector(Vector3.right), Vector3.left), Is.LessThan(0.01f));
+                Assert.That(map.DeterminantSign, Is.EqualTo(1f));
+                Assert.That(Vector3.Angle(map.MapVector(profile.neutralBodyRight), map.Target.Right), Is.LessThan(0.01f));
+                Assert.That(Vector3.Angle(map.MapVector(profile.neutralBodyUp), map.Target.Up), Is.LessThan(0.01f));
+                Assert.That(Vector3.Angle(map.MapVector(profile.neutralBodyForward), map.Target.Forward), Is.LessThan(0.01f));
+                Assert.That(Vector3.Angle(map.MapVector(Vector3.left), Vector3.right), Is.LessThan(0.01f));
                 Assert.That(Vector3.Angle(map.MapVector(Vector3.up), Vector3.up), Is.LessThan(0.01f));
-                Assert.That(Vector3.Angle(map.MapVector(Vector3.back), Vector3.back), Is.LessThan(0.01f));
+                Assert.That(Vector3.Angle(map.MapVector(Vector3.back), Vector3.forward), Is.LessThan(0.01f));
             }
             finally
             {
@@ -901,11 +904,11 @@ namespace GoldenNeedle.Tests
                 bodyReferenceValid = true,
                 version = MotionCalibrationProfile.CurrentVersion,
                 state = MotionCalibrationState.Ready,
-                leftArmGeometry = Geometry(0.25f, 0.25f, Vector3.left, Vector3.left),
-                rightArmGeometry = Geometry(0.5f, 0.5f, Vector3.right, Vector3.right),
+                leftArmGeometry = Geometry(0.25f, 0.25f, Vector3.right, Vector3.right),
+                rightArmGeometry = Geometry(0.5f, 0.5f, Vector3.left, Vector3.left),
                 leftLegGeometry = Geometry(0.5f, 0.5f, Vector3.down, Vector3.down),
                 rightLegGeometry = Geometry(0.5f, 0.5f, Vector3.down, Vector3.down),
-                neutralBodyRight = Vector3.right,
+                neutralBodyRight = Vector3.left,
                 neutralBodyUp = Vector3.up,
                 neutralBodyForward = Vector3.back,
             };
@@ -916,20 +919,20 @@ namespace GoldenNeedle.Tests
             var profile = ValidProfile();
             profile.neutralPelvisPosition = Vector3.zero;
             profile.neutralChestPosition = new Vector3(0f, 0.40f, 0f);
-            profile.neutralLeftShoulderPosition = new Vector3(-0.31f, 0.42f, 0f);
-            profile.neutralRightShoulderPosition = new Vector3(0.31f, 0.42f, 0f);
-            profile.neutralLeftHipPosition = new Vector3(-0.17f, -0.45f, 0f);
-            profile.neutralRightHipPosition = new Vector3(0.17f, -0.45f, 0f);
+            profile.neutralLeftShoulderPosition = new Vector3(0.31f, 0.42f, 0f);
+            profile.neutralRightShoulderPosition = new Vector3(-0.31f, 0.42f, 0f);
+            profile.neutralLeftHipPosition = new Vector3(0.17f, -0.45f, 0f);
+            profile.neutralRightHipPosition = new Vector3(-0.17f, -0.45f, 0f);
             profile.leftArmGeometry = Geometry(
-                0.36f,
-                0.30f,
-                Vector3.left,
-                Vector3.left);
-            profile.rightArmGeometry = Geometry(
                 0.36f,
                 0.30f,
                 Vector3.right,
                 Vector3.right);
+            profile.rightArmGeometry = Geometry(
+                0.36f,
+                0.30f,
+                Vector3.left,
+                Vector3.left);
             var lowerLegVector = new Vector3(0f, -0.12f, 0.10f);
             profile.leftLegGeometry = Geometry(
                 0.45f,

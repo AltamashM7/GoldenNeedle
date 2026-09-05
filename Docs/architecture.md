@@ -87,7 +87,7 @@ The solver is deliberately swing-only for the retained rotation-frame path. A mo
 
 The retargeter maps those normalized displacements into the target avatar without changing authored proportions. The source builder keeps root-to-mid and root-to-effector vectors directly in stabilized Golden Needle canonical 3D space.
 
-Golden Needle calibration may describe a reflected semantic anatomical basis. For example, a reference case can be `Right=+X, Up=+Y, Forward=-Z`, whose determinant is negative. A quaternion cannot represent that reflection. Production retargeting therefore builds:
+Golden Needle canonical axes are camera/view axes. For an unmirrored person facing the webcam, anatomical Right appears on viewer-left, so the calibrated neutral body basis is expected to be approximately `Right=-X, Up=+Y, Forward=-Z`, with `Forward=Cross(Right, Up)` and handedness +1. The signed-basis machinery still records handedness explicitly and remains able to represent a reflected basis if one is supplied, but the current front-camera calibration contract does not intentionally construct one. Production retargeting therefore builds:
 
 - a signed source basis that preserves canonical Right/Up/Forward and records handedness;
 - a proper right-handed target basis captured once from the bound avatar's actual shoulder/hip and pelvis/chest bind/reference geometry;
@@ -102,7 +102,7 @@ desiredEffector = R + mappedEffector * L
 targetHint = R + mappedHint * L
 ```
 
-The target basis is immutable for the lifetime of that binding capture and is invalidated/rebuilt only when the binding/reference pose is rebuilt. The same signed map converts live canonical torso Right/Up axes into a proper target body rotation. Large yaw is derived from the live axes plus the source basis handedness; no previous/reference forward-hemisphere forcing is used in the production path. Per-chain quaternion characterization/current-target-parent mapping remains only as compatibility code for older callers/tests and is not the live `LateUpdate` architecture.
+The target basis is immutable for the lifetime of that binding capture and is invalidated/rebuilt only when the binding/reference pose is rebuilt. The same signed map converts live canonical torso Right/Up axes into a proper target body rotation. Large yaw is derived from the live axes plus the source basis handedness; no previous/reference forward-hemisphere forcing is used in the production path. Under the corrected neutral front-camera convention both source and validated target bases are expected to be proper, so the reference map determinant is expected to be +1. Per-chain quaternion characterization/current-target-parent mapping remains only as compatibility code for older callers/tests and is not the live `LateUpdate` architecture.
 
 `HumanoidRigBinding` captures the actual root/mid/tip Transform for each Animator Humanoid chain or explicit procedural chain, bind local rotations, upper/lower world lengths, total reach, and original local positions/scales once. For each live chain, the retargeter first applies pelvis/chest, restores that chain's root and mid to cached bind-local rotations, then solves from the current root world position. The analytic solver clamps the desired endpoint to `abs(a-b)+epsilon .. (a+b)-epsilon`, preserves its direction, and computes:
 

@@ -129,9 +129,14 @@ namespace GoldenNeedle.Tests
             Assert.That(session.Profile.bodyReferenceSampleCount, Is.EqualTo(3));
             Assert.That(session.Profile.leftLegGeometry.isValid, Is.False);
             Assert.That(session.Profile.rightLegGeometry.isValid, Is.False);
-            Assert.That(Vector3.Dot(session.Profile.neutralBodyRight, Vector3.right), Is.GreaterThan(0.99f));
+            Assert.That(Vector3.Dot(session.Profile.neutralBodyRight, Vector3.left), Is.GreaterThan(0.99f));
             Assert.That(Vector3.Dot(session.Profile.neutralBodyUp, Vector3.up), Is.GreaterThan(0.99f));
             Assert.That(Vector3.Dot(session.Profile.neutralBodyForward, Vector3.back), Is.GreaterThan(0.99f));
+            Assert.That(
+                Vector3.Dot(
+                    Vector3.Cross(session.Profile.neutralBodyRight, session.Profile.neutralBodyUp),
+                    session.Profile.neutralBodyForward),
+                Is.GreaterThan(0.99f));
         }
 
         [Test]
@@ -291,10 +296,12 @@ namespace GoldenNeedle.Tests
             frame.Begin(timestamp, received, true);
             SetTracked(frame, CanonicalJointId.Pelvis, new Vector2(0.5f, 0.5f));
             SetTracked(frame, CanonicalJointId.Chest, new Vector2(0.5f, 0.7f));
-            SetTracked(frame, CanonicalJointId.LeftShoulder, new Vector2(0.35f, 0.75f));
-            SetTracked(frame, CanonicalJointId.RightShoulder, new Vector2(0.65f, 0.75f));
-            SetTracked(frame, CanonicalJointId.LeftHip, new Vector2(0.4f, 0.5f));
-            SetTracked(frame, CanonicalJointId.RightHip, new Vector2(0.6f, 0.5f));
+            // Unmirrored front-camera geometry: anatomical left appears viewer-right (+X),
+            // anatomical right appears viewer-left (-X).
+            SetTracked(frame, CanonicalJointId.LeftShoulder, new Vector2(0.65f, 0.75f));
+            SetTracked(frame, CanonicalJointId.RightShoulder, new Vector2(0.35f, 0.75f));
+            SetTracked(frame, CanonicalJointId.LeftHip, new Vector2(0.6f, 0.5f));
+            SetTracked(frame, CanonicalJointId.RightHip, new Vector2(0.4f, 0.5f));
             frame.Complete();
             return frame;
         }
@@ -302,8 +309,8 @@ namespace GoldenNeedle.Tests
         private static CanonicalPoseFrame BentLeftArmFrame(long timestamp, double received)
         {
             var frame = BodyReferenceFrame(timestamp, received);
-            SetTracked(frame, CanonicalJointId.LeftElbow, new Vector2(0.25f, 0.62f));
-            SetTracked(frame, CanonicalJointId.LeftWrist, new Vector2(0.35f, 0.48f));
+            SetTracked(frame, CanonicalJointId.LeftElbow, new Vector2(0.75f, 0.62f));
+            SetTracked(frame, CanonicalJointId.LeftWrist, new Vector2(0.65f, 0.48f));
             frame.Complete();
             return frame;
         }

@@ -68,7 +68,7 @@ MediaPipe provider
 → procedural debug rig
 ```
 
-`CanonicalRotationFrame` remains available for diagnostics/future orientation work, but the production limb mapping no longer depends on per-chain quaternion characterization or moving parent-frame quaternions. The source semantic basis is allowed to be reflected; reflections are represented explicitly rather than hidden inside `Quaternion` composition.
+`CanonicalRotationFrame` remains available for diagnostics/future orientation work, but the production limb mapping no longer depends on per-chain quaternion characterization or moving parent-frame quaternions. The signed source basis records handedness explicitly. Under the corrected unmirrored front-camera convention, calibration should produce a proper source basis (`R≈-X, U≈+Y, F≈-Z`, handedness +1); reflected bases remain representable for diagnostics/generic math but are not the intended frontal production baseline.
 
 The coordinate/presentation correction direction is retained. **2D PRESENTATION QA has PASSED** at `d73b01b0915da56cb3815082f12b5aaea65266d4`. Phase 4 as a whole is still not accepted; modular calibration and procedural retarget QA remain.
 
@@ -81,7 +81,7 @@ The coordinate/presentation correction direction is retained. **2D PRESENTATION 
 5. Coordinate/camera foundation work then found inconsistent 2D/3D/presentation behavior. Several transformations were revised.
 6. Latest pre-correction USER evidence showed F3 substantially better/upright and viewer-side-correct, and the 2D skeleton human-shaped/aligned, but the visible webcam preview still horizontally mirrored.
 7. Repository audit traced the preview issue to an extra front-facing presentation heuristic, separate from MediaPipe inference preparation.
-8. Repository audit also found the source semantic basis can be reflected (`Right=+X, Up=+Y, Forward=-Z` in the reference case), while the production mapping attempted to encode it through quaternions and forward-hemisphere compensation.
+8. Earlier investigation treated `Right=+X, Up=+Y, Forward=-Z` as the frontal source reference and therefore as reflected. Fresh source-semantics audit corrected that premise: +X is viewer-right, while a front-facing user's anatomical Right is approximately -X. Calibration must therefore use `Forward=Cross(Right, Up)`, yielding approximately `R=-X, U=+Y, F=-Z` and handedness +1.
 9. The correction removes that production mapping in favor of explicit signed-axis vector conversion.
 10. USER QA subsequently passed the corrected upright/unmirrored 2D presentation at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
 11. Calibration then blocked at the old `AwaitingTPose 0%` gate, so the USER/Orchestrator approved replacing hard T-pose recognition with modular body-reference and independent chain measurements before F5 QA resumes.
@@ -128,8 +128,10 @@ At the checkpoint:
 - Repository anatomy evidence supports Neko target Forward≈+Z from both torso basis and foot/toe geometry.
 - F6 runtime evidence then localized the source-side defect: during a known physical right-shoulder-toward-camera turn, semantic `LeftShoulder`/`LeftHip` became the near side. Neutral source Right was correspondingly approximately -X and source Forward approximately +Z.
 - Repository tracing found front-facing status was the sole trigger for a literal horizontal inference pixel mirror via `ImageTransformationOptions.Build(... shouldFlipHorizontally:true ...)` → `TextureFrame.ReadTextureAsync(... flipHorizontally:true ...)`.
-- The focused correction removes that automatic inference H mirror while preserving vertical/rotation transport, unmirrored display presentation, canonical mapping, calibration math, signed-axis mapping, and all avatar-side behavior.
-- F6 remains available to prove corrected runtime semantics.
+- The focused correction keeps that automatic inference H mirror removed while preserving vertical/rotation transport and unmirrored presentation.
+- The Orchestrator then identified the remaining basis-order error: after semantic Left/Right is fixed, anatomical Right is approximately -X for a front-facing subject, so the old `Cross(Up, Right)` still yields +Z. Calibration is corrected to `Cross(Right, Up)`, consistent with the rotation solver and frontal -Z convention.
+- Canonical mapper, signed-axis architecture, target/avatar basis, Humanoid binding, and IK remain unchanged.
+- F6 remains available to prove corrected runtime semantics and source handedness.
 
 Do not judge the real avatar path until the tracking/presentation foundation and procedural acceptance harness are trustworthy.
 
@@ -148,7 +150,7 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 Audit the exact pushed correction head, then use USER QA as the gate:
 
 1. Re-run the hard presentation gate first: display mirror OFF, upright/unmirrored webcam, and physically registered raw/canonical/stabilized overlays.
-2. Recalibrate and inspect F6 neutral basis; expect anatomical Right to return toward +X and frontal Forward toward -Z.
+2. Recalibrate and inspect F6 neutral basis; expect anatomical Right toward -X, Up toward +Y, frontal Forward toward -Z, and source handedness +1.
 3. Repeat the controlled physical-right-shoulder-toward-camera turn; semantic RightShoulder/RightHip must be the near/depth-smaller side.
 4. If source semantics pass, recheck the already-passed procedural F5 path and then the real Neko facing/yaw without target/avatar hacks.
 5. Keep Phase 4 unaccepted and Phase 5 unstarted until the USER explicitly approves.

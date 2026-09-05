@@ -50,9 +50,10 @@ The latest visible state before this handoff is:
 - Neko target anatomy is internally coherent: bind shoulders/chest imply target Right≈+X, Up≈+Y, Forward≈+Z, and independent foot/toe geometry also points toward +Z. Target Forward is therefore not being changed in the current investigation.
 - F6 runtime evidence localized the earliest proven inversion to the front-camera source boundary: with the USER's physical right shoulder moved toward the webcam, semantic `LeftShoulder` and `LeftHip` became the near/depth-smaller side while semantic right became farther. Neutral source Right correspondingly pointed approximately -X and `Cross(Up, Right)` produced approximately +Z Forward.
 - The provider was still passing `_selectedDevice.isFrontFacing` as `shouldFlipHorizontally` into `ImageTransformationOptions.Build`. The embedded `TextureFrame.ReadTextureAsync` performs that flag as a literal horizontal pixel mirror before MediaPipe inference, while the canonical mapper preserves MediaPipe anatomical IDs directly.
-- The source correction removes that automatic front-camera inference H mirror. Front-facing remains metadata; inference still applies the required vertical/rotation transport correction. The canonical mapper, calibration cross-product, signed-axis map, target/avatar basis, and retarget application are unchanged.
+- The source correction keeps the automatic front-camera inference H mirror removed. Front-facing remains metadata; inference still applies required vertical/rotation transport correction. A follow-up Orchestrator audit found one remaining source-basis error: Golden Needle +X is **viewer/camera right**, not the front-facing user's anatomical right. In an unmirrored frontal view anatomical Right is therefore approximately -X, so calibration must derive Forward with `Cross(Right, Up)`, not `Cross(Up, Right)`.
 - Neko target anatomy remains independently coherent with Forward≈+Z from torso and foot/toe evidence; root-rotation and HumanPose experiments remain rejected.
-- F6 diagnostics are retained as the runtime regression evidence for corrected semantic Right/Forward/yaw.
+- With corrected unmirrored frontal semantics, the expected neutral source basis is anatomical `R≈-X`, `U≈+Y`, `F≈-Z`. Because `F = Cross(R, U)`, the calibrated source basis is expected to be proper/handedness +1 rather than the previously reflected -1 case. The signed-axis architecture remains capable of representing signed bases, but production calibration no longer forces the old reflected premise.
+- F6 diagnostics are retained as runtime regression evidence for corrected semantic Right/Forward/yaw.
 - Coordinate/presentation diagnostics remain observability tools rather than proof of correctness.
 
 Do not infer that the correction is visually correct merely because the signed-axis math is internally consistent. USER visual/motion QA remains the decisive gate, followed by Orchestrator audit.
@@ -100,7 +101,7 @@ Perform fresh USER QA on the correction, then have the Web Orchestrator audit th
 The highest-value QA is:
 
 1. Re-run the previously passed webcam/2D presentation check with display mirror OFF: upright, unmirrored preview and raw/canonical/stabilized overlays aligned to the physical user.
-2. Calibrate normally and open F6. Neutral source basis should move toward anatomical Right≈+X, Up≈+Y, Forward≈-Z.
+2. Calibrate normally and open F6. Neutral source basis should move toward anatomical Right≈-X, Up≈+Y, Forward≈-Z, with source handedness approximately +1.
 3. Repeat the controlled turn with the USER's physical right shoulder toward the webcam. Semantic `RightShoulder` and `RightHip` must now be the near/depth-smaller side.
 4. If source semantics pass, enable F5 and confirm procedural retargeting still behaves as before, then recheck Neko facing/yaw without changing avatar-side code.
 5. Do not begin Phase 5 and do not merge Phase 4 into `main` until explicit USER acceptance.

@@ -153,21 +153,23 @@ namespace GoldenNeedle.Tests
             var orientation = Orientation(
                 frontFacing: true,
                 inferenceFlipVertically: true);
-            var physicalLeftSensor = new Vector2(0.30f, 0.40f);
-            var physicalRightSensor = new Vector2(0.70f, 0.40f);
+            // Unmirrored person facing the camera: anatomical left appears viewer-right,
+            // anatomical right appears viewer-left.
+            var physicalLeftSensor = new Vector2(0.70f, 0.40f);
+            var physicalRightSensor = new Vector2(0.30f, 0.40f);
 
             var leftInference = orientation.SensorTopLeftToInferenceNormalized(physicalLeftSensor);
             var rightInference = orientation.SensorTopLeftToInferenceNormalized(physicalRightSensor);
-            Assert.That(leftInference.x, Is.EqualTo(0.30f).Within(0.0001f));
-            Assert.That(rightInference.x, Is.EqualTo(0.70f).Within(0.0001f));
+            Assert.That(leftInference.x, Is.EqualTo(0.70f).Within(0.0001f));
+            Assert.That(rightInference.x, Is.EqualTo(0.30f).Within(0.0001f));
 
             var observation = NewObservation();
             // Controlled-turn contract: physical/anatomical right side is nearer, represented here
             // by the smaller canonical-preserved MediaPipe world Z.
-            Track(observation, 11, leftInference.x, leftInference.y, new Vector3(-0.20f, -0.50f, 0.20f));
-            Track(observation, 12, rightInference.x, rightInference.y, new Vector3(0.20f, -0.50f, -0.20f));
-            Track(observation, 23, 0.35f, 0.70f, new Vector3(-0.15f, 0.10f, 0.15f));
-            Track(observation, 24, 0.65f, 0.70f, new Vector3(0.15f, 0.10f, -0.15f));
+            Track(observation, 11, leftInference.x, leftInference.y, new Vector3(0.20f, -0.50f, 0.20f));
+            Track(observation, 12, rightInference.x, rightInference.y, new Vector3(-0.20f, -0.50f, -0.20f));
+            Track(observation, 23, 0.65f, 0.70f, new Vector3(0.15f, 0.10f, 0.15f));
+            Track(observation, 24, 0.35f, 0.70f, new Vector3(-0.15f, 0.10f, -0.15f));
 
             var frame = new CanonicalPoseFrame();
             MediaPipeCanonicalPoseMapper.Map(observation, frame);
@@ -177,8 +179,8 @@ namespace GoldenNeedle.Tests
             var leftHip = frame.GetJoint(CanonicalJointId.LeftHip);
             var rightHip = frame.GetJoint(CanonicalJointId.RightHip);
 
-            Assert.That(leftShoulder.imagePosition.x, Is.LessThan(rightShoulder.imagePosition.x));
-            Assert.That(leftShoulder.worldPosition.x, Is.LessThan(rightShoulder.worldPosition.x));
+            Assert.That(leftShoulder.imagePosition.x, Is.GreaterThan(rightShoulder.imagePosition.x));
+            Assert.That(leftShoulder.worldPosition.x, Is.GreaterThan(rightShoulder.worldPosition.x));
             Assert.That(rightShoulder.worldPosition.z, Is.LessThan(leftShoulder.worldPosition.z));
             Assert.That(rightHip.worldPosition.z, Is.LessThan(leftHip.worldPosition.z));
         }
@@ -187,8 +189,8 @@ namespace GoldenNeedle.Tests
         public void ExplicitDisplayMirrorDoesNotChangeCanonicalSemanticIds()
         {
             var observation = NewObservation();
-            Track(observation, 11, 0.30f, 0.40f, new Vector3(-0.20f, -0.50f, 0.10f));
-            Track(observation, 12, 0.70f, 0.40f, new Vector3(0.20f, -0.50f, 0.10f));
+            Track(observation, 11, 0.70f, 0.40f, new Vector3(0.20f, -0.50f, 0.10f));
+            Track(observation, 12, 0.30f, 0.40f, new Vector3(-0.20f, -0.50f, 0.10f));
 
             var canonical = new CanonicalPoseFrame();
             MediaPipeCanonicalPoseMapper.Map(observation, canonical);
@@ -198,16 +200,16 @@ namespace GoldenNeedle.Tests
                 frontFacing: true,
                 displayMirrored: true,
                 inferenceFlipVertically: true);
-            var leftInference = new Vector2(0.30f, 0.60f);
+            var leftInference = new Vector2(0.70f, 0.60f);
 
             Assert.That(
                 unmirrored.InferenceTopLeftToDisplayNormalized(leftInference).x,
-                Is.EqualTo(0.30f).Within(0.0001f));
+                Is.EqualTo(0.70f).Within(0.0001f));
             Assert.That(
                 mirrored.InferenceTopLeftToDisplayNormalized(leftInference).x,
-                Is.EqualTo(0.70f).Within(0.0001f));
-            Assert.That(canonical.GetJoint(CanonicalJointId.LeftShoulder).worldPosition.x, Is.LessThan(0f));
-            Assert.That(canonical.GetJoint(CanonicalJointId.RightShoulder).worldPosition.x, Is.GreaterThan(0f));
+                Is.EqualTo(0.30f).Within(0.0001f));
+            Assert.That(canonical.GetJoint(CanonicalJointId.LeftShoulder).worldPosition.x, Is.GreaterThan(0f));
+            Assert.That(canonical.GetJoint(CanonicalJointId.RightShoulder).worldPosition.x, Is.LessThan(0f));
         }
 
         [Test]

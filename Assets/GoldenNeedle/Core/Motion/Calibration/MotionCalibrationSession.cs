@@ -320,7 +320,7 @@ namespace GoldenNeedle.Core.Motion.Calibration
             _profile.neutralBodyRight = SafeNormalize(body[3] - body[2]);
             _profile.neutralBodyUp = SafeNormalize(body[1] - body[0]);
             _profile.neutralBodyForward = SafeNormalize(
-                Vector3.Cross(_profile.neutralBodyUp, _profile.neutralBodyRight));
+                Vector3.Cross(_profile.neutralBodyRight, _profile.neutralBodyUp));
             _profile.bodyReferenceSampleCount = _bodyAccumulatedSamples;
             _profile.bodyReferenceCapturedAtSeconds = now;
             _profile.version = MotionCalibrationProfile.CurrentVersion;
