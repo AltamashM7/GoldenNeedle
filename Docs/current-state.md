@@ -1,5 +1,38 @@
 # Current state
 
+<!-- LATEST_CHECKPOINT_2026_09_08:START -->
+## Latest checkpoint — Phase 5A ready for USER runtime QA
+
+- Current tested/audited branch checkpoint before this docs commit: `a4b0ffb7b817f42bd3901da7e0676b68abca70a3` — `fix: organize motion lab debug overlays`.
+- Phase 4 remains **USER ACCEPTED — PASS**. Accepted implementation: `f0c81e84d0a482c40448505f2904af93ef4aa881`.
+- Phase 5A — **Embodied Hybrid Locomotion Prototype** — is implemented, repository-audited, and **NOT USER ACCEPTED** because the first USER runtime locomotion QA has not yet been performed.
+- Phase 5A core implementation commit: `c7756dd1c085d67aad31272a5968bfb1a58093da`.
+- Physical camera-space displacement mapping correction: `5ed42bc1c15b058016ea24036aa8dd490a5f67f4`.
+- Motion Engine Lab overlay UX/layout pass: `a4b0ffb7b817f42bd3901da7e0676b68abca70a3`.
+- The physical root tracker uses image-space torso placement plus yaw-compensated apparent scale; it does not misuse pelvis-relative MediaPipe/canonical 3D as absolute room position.
+- Physical displacement remains fixed-camera data, is scaled, then mapped through the accepted Phase 4 reference `CanonicalToAvatarAxisMap` before world X/Z application.
+- Cadence provides infinite-range extension along live body heading and is suppressed during meaningful real physical translation to reduce double-counting.
+- `K` recenters the physical tracking origin without jumping the current virtual X/Z.
+- Root Y and root rotation remain outside Phase 5A locomotion authority.
+- Speech is reserved as a future **discrete command source** (for example Recenter/Pause/Resume), not the primary continuous locomotion channel.
+- Current Motion Engine Lab presentation controls:
+  - `F1` raw landmarks
+  - `F2` canonical 2D
+  - `F3` canonical 3D inspection
+  - `F4` stabilized 2D
+  - `F5` retarget rig drive ON/OFF
+  - `F6` coordinate diagnostic focus view
+  - `F7` main Motion Engine diagnostics
+  - `F8` procedural rig viewport
+  - `F9` Phase 5A locomotion diagnostics
+  - `F10` Phase 5A fixed-world/grid viewport
+  - `F11` hide/restore all debug presentation
+  - `R` retry, `C` calibrate, `X` reset, `K` recenter.
+- Default Phase 5A debug layout keeps Engine diagnostics, Locomotion diagnostics, and World/Grid ON; Procedural Rig, Canonical 3D, and Coordinate Focus are OFF. F3 owns the right inspection column; F6 is a focus view; F11 hides presentation only and does not stop tracking/retargeting/locomotion.
+- Next action: perform the single USER runtime QA session covering stillness, physical lateral/depth/diagonal movement, Phase 4 regression, in-place cadence, cadence steering, stop behavior, double-counting, and recenter.
+- Phase 6 has **NOT STARTED**. Do not merge the Motion Engine branch to `main` without explicit USER approval.
+<!-- LATEST_CHECKPOINT_2026_09_08:END -->
+
 This is the concise durable snapshot of the accepted Motion Engine through Phase 4 and the next-stage handoff.
 
 ## Authoritative Git state

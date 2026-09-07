@@ -2,6 +2,23 @@
 
 Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / AWAITING USER QA.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Phase 4 accepted implementation SHA: `f0c81e84d0a482c40448505f2904af93ef4aa881`.
 
+<!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:START -->
+## Current Phase 5A runtime checkpoint
+
+Pre-QA implementation checkpoint: `a4b0ffb7b817f42bd3901da7e0676b68abca70a3`.
+
+The Phase 5A implementation has passed repository/code audit but has **not yet passed USER runtime QA**. The implementation sequence is:
+- `c7756dd1c085d67aad31272a5968bfb1a58093da` — initial embodied hybrid locomotion prototype;
+- `5ed42bc1c15b058016ea24036aa8dd490a5f67f4` — maps fixed camera-space physical displacement/velocity through the accepted Phase 4 reference axis map before game-world X/Z use;
+- `a4b0ffb7b817f42bd3901da7e0676b68abca70a3` — non-overlapping, independently toggleable Motion Engine Lab overlays for reliable QA.
+
+Current debug controls are `F1` Raw, `F2` Canonical 2D, `F3` Canonical 3D, `F4` Stabilized 2D, `F5` Retarget Drive, `F6` Coordinate Focus, `F7` Engine Diagnostics, `F8` Procedural Rig, `F9` Locomotion Diagnostics, `F10` World/Grid, and `F11` Hide/Restore Debug Presentation. `R` retries, `C` calibrates, `X` resets, and `K` recenters locomotion.
+
+F11 is presentation-only: it does not stop tracking, calibration, retargeting, cadence, locomotion, or recenter state. F6 is a diagnostic focus view and F3 owns the right-side inspection column so normal Phase 5A panels do not render underneath specialist inspection views.
+
+The next authoritative evidence must come from USER runtime QA, especially depth stability/scale, cadence acquisition and stopping, heading steering, physical/cadence fusion, and no-jump recenter.
+<!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:END -->
+
 ## Phase 1 spike boundary
 
 - `MediaPipePoseProvider` owns the WebCamTexture capture, MediaPipe Tasks API integration, CPU configuration, cadence limiting, async result callback, and per-landmark trust classification.

@@ -12,6 +12,35 @@ Repository: `AltamashM7/GoldenNeedle`
 
 Current branch: `engine/pose-tracking-spike`
 
+<!-- LATEST_HANDOFF_2026_09_08:START -->
+## Current authoritative checkpoint
+
+The current pre-QA Phase 5A runtime checkpoint is:
+
+`a4b0ffb7b817f42bd3901da7e0676b68abca70a3` — `fix: organize motion lab debug overlays`.
+
+Important status:
+
+- Phase 4: **USER ACCEPTED — PASS**.
+- Phase 5A: **IMPLEMENTED + ORCHESTRATOR CODE-AUDITED / USER RUNTIME QA PENDING**.
+- Phase 6: **NOT STARTED**.
+- Do not merge to `main` without explicit USER approval.
+
+Phase 5A's approved locomotion model is **embodied hybrid locomotion**:
+1. finite physical room displacement is reconstructed relative to the fixed webcam;
+2. cadence extends travel when the user walks/jogs rhythmically with little net physical translation;
+3. cadence direction follows live mapped body heading;
+4. real physical translation suppresses cadence extension so movement is not blindly double-counted;
+5. recenter changes the physical origin while preserving the current virtual position.
+
+Speech is intentionally reserved for future discrete commands such as Recenter/Pause/Resume rather than continuous directional locomotion.
+
+Current Lab controls:
+`F1` Raw, `F2` Canonical 2D, `F3` Canonical 3D, `F4` Stabilized 2D, `F5` Retarget Drive, `F6` Coordinate Focus, `F7` Engine Diagnostics, `F8` Procedural Rig, `F9` Locomotion Data, `F10` World/Grid, `F11` Hide/Restore Debug Presentation; `R` Retry, `C` Calibrate, `X` Reset, `K` Recenter.
+
+The USER has not yet performed Phase 5A runtime QA. The next development conversation should resume from that test, not redesign the locomotion model pre-emptively unless runtime evidence requires it.
+<!-- LATEST_HANDOFF_2026_09_08:END -->
+
 Phase 4 handoff HEAD before the correction:
 
 `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — `docs: hand off phase 4 investigation state`

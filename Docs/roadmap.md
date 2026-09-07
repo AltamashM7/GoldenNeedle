@@ -54,6 +54,18 @@ Implemented prototype combines:
 
 Runtime USER QA is authoritative for scale, noise, cadence acquisition/stop, steering, and blend feel. Phase 5 remains unaccepted until that QA passes.
 
+<!-- PHASE5A_CHECKPOINT_2026_09_08:START -->
+### Current Phase 5A checkpoint
+
+Runtime-test HEAD before the docs checkpoint: `a4b0ffb7b817f42bd3901da7e0676b68abca70a3`.
+
+Implementation is complete enough for first USER QA and has been Orchestrator code-audited. The camera-to-avatar physical coordinate mapping defect found in the first audit was corrected at `5ed42bc1c15b058016ea24036aa8dd490a5f67f4`. The Lab overlay/control pass at `a4b0ffb7b817f42bd3901da7e0676b68abca70a3` removes debug-panel overlap as a QA blocker.
+
+**Acceptance gate still pending:** one USER runtime session covering idle drift, physical X/Z/diagonal displacement, Phase 4 pose regression, cadence activation/heading/stop, physical-vs-cadence double-counting, and recenter.
+
+No Phase 6 work should begin before this evidence is reviewed.
+<!-- PHASE5A_CHECKPOINT_2026_09_08:END -->
+
 ## Phase 6 — End-to-end graybox vertical slice
 
 ```text

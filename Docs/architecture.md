@@ -137,6 +137,22 @@ The baseline must run acceptably without a dedicated GPU. Inference must not blo
 
 ## Phase 5A embodied hybrid locomotion
 
+<!-- CURRENT_LAB_OVERLAY_ARCHITECTURE:START -->
+## Current Motion Engine Lab presentation architecture
+
+The Lab remains permanent engineering infrastructure. At the current Phase 5A checkpoint, debug presentation is independently controllable and screen-aware rather than being a set of always-on fixed rectangles.
+
+Normal panel regions are:
+- top-left: Motion Engine diagnostics;
+- top-right: Phase 5A locomotion diagnostics;
+- bottom-left: procedural rig viewport;
+- bottom-right: Phase 5A fixed-world/grid viewport.
+
+`F3` replaces the ordinary right column with Canonical 3D inspection. `F6` is a large coordinate diagnostic focus view that suppresses normal panels without mutating their saved visibility states. `F11` hides/restores debug presentation after the webcam preview is drawn and does not alter runtime tracking, calibration, retargeting, cadence, locomotion, or recenter state.
+
+The complete current control surface is `F1` Raw, `F2` Canonical 2D, `F3` Canonical 3D, `F4` Stabilized 2D, `F5` Retarget Drive, `F6` Coordinate Focus, `F7` Engine Diagnostics, `F8` Procedural Rig, `F9` Locomotion Diagnostics, `F10` World/Grid, `F11` Hide/Restore Debug Presentation, plus `R` Retry, `C` Calibrate, `X` Reset, and `K` Recenter.
+<!-- CURRENT_LAB_OVERLAY_ARCHITECTURE:END -->
+
 `CameraSpaceRootTracker` is deliberately independent of pelvis-relative MediaPipe pose-world coordinates. It estimates a relative camera-space position from absolute canonical image placement and apparent scale. Torso center controls lateral position; apparent shoulder/hip/torso scale controls a relative depth proxy. Shoulder/hip spans are divided by the live torso-yaw cosine and dynamically down-weighted near side-on poses, where width compensation becomes unstable. A lightweight exponential filter produces displacement and velocity.
 
 `CadenceDetector` consumes stabilized lower-body image rhythm. Alternating ankle vertical separation is primary and knee separation is secondary. Valid alternating events estimate step rate, cadence confidence, and a configurable virtual speed. Acquisition requires only a short rhythm sequence; loss of events clears cadence quickly.
