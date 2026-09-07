@@ -36,3 +36,5 @@ These decisions describe the current product and architecture direction. A later
 | Phase 5A cadence fusion | **IMPLEMENTED / AWAITING USER QA** | Cadence extends range only when rhythmic lower-body stepping exists and meaningful physical root velocity is small; physical motion suppresses cadence to avoid obvious double-counting. |
 | Phase 5A recenter | **IMPLEMENTED / AWAITING USER QA** | Public `Recenter()` makes the current physical location the new tracking origin while preserving current virtual X/Z, leaving a clean hook for future discrete voice commands. |
 | Phase 5A vertical/root authority | **LOCKED PROTOTYPE RULE** | Locomotion writes avatar-root X/Z only. Crouch remains Phase 4 pose reproduction; vertical body displacement, jump, gravity, and root rotation are not copied by Phase 5A. |
+
+| Phase 5A physical coordinate mapping | **IMPLEMENTED / AWAITING USER QA** | Camera-space physical displacement remains fixed-camera data until after scaling, then passes through the accepted Phase 4 reference canonical-to-avatar axis map before world X/Z application. Live body heading affects cadence only. |

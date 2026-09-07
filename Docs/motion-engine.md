@@ -166,7 +166,7 @@ A lightweight exponential response filters position and velocity. The first vali
 
 ### Fusion and application
 
-`LocomotionFusion` scales physical X/Z independently. Current scaled physical root velocity is converted into `physicalActivity`; cadence blend is approximately:
+`LocomotionFusion` scales the camera-space X/Z displacement independently, embeds it as `(cameraX, 0, cameraZ)`, maps it through the accepted Phase 4 reference `CanonicalToAvatarAxisMap`, then projects the mapped result to game-world X/Z. The same mapping is applied to scaled physical velocity before computing `physicalActivity`. Live body heading is used only for cadence travel; it never rotates physical room displacement. Cadence blend is approximately:
 
 ```text
 cadenceBlend = cadenceConfidence * (1 - physicalActivity)
@@ -177,7 +177,7 @@ so real translation dominates while in-place rhythm extends range.
 `EmbodiedLocomotionController` integrates cadence into a virtual origin and applies:
 
 ```text
-GamePositionXZ = VirtualOriginXZ + ScaledPhysicalDisplacementXZ
+GamePositionXZ = VirtualOriginXZ + MappedPhysicalWorldDisplacementXZ
 ```
 
 to the bound avatar root. Root Y and root rotation are preserved.

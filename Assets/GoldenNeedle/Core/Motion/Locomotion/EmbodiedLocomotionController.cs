@@ -142,10 +142,17 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 }
             }
 
+            var physicalReferenceMap = default(CanonicalToAvatarAxisMap);
+            HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(
+                profile,
+                binding,
+                out physicalReferenceMap);
+
             FusionResult = _fusion.Evaluate(
                 RootSample,
                 CadenceSample,
-                _hasHeading ? _smoothedHeading : Vector2.zero);
+                _hasHeading ? _smoothedHeading : Vector2.zero,
+                physicalReferenceMap);
 
             _virtualOriginXZ += FusionResult.cadenceVelocity * dt;
             var desired = _virtualOriginXZ + FusionResult.physicalContribution;

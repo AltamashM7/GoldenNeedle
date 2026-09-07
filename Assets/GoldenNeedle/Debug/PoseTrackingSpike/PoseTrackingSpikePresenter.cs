@@ -457,11 +457,11 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var text =
                 "PHASE 5A / EMBODIED LOCOMOTION\n" +
                 $"Root tracking: {rootState}   conf={root.confidence:0.00}   scale={root.apparentScale:0.000}   yawCos={root.yawCosine:0.00}\n" +
-                $"Physical displacement X/Z: {FormatLocomotionVector(root.displacementXZ)}\n" +
+                $"Camera displacement X/Z: {FormatLocomotionVector(root.displacementXZ)}\n" +
                 $"Physical translation: {(fusionResult.physicalTranslationActive ? "ACTIVE" : "idle")}   activity={fusionResult.physicalActivity:0.00}\n" +
                 $"Cadence: {(fusionResult.cadenceActive ? "ACTIVE" : "idle")}   conf={cadenceSample.confidence:0.00}   rate={cadenceSample.rateStepsPerSecond:0.00}/s\n" +
                 $"Body heading world X/Z: {(heading.isValid ? FormatLocomotionVector(heading.worldHeadingXZ) : "unavailable")}\n" +
-                $"Physical contribution: {FormatLocomotionVector(fusionResult.physicalContribution)}\n" +
+                $"Physical world contribution: {FormatLocomotionVector(fusionResult.physicalContribution)}\n" +
                 $"Cadence contribution vel: {FormatLocomotionVector(fusionResult.cadenceVelocity)}   blend={fusionResult.cadenceBlend:0.00}\n" +
                 $"Final frame motion: {FormatLocomotionVector(locomotion.FinalFrameMotionXZ)}\n" +
                 $"Recenter: {recenter}   K = set current physical position as origin";

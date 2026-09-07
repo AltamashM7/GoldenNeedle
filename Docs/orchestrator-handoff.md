@@ -167,7 +167,7 @@ New core modules:
 - `CameraSpaceRootTracker` — relative camera-space physical displacement from image torso center and yaw-compensated apparent scale.
 - `CadenceDetector` — alternating ankle/knee lower-body rhythm, cadence rate/confidence, fast stop.
 - `BodyHeadingEstimator` — maps live source torso Forward through the accepted Phase 4 signed map into avatar/game-world heading.
-- `LocomotionFusion` — independent lateral/depth scaling plus physical-velocity suppression of cadence.
+- `LocomotionFusion` — independent lateral/depth scaling, accepted Phase 4 reference-map conversion from camera X/Z to game-world X/Z, plus mapped physical-velocity suppression of cadence.
 - `EmbodiedLocomotionController` — persistent virtual origin, X/Z root application, public no-jump recenter.
 - `LocomotionPrototypeView` — runtime-only fixed grid/world-reference viewport.
 

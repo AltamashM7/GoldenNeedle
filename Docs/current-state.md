@@ -111,8 +111,10 @@ stabilized lower-body rhythm
 stabilized torso orientation + accepted Phase 4 signed map
     -> BodyHeadingEstimator
 
-physical displacement + cadence + heading
+camera-space physical displacement + accepted Phase 4 reference map
+cadence + heading
     -> LocomotionFusion
+        -> world-space physical contribution + cadence velocity
         -> EmbodiedLocomotionController
             -> bound AvatarRoot world X/Z only
 ```
@@ -121,7 +123,7 @@ The camera-space root tracker does **not** use canonical pelvis/world position a
 
 Cadence uses alternating left/right ankle rhythm with knee rhythm as supporting evidence. It has short acquisition, interval consistency, sustain confidence, and a short stop timeout. No arm-based fallback is implemented in Phase 5A.
 
-Physical and cadence movement are fused rather than blindly added: current scaled physical root velocity produces a physical-activity confidence, and cadence contribution is multiplied by `1 - physicalActivity`. Actual translation therefore suppresses cadence extension, while in-place rhythmic stepping can advance a persistent virtual origin along the mapped body heading.
+Physical and cadence movement are fused rather than blindly added. Camera-space physical displacement and velocity are first scaled, mapped through the accepted Phase 4 **reference** canonical-to-avatar axis map, and projected to game-world X/Z. Current mapped physical root velocity then produces a physical-activity confidence, and cadence contribution is multiplied by `1 - physicalActivity`. Actual translation therefore suppresses cadence extension, while in-place rhythmic stepping can advance a persistent virtual origin along the live mapped body heading.
 
 `EmbodiedLocomotionController.Recenter()` makes the current physical position the new tracking origin while first preserving the avatar's current virtual X/Z as the virtual origin. The character does not jump. The public method is deliberately suitable for a future discrete voice command, but speech recognition is not part of Phase 5A.
 

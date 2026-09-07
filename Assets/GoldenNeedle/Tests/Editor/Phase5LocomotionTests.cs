@@ -102,7 +102,11 @@ namespace GoldenNeedle.Tests
                 confidence = 1f,
             };
 
-            var moving = fusion.Evaluate(movingRoot, cadence, Vector2.up);
+            var moving = fusion.Evaluate(
+                movingRoot,
+                cadence,
+                Vector2.up,
+                IdentityMap());
             Assert.That(moving.physicalContribution.x, Is.EqualTo(0.20f).Within(0.0001f));
             Assert.That(moving.physicalContribution.y, Is.EqualTo(0.40f).Within(0.0001f));
             Assert.That(moving.physicalTranslationActive, Is.True);
@@ -111,15 +115,93 @@ namespace GoldenNeedle.Tests
             var lostRoot = movingRoot;
             lostRoot.isValid = false;
             lostRoot.confidence = 0f;
-            var held = fusion.Evaluate(lostRoot, default, Vector2.up);
+            var held = fusion.Evaluate(
+                lostRoot,
+                default,
+                Vector2.up,
+                IdentityMap());
             Assert.That(held.physicalContribution.x, Is.EqualTo(0.20f).Within(0.0001f));
             Assert.That(held.physicalContribution.y, Is.EqualTo(0.40f).Within(0.0001f));
             Assert.That(held.rootTrackingLive, Is.False);
 
             movingRoot.velocityXZ = Vector2.zero;
-            var inPlace = fusion.Evaluate(movingRoot, cadence, Vector2.up);
+            var inPlace = fusion.Evaluate(
+                movingRoot,
+                cadence,
+                Vector2.up,
+                IdentityMap());
             Assert.That(inPlace.physicalTranslationActive, Is.False);
             Assert.That(inPlace.cadenceVelocity.magnitude, Is.EqualTo(1f).Within(0.0001f));
+        }
+
+        [Test]
+        public void PhysicalCameraAxesMapThroughAcceptedFrontCameraReferenceBasis()
+        {
+            var map = FrontCameraToProperTargetMap();
+
+            AssertVector2(
+                LocomotionFusion.MapCameraVectorToWorldXZ(Vector3.left, map),
+                Vector2.right);
+            AssertVector2(
+                LocomotionFusion.MapCameraVectorToWorldXZ(Vector3.right, map),
+                Vector2.left);
+            AssertVector2(
+                LocomotionFusion.MapCameraVectorToWorldXZ(Vector3.back, map),
+                Vector2.up);
+            AssertVector2(
+                LocomotionFusion.MapCameraVectorToWorldXZ(Vector3.forward, map),
+                Vector2.down);
+        }
+
+        [Test]
+        public void PhysicalForwardAndFrontalCadenceResolveToSameWorldForward()
+        {
+            var map = FrontCameraToProperTargetMap();
+            Assert.That(
+                BodyHeadingEstimator.TryMapHeading(
+                    map,
+                    Vector3.back,
+                    out var cadenceHeading),
+                Is.True);
+
+            var fusion = new LocomotionFusion(new LocomotionFusionSettings
+            {
+                lateralScale = 1f,
+                depthScale = 1f,
+                lateralDeadzone = 0f,
+                depthDeadzone = 0f,
+                physicalVelocityStart = 0.1f,
+                physicalVelocityFull = 0.2f,
+                minimumRootConfidence = 0.2f,
+            });
+            var root = new CameraSpaceRootSample
+            {
+                isValid = true,
+                hasOrigin = true,
+                displacementXZ = new Vector2(0f, -1f),
+                velocityXZ = Vector2.zero,
+                confidence = 1f,
+            };
+            var cadence = new CadenceSample
+            {
+                active = true,
+                confidence = 1f,
+                virtualSpeed = 1f,
+            };
+
+            var result = fusion.Evaluate(
+                root,
+                cadence,
+                cadenceHeading,
+                map);
+
+            Assert.That(result.physicalContribution.y, Is.GreaterThan(0.99f));
+            Assert.That(result.cadenceVelocity.y, Is.GreaterThan(0.99f));
+            Assert.That(
+                Vector2.Dot(
+                    result.physicalContribution.normalized,
+                    result.cadenceVelocity.normalized),
+                Is.GreaterThan(0.999f));
         }
 
         [Test]
@@ -149,6 +231,41 @@ namespace GoldenNeedle.Tests
 
             Assert.That(heading.x, Is.EqualTo(0f).Within(0.0001f));
             Assert.That(heading.y, Is.EqualTo(1f).Within(0.0001f));
+        }
+
+        private static CanonicalToAvatarAxisMap FrontCameraToProperTargetMap()
+        {
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildSignedBasis(
+                    Vector3.left,
+                    Vector3.up,
+                    Vector3.back,
+                    out var source),
+                Is.True);
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildRightHandedBasis(
+                    Vector3.right,
+                    Vector3.up,
+                    out var target),
+                Is.True);
+            return new CanonicalToAvatarAxisMap(source, target);
+        }
+
+        private static CanonicalToAvatarAxisMap IdentityMap()
+        {
+            Assert.That(
+                HumanoidRetargetingMath.TryBuildRightHandedBasis(
+                    Vector3.right,
+                    Vector3.up,
+                    out var basis),
+                Is.True);
+            return new CanonicalToAvatarAxisMap(basis, basis);
+        }
+
+        private static void AssertVector2(Vector2 actual, Vector2 expected)
+        {
+            Assert.That(actual.x, Is.EqualTo(expected.x).Within(0.0001f));
+            Assert.That(actual.y, Is.EqualTo(expected.y).Within(0.0001f));
         }
 
         private static MotionCalibrationProfile FrontCameraProfile()

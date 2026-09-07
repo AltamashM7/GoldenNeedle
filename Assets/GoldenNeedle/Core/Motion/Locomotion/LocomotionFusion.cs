@@ -1,4 +1,5 @@
 using System;
+using GoldenNeedle.Core.Motion.Retargeting;
 using UnityEngine;
 
 namespace GoldenNeedle.Core.Motion.Locomotion
@@ -68,27 +69,36 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         public LocomotionFusionResult Evaluate(
             CameraSpaceRootSample root,
             CadenceSample cadence,
-            Vector2 worldHeadingXZ)
+            Vector2 worldHeadingXZ,
+            CanonicalToAvatarAxisMap physicalReferenceMap)
         {
             var rootUsable = root.isValid &&
                 root.hasOrigin &&
-                root.confidence >= _settings.minimumRootConfidence;
+                root.confidence >= _settings.minimumRootConfidence &&
+                physicalReferenceMap.IsValid;
 
             if (rootUsable)
             {
-                _lastPhysicalContribution = new Vector2(
+                var scaledCameraDisplacement = new Vector3(
                     ApplyDeadzone(
                         root.displacementXZ.x,
                         _settings.lateralDeadzone) * _settings.lateralScale,
+                    0f,
                     ApplyDeadzone(
                         root.displacementXZ.y,
                         _settings.depthDeadzone) * _settings.depthScale);
+                _lastPhysicalContribution = MapCameraVectorToWorldXZ(
+                    scaledCameraDisplacement,
+                    physicalReferenceMap);
             }
 
             var physicalVelocity = rootUsable
-                ? new Vector2(
-                    root.velocityXZ.x * _settings.lateralScale,
-                    root.velocityXZ.y * _settings.depthScale)
+                ? MapCameraVectorToWorldXZ(
+                    new Vector3(
+                        root.velocityXZ.x * _settings.lateralScale,
+                        0f,
+                        root.velocityXZ.y * _settings.depthScale),
+                    physicalReferenceMap)
                 : Vector2.zero;
             var speed = physicalVelocity.magnitude;
             var activity = rootUsable
@@ -123,6 +133,25 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             };
         }
 
+        public static Vector2 MapCameraVectorToWorldXZ(
+            Vector3 scaledCameraVector,
+            CanonicalToAvatarAxisMap referenceMap)
+        {
+            if (!referenceMap.IsValid ||
+                !IsFinite(scaledCameraVector))
+            {
+                return Vector2.zero;
+            }
+
+            var mappedWorld = referenceMap.MapVector(scaledCameraVector);
+            if (!IsFinite(mappedWorld))
+            {
+                return Vector2.zero;
+            }
+
+            return new Vector2(mappedWorld.x, mappedWorld.z);
+        }
+
         private static float ApplyDeadzone(float value, float deadzone)
         {
             var magnitude = Mathf.Abs(value);
@@ -132,6 +161,19 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             }
 
             return Mathf.Sign(value) * (magnitude - deadzone);
+        }
+
+        private static bool IsFinite(Vector3 value)
+        {
+            return IsFinite(value.x) &&
+                   IsFinite(value.y) &&
+                   IsFinite(value.z);
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) &&
+                   !float.IsInfinity(value);
         }
     }
 }

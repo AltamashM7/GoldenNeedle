@@ -143,9 +143,9 @@ The baseline must run acceptably without a dedicated GPU. Inference must not blo
 
 `BodyHeadingEstimator` reconstructs live canonical anatomical Forward from torso Right/Up and maps it through the accepted Phase 4 `CanonicalToAvatarAxisMap`. Cadence travel therefore follows the same world-space heading shown by the avatar instead of a fixed global axis.
 
-`LocomotionFusion` converts relative physical X/Z displacement using independent lateral/depth scales and deadzones. Current scaled physical root velocity creates an activity value. Cadence velocity is multiplied by cadence confidence and `1 - physicalActivity`, preventing obvious double-counting while still allowing in-place cadence extension.
+`LocomotionFusion` keeps tracker output in fixed camera/canonical X/Z until after independent lateral/depth scaling and deadzones. It then maps the scaled camera vector through the accepted Phase 4 **reference** `CanonicalToAvatarAxisMap` and projects the result to game-world X/Z. The same reference map is used for scaled physical velocity before calculating activity. Live body heading is deliberately not used for physical room displacement. Cadence velocity is multiplied by cadence confidence and `1 - physicalActivity`, preventing obvious double-counting while still allowing in-place cadence extension.
 
-`EmbodiedLocomotionController` runs after Phase 4 retargeting and changes only `HumanoidRigBinding.AvatarRoot.position.x/z`. It does not write root Y or rotation. Cadence integrates a persistent virtual origin; physical displacement remains an offset from the current tracking origin.
+`EmbodiedLocomotionController` runs after Phase 4 retargeting and changes only `HumanoidRigBinding.AvatarRoot.position.x/z`. It does not write root Y or rotation. Cadence integrates a persistent virtual origin; the mapped world-space physical contribution remains an offset derived from the current camera-space tracking origin.
 
 Recenter is a public controller action. Before the root tracker zeroes its physical displacement, the controller stores the avatar's current X/Z as the new virtual origin. This preserves world position exactly while making the current physical body position the new tracking origin.
 
