@@ -61,10 +61,14 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         [SerializeField] private MediaPipePoseProvider provider;
         [SerializeField] private bool drawRawLandmarks = true;
         [SerializeField] private bool drawCanonical2D = true;
-        [SerializeField] private bool drawCanonical3D = true;
+        [SerializeField] private bool drawCanonical3D;
         [SerializeField] private bool drawStabilized2D = true;
         [SerializeField] private bool drawUnavailableLandmarks = true;
         [SerializeField] private bool drawCoordinateDiagnostic;
+        [SerializeField] private bool drawMainDiagnostics = true;
+        [SerializeField] private bool drawProceduralRigViewport;
+        [SerializeField] private bool drawLocomotionDiagnostics = true;
+        [SerializeField] private bool drawLocomotionWorldView = true;
         [SerializeField] private float previewPanelWidth = 360f;
 
         [SerializeField] private MediaPipeCanonicalPoseSource canonicalSource;
@@ -79,6 +83,19 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         private float _renderFps;
         private GUIStyle _labelStyle;
         private GUIStyle _smallLabelStyle;
+        private GUIStyle _compactLabelStyle;
+        private bool _hideAllDebugPresentation;
+
+        private struct DebugOverlayLayout
+        {
+            public Rect engine;
+            public Rect locomotion;
+            public Rect rig;
+            public Rect world;
+            public Rect rightInspection;
+            public Rect focus;
+            public Rect help;
+        }
 
         private void Awake()
         {
@@ -172,6 +189,31 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 drawCoordinateDiagnostic = !drawCoordinateDiagnostic;
             }
 
+            if (keyboard != null && keyboard.f7Key.wasPressedThisFrame)
+            {
+                drawMainDiagnostics = !drawMainDiagnostics;
+            }
+
+            if (keyboard != null && keyboard.f8Key.wasPressedThisFrame)
+            {
+                drawProceduralRigViewport = !drawProceduralRigViewport;
+            }
+
+            if (keyboard != null && keyboard.f9Key.wasPressedThisFrame)
+            {
+                drawLocomotionDiagnostics = !drawLocomotionDiagnostics;
+            }
+
+            if (keyboard != null && keyboard.f10Key.wasPressedThisFrame)
+            {
+                drawLocomotionWorldView = !drawLocomotionWorldView;
+            }
+
+            if (keyboard != null && keyboard.f11Key.wasPressedThisFrame)
+            {
+                _hideAllDebugPresentation = !_hideAllDebugPresentation;
+            }
+
             if (keyboard != null && keyboard.cKey.wasPressedThisFrame && runtime != null)
             {
                 runtime.BeginCalibration();
@@ -224,6 +266,11 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             GUI.matrix = oldMatrix;
 
+            if (_hideAllDebugPresentation)
+            {
+                return;
+            }
+
             if (drawRawLandmarks)
             {
                 DrawRawSkeleton(contentRect, orientation);
@@ -231,26 +278,63 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             if (drawCanonical2D)
             {
-                DrawCanonical2DSkeleton(runtime == null ? null : runtime.RawCanonicalFrame, contentRect, false, orientation);
+                DrawCanonical2DSkeleton(
+                    runtime == null ? null : runtime.RawCanonicalFrame,
+                    contentRect,
+                    false,
+                    orientation);
             }
 
             if (drawStabilized2D)
             {
-                DrawCanonical2DSkeleton(runtime == null ? null : runtime.StabilizedFrame, contentRect, true, orientation);
-            }
-            DrawDiagnostics();
-            if (drawCanonical3D)
-            {
-                DrawCanonical3DView();
+                DrawCanonical2DSkeleton(
+                    runtime == null ? null : runtime.StabilizedFrame,
+                    contentRect,
+                    true,
+                    orientation);
             }
 
-            DrawDebugRigView();
-            DrawLocomotionDiagnostics();
-            DrawLocomotionView();
+            var layout = BuildDebugOverlayLayout(Screen.width, Screen.height);
+
+            // F6 is a focus diagnostic view. Individual visibility flags are not changed, so the
+            // previous layout restores automatically when F6 is toggled off.
             if (drawCoordinateDiagnostic)
             {
-                DrawCoordinateDiagnostic();
+                DrawCoordinateDiagnostic(layout.focus);
+                DrawHelpLegend(layout.help);
+                return;
             }
+
+            if (drawMainDiagnostics)
+            {
+                DrawDiagnostics(layout.engine);
+            }
+
+            if (drawProceduralRigViewport)
+            {
+                DrawDebugRigView(layout.rig);
+            }
+
+            // F3 owns the right inspection column. Ordinary right-side Phase 5A panels are
+            // suppressed rather than drawn underneath it.
+            if (drawCanonical3D)
+            {
+                DrawCanonical3DView(layout.rightInspection);
+            }
+            else
+            {
+                if (drawLocomotionDiagnostics)
+                {
+                    DrawLocomotionDiagnostics(layout.locomotion);
+                }
+
+                if (drawLocomotionWorldView)
+                {
+                    DrawLocomotionView(layout.world);
+                }
+            }
+
+            DrawHelpLegend(layout.help);
         }
 
         private void EnsureStyles()
@@ -268,6 +352,12 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             _smallLabelStyle = new GUIStyle(_labelStyle)
             {
                 fontSize = 12,
+                wordWrap = true,
+            };
+            _compactLabelStyle = new GUIStyle(_labelStyle)
+            {
+                fontSize = 11,
+                wordWrap = true,
             };
         }
 
@@ -354,11 +444,9 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             }
         }
 
-        private void DrawDiagnostics()
+        private void DrawDiagnostics(Rect panel)
         {
-            var panelHeight = 590f;
-            var panel = new Rect(16f, 16f, previewPanelWidth, panelHeight);
-            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.84f);
+            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.88f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = Color.white;
 
@@ -372,66 +460,61 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var proceduralRig = GetComponent<ProceduralDebugHumanoidRig>();
             var debugRigPresent = proceduralRig != null && proceduralRig.IsBuilt;
             var state = observation == null || !observation.hasPose
-                ? providerReady ? "WAITING / UNAVAILABLE" : provider == null ? "SOURCE / UNAVAILABLE" : provider.Status.ToString().ToUpperInvariant()
-                : observation.trustedCount > 0 ? "TRACKING" : "POSE / NO TRUSTED LANDMARKS";
-            var cameraName = provider == null || string.IsNullOrEmpty(provider.SelectedCameraName) ? "(none)" : provider.SelectedCameraName;
-            var resolution = provider != null && provider.ActualCameraWidth > 0 ? $"{provider.ActualCameraWidth}x{provider.ActualCameraHeight}" : "(not started)";
-            var age = provider == null || double.IsInfinity(provider.LatestPoseAgeMilliseconds) ? "-" : $"{provider.LatestPoseAgeMilliseconds:0} ms";
-            var rotationState = rotationFrame != null && rotationFrame.calibrationValid && rotationFrame.hasMeaningfulRotation ? "Live" : "Waiting Calibration";
+                ? providerReady
+                    ? "WAITING / UNAVAILABLE"
+                    : provider == null
+                        ? "SOURCE / UNAVAILABLE"
+                        : provider.Status.ToString().ToUpperInvariant()
+                : observation.trustedCount > 0
+                    ? "TRACKING"
+                    : "POSE / NO TRUSTED LANDMARKS";
+            var cameraName = provider == null || string.IsNullOrEmpty(provider.SelectedCameraName)
+                ? "(none)"
+                : provider.SelectedCameraName;
+            var resolution = provider != null && provider.ActualCameraWidth > 0
+                ? $"{provider.ActualCameraWidth}x{provider.ActualCameraHeight}"
+                : "(not started)";
+            var age = provider == null || double.IsInfinity(provider.LatestPoseAgeMilliseconds)
+                ? "-"
+                : $"{provider.LatestPoseAgeMilliseconds:0} ms";
+            var rotationState = rotationFrame != null &&
+                rotationFrame.calibrationValid &&
+                rotationFrame.hasMeaningfulRotation
+                    ? "Live"
+                    : "Waiting";
             var retargeted = retargeter != null && retargeter.IsBound;
             var kinematicTargets = runtime == null ? null : runtime.KinematicTargets;
             var text =
-                $"POSE TRACKING / MOTION ENGINE LAB\n" +
-                $"State: {state}\n" +
-                $"Camera: {cameraName}\n" +
-                $"Capture: {resolution} @ {(provider == null ? 0f : provider.CameraFramesPerSecond):0.0} fps\n" +
-                $"Render: {_renderFps:0.0} fps\n" +
-                $"Requests: {(provider == null ? 0f : provider.InferenceRequestsPerSecond):0.0}/s   Results: {(provider == null ? 0f : provider.PoseResultsPerSecond):0.0}/s\n" +
-                $"Latest pose age: {age}\n" +
-                $"Raw trusted: {(observation == null ? 0 : observation.trustedCount)}/{PoseObservation.LandmarkCount}\n" +
-                $"Canonical tracked: {(rawFrame == null ? 0 : rawFrame.trackedJointCount)}/{CanonicalPoseFrame.JointCount}\n" +
-                  $"Stabilized tracked: {(stabilizedFrame == null ? 0 : stabilizedFrame.trackedJointCount)}/{CanonicalPoseFrame.JointCount}\n" +
-                  $"Pelvis: {(rawFrame != null && rawFrame.hasCanonicalPelvis)}   3D: {(rawFrame != null && rawFrame.hasCanonical3D)}\n" +
-                  $"2D↔3D X agreement: {AgreementStatus(coordinateAgreement.hasXEvidence, coordinateAgreement.xPass)}   X comparisons: {coordinateAgreement.xComparisons}\n" +
-                  $"2D↔3D Y agreement: {AgreementStatus(coordinateAgreement.hasYEvidence, coordinateAgreement.yPass)}   Y comparisons: {coordinateAgreement.yComparisons}   mismatches: {coordinateAgreement.yMismatches}   N/A: {coordinateAgreement.yInsufficientComparisons}\n" +
-                  $"Calibration: {(calibration == null ? "Unavailable" : calibration.State.ToString())}   usable={(calibration != null && calibration.IsValid)}\n" +
-                 $"Body reference: {FormatBodyReferenceStatus(calibration)}\n" +
-                 $"Left arm: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.LeftArm)}\n" +
-                 $"Right arm: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.RightArm)}\n" +
-                 $"Left leg: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.LeftLeg)}\n" +
-                 $"Right leg: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.RightLeg)}\n" +
-                 $"Calib dimensions: shoulder {(calibration == null ? 0f : calibration.Profile.shoulderWidth):0.00}   hip {(calibration == null ? 0f : calibration.Profile.hipWidth):0.00}   torso {(calibration == null ? 0f : calibration.Profile.torsoLength):0.00}\n" +
-                 $"Rotation solve: {rotationState}\n" +
-                 $"Valid bones: {(rotationFrame == null ? 0 : rotationFrame.validBoneCount)}/{GoldenNeedle.Core.Motion.Rotation.CanonicalRotationFrame.BoneCount}\n" +
-                 $"Debug rig: {(debugRigPresent ? "Present" : "Missing")}   View: {(rigView != null && rigView.IsReady ? "Ready" : "Missing")}\n" +
-                 $"Retargeter: {(retargeted ? "Bound" : "Unbound")}   Binding mode: {(retargeter == null ? "Unbound" : retargeter.BindingModeName)}\n" +
-                 $"Driving: {(retargeter != null && retargeter.DriveRig ? "On" : "Off")}\n" +
-                 $"Kinematic targets: {(retargeter != null && retargeter.KinematicTargetsLive && kinematicTargets != null ? "Live" : "Waiting")}\n" +
-                 $"Source chains valid: {(retargeter == null ? 0 : retargeter.SourceChainsValid)}/{CanonicalKinematicTargets.ChainCount}\n" +
-                 $"Targets generated: {(retargeter == null ? 0 : retargeter.TargetsGenerated)}/{CanonicalKinematicTargets.ChainCount}\n" +
-                 $"IK chains solved: {(retargeter == null ? 0 : retargeter.IkChainsSolved)}/{CanonicalKinematicTargets.ChainCount}\n" +
-                 $"Limb bones driven: {(retargeter == null ? 0 : retargeter.LimbBonesDriven)}/8\n" +
-                 $"Max retarget fidelity error: {(retargeter == null ? 0f : retargeter.MaxNormalizedRetargetFidelityError * 100f):0.0}%\n" +
-                 $"Max IK endpoint residual: {(retargeter == null ? 0f : retargeter.MaxNormalizedIkEndpointResidual * 100f):0.0}%\n" +
-                 $"Max bend-plane error: {(retargeter == null ? 0f : retargeter.MaxBendPlaneErrorDegrees):0.0}°\n" +
-                 $"Inference: {(provider == null ? 0f : provider.LastInferenceDurationMilliseconds):0.0} ms\n" +
-                $"Canonical view: MediaPipe inference frame\n" +
-                $"Sensor rotation: {(provider == null ? 0 : provider.Orientation.SensorRotationDegrees)}°\n" +
-                $"Sensor V mirrored: {(provider != null && provider.Orientation.SensorVerticallyMirrored)}\n" +
-                $"Inference prep H/V: {(provider != null && provider.Orientation.InferenceFlipHorizontally)}/{(provider != null && provider.Orientation.InferenceFlipVertically)}\n" +
-                 $"Display rotation: {(provider == null ? 0 : provider.Orientation.DisplayRotationDegrees)}°\n" +
-                 $"Display V correction: {(provider != null && provider.Orientation.DisplayVerticalCorrection)}\n" +
-                $"Source H correction: {(provider != null && provider.Orientation.SourceTextureHorizontallyMirrored)}\n" +
-                $"Display mirror: {(provider != null && provider.Orientation.DisplayMirrored)} (explicit only)\n" +
-                $"Presentation H transform: {(provider != null && provider.Orientation.PresentationHorizontalMirror)}\n" +
+                "MOTION ENGINE / TRACKING\n" +
+                $"State: {state}   Camera: {cameraName}\n" +
+                $"Capture: {resolution} @ {(provider == null ? 0f : provider.CameraFramesPerSecond):0.0} fps   Render: {_renderFps:0.0} fps\n" +
+                $"Inference req/res: {(provider == null ? 0f : provider.InferenceRequestsPerSecond):0.0}/{(provider == null ? 0f : provider.PoseResultsPerSecond):0.0}/s   age={age}   last={(provider == null ? 0f : provider.LastInferenceDurationMilliseconds):0.0} ms\n" +
+                $"Tracked raw/canonical/stable: {(observation == null ? 0 : observation.trustedCount)}/{PoseObservation.LandmarkCount}   {(rawFrame == null ? 0 : rawFrame.trackedJointCount)}/{CanonicalPoseFrame.JointCount}   {(stabilizedFrame == null ? 0 : stabilizedFrame.trackedJointCount)}/{CanonicalPoseFrame.JointCount}\n" +
+                $"2D↔3D X: {AgreementStatus(coordinateAgreement.hasXEvidence, coordinateAgreement.xPass)} ({coordinateAgreement.xComparisons})   Y: {AgreementStatus(coordinateAgreement.hasYEvidence, coordinateAgreement.yPass)} ({coordinateAgreement.yComparisons}, mismatch {coordinateAgreement.yMismatches})\n" +
+                $"Calibration: {(calibration == null ? "Unavailable" : calibration.State.ToString())} usable={(calibration != null && calibration.IsValid)}   Body: {FormatBodyReferenceStatus(calibration)}\n" +
+                $"Arms L/R: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.LeftArm)} | {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.RightArm)}\n" +
+                $"Legs L/R: {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.LeftLeg)} | {FormatCalibrationChainStatus(calibration, MotionCalibrationChainId.RightLeg)}\n" +
+                $"Dims shoulder/hip/torso: {(calibration == null ? 0f : calibration.Profile.shoulderWidth):0.00} / {(calibration == null ? 0f : calibration.Profile.hipWidth):0.00} / {(calibration == null ? 0f : calibration.Profile.torsoLength):0.00}\n" +
+                $"Rotation: {rotationState}   bones={(rotationFrame == null ? 0 : rotationFrame.validBoneCount)}/{GoldenNeedle.Core.Motion.Rotation.CanonicalRotationFrame.BoneCount}\n" +
+                $"Rig: {(debugRigPresent ? "Present" : "Missing")} view={(rigView != null && rigView.IsReady ? "Ready" : "Missing")}   Retarget={(retargeted ? "Bound" : "Unbound")} { (retargeter == null ? "" : retargeter.BindingModeName) }\n" +
+                $"Drive: {(retargeter != null && retargeter.DriveRig ? "On" : "Off")}   Targets: {(retargeter != null && retargeter.KinematicTargetsLive && kinematicTargets != null ? "Live" : "Waiting")}\n" +
+                $"Chains source/target/IK: {(retargeter == null ? 0 : retargeter.SourceChainsValid)}/{CanonicalKinematicTargets.ChainCount}   {(retargeter == null ? 0 : retargeter.TargetsGenerated)}/{CanonicalKinematicTargets.ChainCount}   {(retargeter == null ? 0 : retargeter.IkChainsSolved)}/{CanonicalKinematicTargets.ChainCount}   driven={(retargeter == null ? 0 : retargeter.LimbBonesDriven)}/8\n" +
+                $"Errors fidelity/IK/bend: {(retargeter == null ? 0f : retargeter.MaxNormalizedRetargetFidelityError * 100f):0.0}% / {(retargeter == null ? 0f : retargeter.MaxNormalizedIkEndpointResidual * 100f):0.0}% / {(retargeter == null ? 0f : retargeter.MaxBendPlaneErrorDegrees):0.0}°\n" +
+                $"Coords sensor rot/V: {(provider == null ? 0 : provider.Orientation.SensorRotationDegrees)}°/{(provider != null && provider.Orientation.SensorVerticallyMirrored)}   infer H/V={(provider != null && provider.Orientation.InferenceFlipHorizontally)}/{(provider != null && provider.Orientation.InferenceFlipVertically)}\n" +
+                $"Display rot/V/mirror: {(provider == null ? 0 : provider.Orientation.DisplayRotationDegrees)}°/{(provider != null && provider.Orientation.DisplayVerticalCorrection)}/{(provider != null && provider.Orientation.DisplayMirrored)}\n" +
                 $"Status: {(provider == null ? "No MediaPipe provider" : provider.StatusMessage)}";
-            GUI.Label(new Rect(panel.x + 12f, panel.y + 10f, panel.width - 24f, panel.height - 20f), text, _smallLabelStyle);
 
-            var help = new Rect(16f, Screen.height - 36f, Mathf.Max(640f, Screen.width - 32f), 24f);
-            GUI.Label(help, "R retry   C calibrate   X cancel/reset   K recenter locomotion   F1 raw   F2 canonical 2D   F3 3D   F4 stabilized 2D   F5 rig drive ON/OFF   F6 coordinate sample", _smallLabelStyle);
+            GUI.Label(
+                new Rect(
+                    panel.x + 10f,
+                    panel.y + 8f,
+                    panel.width - 20f,
+                    panel.height - 16f),
+                text,
+                _compactLabelStyle);
         }
 
-        private void DrawLocomotionDiagnostics()
+        private void DrawLocomotionDiagnostics(Rect panel)
         {
             if (locomotion == null)
             {
@@ -442,8 +525,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var cadenceSample = locomotion.CadenceSample;
             var heading = locomotion.HeadingSample;
             var fusionResult = locomotion.FusionResult;
-            var width = Mathf.Min(360f, Mathf.Max(300f, Screen.width - previewPanelWidth - 64f));
-            var panel = new Rect(previewPanelWidth + 32f, 16f, width, 205f);
             GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.90f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = Color.white;
@@ -472,20 +553,12 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 _smallLabelStyle);
         }
 
-        private void DrawLocomotionView()
+        private void DrawLocomotionView(Rect panel)
         {
             if (locomotionView == null)
             {
                 return;
             }
-
-            var width = Mathf.Clamp(Screen.width * 0.34f, 320f, 500f);
-            var height = width * 0.58f;
-            var panel = new Rect(
-                Screen.width - width - 16f,
-                Screen.height - height - 48f,
-                width,
-                height);
             GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.94f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = Color.white;
@@ -578,11 +651,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             return !hasEvidence ? "PENDING" : pass ? "PASS" : "FAIL";
         }
 
-        private void DrawCoordinateDiagnostic()
+        private void DrawCoordinateDiagnostic(Rect panel)
         {
-            var width = Mathf.Min(840f, Mathf.Max(620f, Screen.width - 32f));
-            var height = Mathf.Min(780f, Mathf.Max(560f, Screen.height - 32f));
-            var panel = new Rect(Screen.width - width - 16f, 16f, width, height);
             GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.97f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = Color.white;
@@ -779,7 +849,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                     panel.width - 20f,
                     panel.height - 16f),
                 text,
-                _smallLabelStyle);
+                _compactLabelStyle);
         }
 
         private static bool TryGetRetargetPosition(
@@ -888,23 +958,12 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             GUIUtility.RotateAroundPivot(-orientation.DisplayRotationDegrees, pivot);
         }
 
-        private void DrawDebugRigView()
+        private void DrawDebugRigView(Rect panel)
         {
             if (rigView == null)
             {
                 return;
             }
-
-            var width = Mathf.Min(previewPanelWidth, Mathf.Max(220f, Screen.width - 32f));
-            var panelHeight = Mathf.Clamp(Screen.height * 0.34f, 180f, 300f);
-            var panelTop = Screen.height - panelHeight - 48f;
-            if (panelTop < 388f)
-            {
-                panelTop = 388f;
-                panelHeight = Mathf.Max(140f, Screen.height - panelTop - 48f);
-            }
-
-            var panel = new Rect(16f, panelTop, width, panelHeight);
             GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.94f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = Color.white;
@@ -923,7 +982,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             }
         }
 
-        private void DrawCanonical3DView()
+        private void DrawCanonical3DView(Rect panel)
         {
             var canonicalFrame = runtime == null ? null : runtime.RawCanonicalFrame;
             var stabilizedFrame = runtime == null ? null : runtime.StabilizedFrame;
@@ -931,9 +990,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             {
                 return;
             }
-
-            var width = Mathf.Clamp(previewPanelWidth, 280f, 420f);
-            var panel = new Rect(Screen.width - width - 16f, 16f, width, Screen.height - 64f);
             GUI.color = new Color(0.015f, 0.02f, 0.035f, 0.92f);
             GUI.DrawTexture(panel, Texture2D.whiteTexture);
             GUI.color = Color.white;
@@ -988,6 +1044,123 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             }
 
             GUI.Label(new Rect(panel.x + 12f, panel.yMax - 42f, panel.width - 24f, 34f), "+X right/red   +Y up/green   +Z away/blue\nYellow canonical   Cyan stabilized   Pelvis-relative when available", _smallLabelStyle);
+        }
+
+        private static DebugOverlayLayout BuildDebugOverlayLayout(
+            float screenWidth,
+            float screenHeight)
+        {
+            var margin = Mathf.Clamp(
+                Mathf.Min(screenWidth, screenHeight) * 0.015f,
+                10f,
+                16f);
+            var gap = Mathf.Clamp(screenWidth * 0.009f, 10f, 14f);
+            var helpHeight = Mathf.Clamp(screenHeight * 0.085f, 56f, 72f);
+            var helpY = Mathf.Max(margin, screenHeight - margin - helpHeight);
+            var contentBottom = Mathf.Max(
+                margin + 240f,
+                helpY - gap);
+            var contentHeight = Mathf.Max(
+                240f,
+                contentBottom - margin);
+
+            var availableWidth = Mathf.Max(
+                580f,
+                screenWidth - margin * 2f - gap);
+            var columnWidth = availableWidth * 0.5f;
+            var rightX = margin + columnWidth + gap;
+
+            var topHeight = Mathf.Clamp(
+                contentHeight * 0.61f,
+                340f,
+                430f);
+            topHeight = Mathf.Min(
+                topHeight,
+                Mathf.Max(180f, contentHeight - gap - 140f));
+            var bottomY = margin + topHeight + gap;
+            var bottomHeight = Mathf.Max(
+                140f,
+                contentBottom - bottomY);
+
+            var focusWidth = Mathf.Min(
+                1000f,
+                Mathf.Max(580f, screenWidth - margin * 2f));
+            var focusX = (screenWidth - focusWidth) * 0.5f;
+
+            return new DebugOverlayLayout
+            {
+                engine = ClampRectToScreen(
+                    new Rect(margin, margin, columnWidth, topHeight),
+                    screenWidth,
+                    screenHeight),
+                locomotion = ClampRectToScreen(
+                    new Rect(rightX, margin, columnWidth, topHeight),
+                    screenWidth,
+                    screenHeight),
+                rig = ClampRectToScreen(
+                    new Rect(margin, bottomY, columnWidth, bottomHeight),
+                    screenWidth,
+                    screenHeight),
+                world = ClampRectToScreen(
+                    new Rect(rightX, bottomY, columnWidth, bottomHeight),
+                    screenWidth,
+                    screenHeight),
+                rightInspection = ClampRectToScreen(
+                    new Rect(rightX, margin, columnWidth, contentHeight),
+                    screenWidth,
+                    screenHeight),
+                focus = ClampRectToScreen(
+                    new Rect(focusX, margin, focusWidth, contentHeight),
+                    screenWidth,
+                    screenHeight),
+                help = ClampRectToScreen(
+                    new Rect(
+                        margin,
+                        helpY,
+                        Mathf.Max(280f, screenWidth - margin * 2f),
+                        helpHeight),
+                    screenWidth,
+                    screenHeight),
+            };
+        }
+
+        private static Rect ClampRectToScreen(
+            Rect rect,
+            float screenWidth,
+            float screenHeight)
+        {
+            var x = Mathf.Clamp(rect.x, 0f, Mathf.Max(0f, screenWidth - 1f));
+            var y = Mathf.Clamp(rect.y, 0f, Mathf.Max(0f, screenHeight - 1f));
+            var width = Mathf.Clamp(
+                rect.width,
+                1f,
+                Mathf.Max(1f, screenWidth - x));
+            var height = Mathf.Clamp(
+                rect.height,
+                1f,
+                Mathf.Max(1f, screenHeight - y));
+            return new Rect(x, y, width, height);
+        }
+
+        private void DrawHelpLegend(Rect panel)
+        {
+            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.88f);
+            GUI.DrawTexture(panel, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            var text =
+                "POSE: F1 Raw | F2 Canonical | F3 3D | F4 Stabilized\n" +
+                "ENGINE: F5 Drive | F6 Coord\n" +
+                "PANELS: F7 Engine | F8 Rig | F9 Loco Data | F10 World | F11 UI\n" +
+                "ACTIONS: R Retry | C Calibrate | X Reset | K Recenter";
+            GUI.Label(
+                new Rect(
+                    panel.x + 10f,
+                    panel.y + 5f,
+                    panel.width - 20f,
+                    panel.height - 10f),
+                text,
+                _compactLabelStyle);
         }
 
         private static Vector2 Project3D(Vector3 position, Rect view)

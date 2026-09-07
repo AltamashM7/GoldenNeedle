@@ -278,10 +278,14 @@ MonoBehaviour:
   provider: {fileID: 0}
   drawRawLandmarks: 1
   drawCanonical2D: 1
-  drawCanonical3D: 1
+  drawCanonical3D: 0
   drawStabilized2D: 1
   drawUnavailableLandmarks: 1
   drawCoordinateDiagnostic: 0
+  drawMainDiagnostics: 1
+  drawProceduralRigViewport: 0
+  drawLocomotionDiagnostics: 1
+  drawLocomotionWorldView: 1
   previewPanelWidth: 360
   canonicalSource: {fileID: 0}
   runtime: {fileID: 0}
