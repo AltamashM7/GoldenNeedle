@@ -1,5 +1,6 @@
 using GoldenNeedle.Core.Motion.Calibration;
 using GoldenNeedle.Core.Motion.Canonical;
+using GoldenNeedle.Core.Motion.Locomotion;
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
 using GoldenNeedle.Core.Motion.Retargeting;
 using GoldenNeedle.Core.Motion.Runtime;
@@ -70,6 +71,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         [SerializeField] private MotionEngineRuntime runtime;
         [SerializeField] private HumanoidRetargeter retargeter;
         [SerializeField] private ProceduralDebugRigView rigView;
+        [SerializeField] private EmbodiedLocomotionController locomotion;
+        [SerializeField] private LocomotionPrototypeView locomotionView;
 
         private HumanoidRigBinding _rigBinding;
 
@@ -113,6 +116,18 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             if (retargeter == null)
             {
                 retargeter = gameObject.AddComponent<HumanoidRetargeter>();
+            }
+
+            locomotion = locomotion == null ? GetComponent<EmbodiedLocomotionController>() : locomotion;
+            if (locomotion == null)
+            {
+                locomotion = gameObject.AddComponent<EmbodiedLocomotionController>();
+            }
+
+            locomotionView = locomotionView == null ? GetComponent<LocomotionPrototypeView>() : locomotionView;
+            if (locomotionView == null)
+            {
+                locomotionView = gameObject.AddComponent<LocomotionPrototypeView>();
             }
         }
 
@@ -165,6 +180,11 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             if (keyboard != null && keyboard.xKey.wasPressedThisFrame && runtime != null)
             {
                 runtime.ResetCalibration();
+            }
+
+            if (keyboard != null && keyboard.kKey.wasPressedThisFrame && locomotion != null)
+            {
+                locomotion.Recenter();
             }
         }
 
@@ -225,6 +245,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             }
 
             DrawDebugRigView();
+            DrawLocomotionDiagnostics();
+            DrawLocomotionView();
             if (drawCoordinateDiagnostic)
             {
                 DrawCoordinateDiagnostic();
@@ -405,8 +427,93 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 $"Status: {(provider == null ? "No MediaPipe provider" : provider.StatusMessage)}";
             GUI.Label(new Rect(panel.x + 12f, panel.y + 10f, panel.width - 24f, panel.height - 20f), text, _smallLabelStyle);
 
-            var help = new Rect(16f, Screen.height - 36f, 640f, 24f);
-            GUI.Label(help, "R retry   C calibrate   X cancel/reset   F1 raw   F2 canonical 2D   F3 3D   F4 stabilized 2D   F5 rig drive ON/OFF   F6 coordinate sample   Cyan stabilized / yellow canonical / magenta targets / orange bend hints", _smallLabelStyle);
+            var help = new Rect(16f, Screen.height - 36f, Mathf.Max(640f, Screen.width - 32f), 24f);
+            GUI.Label(help, "R retry   C calibrate   X cancel/reset   K recenter locomotion   F1 raw   F2 canonical 2D   F3 3D   F4 stabilized 2D   F5 rig drive ON/OFF   F6 coordinate sample", _smallLabelStyle);
+        }
+
+        private void DrawLocomotionDiagnostics()
+        {
+            if (locomotion == null)
+            {
+                return;
+            }
+
+            var root = locomotion.RootSample;
+            var cadenceSample = locomotion.CadenceSample;
+            var heading = locomotion.HeadingSample;
+            var fusionResult = locomotion.FusionResult;
+            var width = Mathf.Min(360f, Mathf.Max(300f, Screen.width - previewPanelWidth - 64f));
+            var panel = new Rect(previewPanelWidth + 32f, 16f, width, 205f);
+            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.90f);
+            GUI.DrawTexture(panel, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            var recenter = locomotion.RecenterPending
+                ? "PENDING"
+                : $"ready #{locomotion.RecenterCount}";
+            var rootState = fusionResult.rootTrackingLive
+                ? "Live"
+                : root.hasOrigin ? "Holding" : "Waiting";
+            var text =
+                "PHASE 5A / EMBODIED LOCOMOTION\n" +
+                $"Root tracking: {rootState}   conf={root.confidence:0.00}   scale={root.apparentScale:0.000}   yawCos={root.yawCosine:0.00}\n" +
+                $"Physical displacement X/Z: {FormatLocomotionVector(root.displacementXZ)}\n" +
+                $"Physical translation: {(fusionResult.physicalTranslationActive ? "ACTIVE" : "idle")}   activity={fusionResult.physicalActivity:0.00}\n" +
+                $"Cadence: {(fusionResult.cadenceActive ? "ACTIVE" : "idle")}   conf={cadenceSample.confidence:0.00}   rate={cadenceSample.rateStepsPerSecond:0.00}/s\n" +
+                $"Body heading world X/Z: {(heading.isValid ? FormatLocomotionVector(heading.worldHeadingXZ) : "unavailable")}\n" +
+                $"Physical contribution: {FormatLocomotionVector(fusionResult.physicalContribution)}\n" +
+                $"Cadence contribution vel: {FormatLocomotionVector(fusionResult.cadenceVelocity)}   blend={fusionResult.cadenceBlend:0.00}\n" +
+                $"Final frame motion: {FormatLocomotionVector(locomotion.FinalFrameMotionXZ)}\n" +
+                $"Recenter: {recenter}   K = set current physical position as origin";
+
+            GUI.Label(
+                new Rect(panel.x + 10f, panel.y + 8f, panel.width - 20f, panel.height - 16f),
+                text,
+                _smallLabelStyle);
+        }
+
+        private void DrawLocomotionView()
+        {
+            if (locomotionView == null)
+            {
+                return;
+            }
+
+            var width = Mathf.Clamp(Screen.width * 0.34f, 320f, 500f);
+            var height = width * 0.58f;
+            var panel = new Rect(
+                Screen.width - width - 16f,
+                Screen.height - height - 48f,
+                width,
+                height);
+            GUI.color = new Color(0.02f, 0.03f, 0.05f, 0.94f);
+            GUI.DrawTexture(panel, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(
+                new Rect(panel.x + 10f, panel.y + 7f, panel.width - 20f, 22f),
+                "PHASE 5A / FIXED WORLD GRID",
+                _smallLabelStyle);
+
+            var view = new Rect(
+                panel.x + 8f,
+                panel.y + 30f,
+                panel.width - 16f,
+                panel.height - 38f);
+            if (locomotionView.Texture != null)
+            {
+                GUI.DrawTexture(view, locomotionView.Texture, ScaleMode.ScaleToFit, false);
+            }
+            else
+            {
+                GUI.color = new Color(0.12f, 0.14f, 0.18f, 1f);
+                GUI.DrawTexture(view, Texture2D.whiteTexture);
+                GUI.color = Color.white;
+            }
+        }
+
+        private static string FormatLocomotionVector(Vector2 value)
+        {
+            return $"({value.x:+0.00;-0.00;0.00}, {value.y:+0.00;-0.00;0.00})";
         }
 
         private static string FormatBodyReferenceStatus(MotionCalibrationSession calibration)

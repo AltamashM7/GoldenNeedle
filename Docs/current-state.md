@@ -13,7 +13,7 @@ This is the concise durable snapshot of the accepted Motion Engine through Phase
 - Phase 4 accepted implementation SHA: `f0c81e84d0a482c40448505f2904af93ef4aa881` — `fix: correct front-camera body basis handedness`.
 - The branch contains the accepted Phase 4 coordinate/source correction, modular calibration redesign, procedural retarget validation, Neko Animator Humanoid asset, and the rollback of the failed HumanPose semantic-forward experiment.
 - Phase 4 is **USER ACCEPTED — PASS**.
-- Phase 5 has **NOT STARTED**.
+- Phase 5 has **STARTED**. Phase 5A — Embodied Hybrid Locomotion Prototype — is implemented on the engine branch and is **NOT USER ACCEPTED**.
 - No Phase 4 PR or merge to `main` is authorized.
 
 Phase 1, Phase 2, and Phase 3 were committed, pushed, USER accepted with verdict **PASS WITH NOTES**, and audited by Web Sol. Phase 4 is now also USER accepted, with accepted implementation SHA `f0c81e84d0a482c40448505f2904af93ef4aa881`. The final Phase 4 correction preserves the accepted Phase 3 canonical/stabilization foundation while fixing front-camera anatomical semantics and body-basis handedness, then driving both the procedural rig and a real Animator Humanoid successfully.
@@ -92,11 +92,50 @@ These had repeatedly been reported as pre-existing/unintended editor differences
 - Motion Engine systems must remain modular, independently testable, and inspectable after the game is complete.
 - The Motion Engine Lab/debug scene is permanent engineering infrastructure, not disposable spike code.
 - Courses/Hub/gameplay must not depend on MediaPipe internals.
-- Phase 5 locomotion must not start until Phase 4 is deliberately resolved/accepted.
+- Phase 4 is frozen as accepted behavior while Phase 5 locomotion is developed separately; pose reproduction must not be redesigned to solve locomotion problems.
+
+## Phase 5A — Embodied Hybrid Locomotion Prototype
+
+Phase 5A is the first integrated locomotion prototype. It intentionally combines finite camera-space physical displacement with cadence-based infinite-range extension while keeping the accepted Phase 4 pose/retarget path unchanged.
+
+Implemented separation:
+
+```text
+stabilized canonical/image observations
+    -> CameraSpaceRootTracker
+        -> relative physical X/Z displacement
+
+stabilized lower-body rhythm
+    -> CadenceDetector
+
+stabilized torso orientation + accepted Phase 4 signed map
+    -> BodyHeadingEstimator
+
+physical displacement + cadence + heading
+    -> LocomotionFusion
+        -> EmbodiedLocomotionController
+            -> bound AvatarRoot world X/Z only
+```
+
+The camera-space root tracker does **not** use canonical pelvis/world position as absolute room position. Lateral position comes from the absolute image-space torso center, normalized by apparent body scale. Relative depth is a monocular proxy from the log of apparent torso/body scale. Shoulder/hip apparent widths are compensated by torso yaw and fade out near side-on poses; torso height remains as stable support. The result is filtered relative displacement, not claimed metric camera depth.
+
+Cadence uses alternating left/right ankle rhythm with knee rhythm as supporting evidence. It has short acquisition, interval consistency, sustain confidence, and a short stop timeout. No arm-based fallback is implemented in Phase 5A.
+
+Physical and cadence movement are fused rather than blindly added: current scaled physical root velocity produces a physical-activity confidence, and cadence contribution is multiplied by `1 - physicalActivity`. Actual translation therefore suppresses cadence extension, while in-place rhythmic stepping can advance a persistent virtual origin along the mapped body heading.
+
+`EmbodiedLocomotionController.Recenter()` makes the current physical position the new tracking origin while first preserving the avatar's current virtual X/Z as the virtual origin. The character does not jump. The public method is deliberately suitable for a future discrete voice command, but speech recognition is not part of Phase 5A.
+
+Root Y and root rotation are never driven by locomotion. Crouch remains pose reproduction; jump/gravity remain future gameplay/physics interpretation.
+
+Default prototype tunables are deliberately exposed in serializable settings, including lateral/depth physical scale, tracking response, yaw compensation floor, cadence thresholds/rates/virtual stride, physical-velocity suppression thresholds, and physical deadzones.
+
+The Lab adds compact locomotion diagnostics, **K = recenter**, and a runtime-created fixed world grid viewport. Existing R/C/X and F1–F6 controls remain unchanged.
+
+Phase 5A is **NOT USER ACCEPTED**.
 
 ## Next action
 
-Phase 4 is accepted. Phase 5 locomotion may now be planned/started on the long-lived engine branch while preserving **POSE != LOCOMOTION**.
+Run one continuous Phase 5A USER QA session: stillness, physical X/Z displacement, diagonal movement, body turning, in-place cadence, turn-while-cadencing, cadence stop, real walking without obvious double-counting, and K recenter. Tune only what runtime feel exposes.
 
-The committed `PoseTrackingSpike.unity` scene now serializes the accepted Neko `android01` child and Animator Humanoid binding used for final Phase 4 QA. A second machine receives the runtime code, Neko assets, and Lab wiring from Git; after checking out the engine branch with the matching Unity version, only machine-specific package import/cache/camera selection work should remain.
+Phase 4 remains accepted and unchanged. Phase 5A remains unaccepted; do not begin Phase 6 or merge to `main` without explicit USER approval.
 

@@ -38,9 +38,21 @@ Final USER QA passed real Neko facing/orientation and approximately 45° torso y
 
 ## Phase 5 — Locomotion prototype
 
-**NOT STARTED.**
+**STARTED — PHASE 5A IMPLEMENTED / NOT USER ACCEPTED.**
 
-Phase 4 is accepted, so Phase 5 may now begin. POSE and locomotion remain separate.
+### Phase 5A — Embodied Hybrid Locomotion Prototype
+
+Implemented prototype combines:
+
+- finite camera-space physical X/Z displacement from image placement + yaw-compensated apparent scale;
+- cadence-based infinite-range extension from alternating lower-body rhythm;
+- body-heading steering through the accepted Phase 4 source-to-avatar basis;
+- physical/cadence fusion that suppresses cadence during meaningful actual translation;
+- no-jump recenter via public `Recenter()`;
+- no direct root-Y copying;
+- minimal runtime grid/view and compact diagnostics.
+
+Runtime USER QA is authoritative for scale, noise, cadence acquisition/stop, steering, and blend feel. Phase 5 remains unaccepted until that QA passes.
 
 ## Phase 6 — End-to-end graybox vertical slice
 

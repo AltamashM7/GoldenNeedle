@@ -1,6 +1,6 @@
 # Golden Needle architecture
 
-Status: **PHASE 4 USER ACCEPTED — PASS.** Phase 2 was USER accepted with **PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 was USER accepted with **PASS WITH NOTES** at `2ee4d6eb606a8b845183cc44126ecf9530d8280b`; Phase 4 accepted implementation SHA is `f0c81e84d0a482c40448505f2904af93ef4aa881`. Phase 5 has not started.
+Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / AWAITING USER QA.** Phase 2 was USER accepted with **PASS WITH NOTES** at `f5a15648607adf6034800c6a2b4d685b0e6f03ea`; Phase 3 was USER accepted with **PASS WITH NOTES** at `2ee4d6eb606a8b845183cc44126ecf9530d8280b`; Phase 4 accepted implementation SHA is `f0c81e84d0a482c40448505f2904af93ef4aa881`.
 
 Golden Needle is a CPU-first, webcam-driven embodied-fitness application. The intended runtime uses the user's full-body movement to drive a humanoid 3D avatar while gameplay systems interpret movement separately for world-space action.
 
@@ -25,12 +25,17 @@ Unity Webcam
 Separate locomotion path:
 
 ```text
-Canonical Skeleton / motion observations
-    -> Locomotion Interpreter
-    -> CharacterController / world movement
+stabilized canonical/image observations
+    +-> CameraSpaceRootTracker -> physical displacement
+    +-> CadenceDetector
+    +-> BodyHeadingEstimator
+physical displacement + cadence + heading
+    -> LocomotionFusion
+    -> EmbodiedLocomotionController
+    -> avatar root X/Z
 ```
 
-**POSE != LOCOMOTION.** The avatar may reproduce the user's body motion while locomotion converts actions such as jogging in place, lateral stepping, crouching, or jumping into game-world movement. Real-world physical displacement is not assumed to map directly to world distance.
+**POSE != LOCOMOTION.** Phase 4 owns avatar body pose/orientation. Phase 5A owns only game-world/root translation. Physical displacement uses configurable mapping rather than pretending monocular tracking is metric; cadence provides infinite-range extension when net physical translation is small. Root Y is not copied from the body.
 
 ## Product modules
 
@@ -128,3 +133,20 @@ Phase 4 has no cinematic controller, state machine, root motion, or gameplay aut
 The USER primarily owns Motion Engine work. Other developers can later own separate environments and courses. Scene/content ownership is the primary strategy for avoiding Unity YAML conflicts.
 
 The baseline must run acceptably without a dedicated GPU. Inference must not block Unity rendering, and processing costs must be justified by measured value. Initial environments and visuals should remain simple while the Motion Engine is proven.
+
+
+## Phase 5A embodied hybrid locomotion
+
+`CameraSpaceRootTracker` is deliberately independent of pelvis-relative MediaPipe pose-world coordinates. It estimates a relative camera-space position from absolute canonical image placement and apparent scale. Torso center controls lateral position; apparent shoulder/hip/torso scale controls a relative depth proxy. Shoulder/hip spans are divided by the live torso-yaw cosine and dynamically down-weighted near side-on poses, where width compensation becomes unstable. A lightweight exponential filter produces displacement and velocity.
+
+`CadenceDetector` consumes stabilized lower-body image rhythm. Alternating ankle vertical separation is primary and knee separation is secondary. Valid alternating events estimate step rate, cadence confidence, and a configurable virtual speed. Acquisition requires only a short rhythm sequence; loss of events clears cadence quickly.
+
+`BodyHeadingEstimator` reconstructs live canonical anatomical Forward from torso Right/Up and maps it through the accepted Phase 4 `CanonicalToAvatarAxisMap`. Cadence travel therefore follows the same world-space heading shown by the avatar instead of a fixed global axis.
+
+`LocomotionFusion` converts relative physical X/Z displacement using independent lateral/depth scales and deadzones. Current scaled physical root velocity creates an activity value. Cadence velocity is multiplied by cadence confidence and `1 - physicalActivity`, preventing obvious double-counting while still allowing in-place cadence extension.
+
+`EmbodiedLocomotionController` runs after Phase 4 retargeting and changes only `HumanoidRigBinding.AvatarRoot.position.x/z`. It does not write root Y or rotation. Cadence integrates a persistent virtual origin; physical displacement remains an offset from the current tracking origin.
+
+Recenter is a public controller action. Before the root tracker zeroes its physical displacement, the controller stores the avatar's current X/Z as the new virtual origin. This preserves world position exactly while making the current physical body position the new tracking origin.
+
+The permanent Lab dynamically adds the Phase 5A controller and a fixed-camera grid viewport. This prototype environment has no progression, obstacles, scoring, speech recognition, jump, crouch gameplay state, or production collision system.

@@ -22,7 +22,7 @@ Accepted Motion Engine baseline:
 
 `f0c81e84d0a482c40448505f2904af93ef4aa881` — Phase 4 implementation, **USER ACCEPTED — PASS**.
 
-Phase 5 has **NOT STARTED**. The long-lived engine branch remains authoritative for the core-engine train; do not merge to `main` unless the USER explicitly changes that workflow.
+Phase 5 has **STARTED**. Phase 5A — Embodied Hybrid Locomotion Prototype — is implemented and **NOT USER ACCEPTED**. The long-lived engine branch remains authoritative for the core-engine train; do not merge to `main` unless the USER explicitly changes that workflow.
 
 The previous Web Orchestrator conversation was intentionally retired because the Phase 4 debugging thread became long and hypothesis-heavy. The USER explicitly wants the new Orchestrator to inspect the repository itself before deciding on a solution.
 
@@ -148,11 +148,27 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 ## Recommended next task
 
-Phase 4 is accepted. Begin Phase 5 locomotion design/prototyping while keeping pose reproduction and locomotion interpretation separate.
+Phase 4 is accepted and frozen. USER-QA Phase 5A in one continuous session: stillness, finite physical lateral/depth/diagonal movement, body turning, in-place cadence, heading changes during cadence, rapid cadence stop, actual walking without obvious double-counting, and K recenter.
 
-If development moves to another laptop, reproduce the exact Unity/toolchain baseline, check out the current `engine/pose-tracking-spike` branch, let Unity regenerate machine-local caches/imports, and run the already-committed Neko Lab setup.
+The new root estimator is image/scale based and intentionally does not consume canonical pelvis/world positions as absolute room coordinates. Cadence is lower-body-only in this prototype. Locomotion changes only bound avatar-root X/Z; root Y/rotation and Phase 4 bone retargeting stay outside Phase 5A authority.
+
+Do not begin Phase 6 and do not merge until the USER explicitly approves the Phase 5 checkpoint.
 
 ## Governance
 
 The USER primarily uses GitHub Desktop for Git mutations. Do not merge without explicit USER approval. Continue the core-engine train on `engine/pose-tracking-spike` unless the USER explicitly changes that workflow. Phase 4 is accepted; Phase 5 may start.
 
+
+
+## Phase 5A implementation snapshot
+
+New core modules:
+
+- `CameraSpaceRootTracker` — relative camera-space physical displacement from image torso center and yaw-compensated apparent scale.
+- `CadenceDetector` — alternating ankle/knee lower-body rhythm, cadence rate/confidence, fast stop.
+- `BodyHeadingEstimator` — maps live source torso Forward through the accepted Phase 4 signed map into avatar/game-world heading.
+- `LocomotionFusion` — independent lateral/depth scaling plus physical-velocity suppression of cadence.
+- `EmbodiedLocomotionController` — persistent virtual origin, X/Z root application, public no-jump recenter.
+- `LocomotionPrototypeView` — runtime-only fixed grid/world-reference viewport.
+
+Existing F1–F6/R/C/X controls remain. **K** invokes the same public `Recenter()` action reserved for a future discrete voice command.

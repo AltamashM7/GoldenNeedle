@@ -1,6 +1,6 @@
 # Planned V1 Motion Engine
 
-Status: **PHASE 4 USER ACCEPTED — PASS.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Phase 4 accepted implementation SHA: `f0c81e84d0a482c40448505f2904af93ef4aa881`. Phase 5 locomotion has not started.
+Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / AWAITING USER QA.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Phase 4 accepted implementation SHA: `f0c81e84d0a482c40448505f2904af93ef4aa881`.
 
 ## Phase 1 spike boundary
 
@@ -144,3 +144,44 @@ Exact movement mapping is **OPEN / MAY CHANGE** until prototypes establish respo
 - Expensive inference must not stall Unity's rendering loop.
 - Unnecessary allocations and frame copies should be avoided where practical.
 - Phase 4 adds no inference/capture queue, pose history, or per-frame reflection. Rotation output and rig references are preallocated/cached, and the debug hierarchy is built once at startup rather than reconstructed per frame.
+
+
+## Phase 5A embodied hybrid locomotion
+
+Phase 4 canonical pose/retargeting remains accepted and unchanged. Phase 5A adds a parallel locomotion interpretation path.
+
+### Camera-space root tracking
+
+MediaPipe pose-world and canonical local positions remain body/pelvis-relative and are **not** treated as absolute room coordinates. `CameraSpaceRootTracker` instead reads stabilized canonical image positions for shoulders, hips, pelvis, and chest.
+
+The lateral proxy is based on the absolute torso image-center offset from the optical/image center divided by an effective apparent scale. At recenter, torso height and yaw-corrected shoulder/hip widths are stored as reference measurements. Relative depth is the weighted **negative log ratio** of the current measurements to those references, so getting farther produces positive depth and getting nearer produces negative depth. Widths are compensated by the live torso-yaw cosine and down-weighted near 90-degree yaw; because the ratios are against their own recenter references, changing side-on reliability does not move the depth zero point. The resulting relative scale is also used for lateral perspective normalization. The estimator is explicitly relative/monocular, not metric depth.
+
+A lightweight exponential response filters position and velocity. The first valid calibrated sample establishes the physical tracking origin automatically.
+
+### Cadence and heading
+
+`CadenceDetector` builds a normalized alternating signal from left/right ankle image-Y separation with knee separation as support. Alternating threshold events produce step intervals; valid interval consistency raises confidence. Cadence acquires after a short event sequence and clears after a short no-event timeout. Virtual cadence speed is step rate times a configurable virtual stride, clamped to a prototype maximum.
+
+`BodyHeadingEstimator` derives live torso Right/Up from stabilized canonical 3D, reconstructs Forward with the source handedness, maps it through the accepted Phase 4 signed source-to-avatar basis, and projects the mapped Forward onto world X/Z. Cadence therefore follows torso/avatar heading.
+
+### Fusion and application
+
+`LocomotionFusion` scales physical X/Z independently. Current scaled physical root velocity is converted into `physicalActivity`; cadence blend is approximately:
+
+```text
+cadenceBlend = cadenceConfidence * (1 - physicalActivity)
+```
+
+so real translation dominates while in-place rhythm extends range.
+
+`EmbodiedLocomotionController` integrates cadence into a virtual origin and applies:
+
+```text
+GamePositionXZ = VirtualOriginXZ + ScaledPhysicalDisplacementXZ
+```
+
+to the bound avatar root. Root Y and root rotation are preserved.
+
+`Recenter()` preserves the current world X/Z as the new virtual origin, then resets the physical origin. This keeps the avatar stationary in the virtual world during recenter and provides a clean future discrete-command API. Speech recognition itself is excluded.
+
+The Lab uses **K** for recenter and shows physical displacement/confidence, cadence state/rate, heading, physical/cadence contributions, final frame motion, and recenter state. A runtime-created fixed grid viewport provides visual world-reference feedback.
