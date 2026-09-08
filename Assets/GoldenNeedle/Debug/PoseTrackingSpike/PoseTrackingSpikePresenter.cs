@@ -69,8 +69,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         [SerializeField] private bool drawProceduralRigViewport;
         [SerializeField] private bool drawLocomotionDiagnostics = true;
         [SerializeField] private bool drawLocomotionWorldView = true;
-        [SerializeField] private float previewPanelWidth = 360f;
-
         [SerializeField] private MediaPipeCanonicalPoseSource canonicalSource;
         [SerializeField] private MotionEngineRuntime runtime;
         [SerializeField] private HumanoidRetargeter retargeter;
@@ -150,7 +148,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             if (gameViewCamera == null)
             {
-                gameViewCamera = Object.FindFirstObjectByType<ThirdPersonLabCamera>();
+                gameViewCamera = Object.FindAnyObjectByType<ThirdPersonLabCamera>();
             }
         }
 

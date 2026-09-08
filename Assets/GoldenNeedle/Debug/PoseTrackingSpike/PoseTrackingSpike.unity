@@ -309,7 +309,6 @@ MonoBehaviour:
   drawProceduralRigViewport: 0
   drawLocomotionDiagnostics: 1
   drawLocomotionWorldView: 1
-  previewPanelWidth: 360
   canonicalSource: {fileID: 0}
   runtime: {fileID: 0}
   retargeter: {fileID: 0}
