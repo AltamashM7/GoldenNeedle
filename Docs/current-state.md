@@ -1,31 +1,33 @@
 # Current state
 
 <!-- LATEST_CHECKPOINT_2026_09_08:START -->
-## Latest checkpoint — Phase 5A first USER QA reviewed; support-root correction pending next QA
+## Latest checkpoint — Phase 5A second USER QA reviewed; support model v3 + Game View pending re-QA
 
-- Starting correction checkpoint: `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe` — `docs: checkpoint phase 5a pre-qa state`.
-- Phase 4 remains **USER ACCEPTED — PASS**. Accepted implementation: `f0c81e84d0a482c40448505f2904af93ef4aa881`.
+- Starting correction checkpoint: `33698719a2907d30bb3396f66e5b79e59ccbfe9e` — `fix: anchor physical locomotion to support base`.
+- Phase 4 remains **USER ACCEPTED — PASS**.
 - Phase 5A remains **NOT USER ACCEPTED**.
-- First Phase 5A USER runtime QA evidence:
-  - idle stability **PASSED**;
-  - finite physical left/right direction **PASSED**;
-  - finite physical forward/back direction **PASSED**;
-  - cadence activation **PASSED**;
-  - defect: planted-feet torso/upper-body lean incorrectly caused physical locomotion;
-  - defect: finite physical travel magnitude felt too large;
-  - workflow defect: Phase 5A tunables were runtime-created rather than persistently editable in the Lab Inspector.
-- The physical root estimator is being corrected so **support feet/base are the authority for room translation**. Each foot is estimated from ankle/heel/toe image observations and compared with that same foot's recenter reference.
-- Physical translation updates only when trusted left/right support displacement agrees. Gait/cadence-style foot cycling, one-foot support disagreement, or temporary support loss holds the last trusted physical offset instead of falling back to torso motion.
-- Torso apparent scale remains auxiliary only: it can normalize cadence and corroborate support-base depth relocation, but torso motion alone cannot initiate physical X/Z translation.
-- Camera-space physical displacement remains fixed-camera data, is scaled, then mapped through the accepted Phase 4 reference `CanonicalToAvatarAxisMap` before world X/Z application.
-- Prototype physical scales are reduced to `lateralScale = 0.9` and `depthScale = 1.5`; these remain USER-tunable prototype values.
-- The Lab now commits a real serialized `EmbodiedLocomotionController` so Root Tracking, Physical Locomotion/Fusion, Cadence, and Heading settings are editable directly in the Inspector, including during Play Mode for quick feel tests.
-- Cadence acquisition/stop defaults are intentionally unchanged in this correction.
-- `K` recenter semantics remain unchanged; root Y and root rotation remain outside Phase 5A authority.
-- F9 diagnostics report support tracking state/confidence, support agreement, camera support displacement, mapped physical contribution, cadence, heading, and recenter state.
-- Existing debug overlay controls F1–F11 remain unchanged.
-- Next action: USER re-QA planted-feet lean/bend/twist, actual lateral/depth/diagonal relocation, jogging in place, temporary support loss, physical scale feel, cadence regression, and K recenter.
-- Phase 6 has **NOT STARTED**. Do not merge the Motion Engine branch to `main` without explicit USER approval.
+- Second Phase 5A USER runtime QA:
+  - idle stability remains **PASS**;
+  - planted-feet torso leaning no longer causes physical root motion — **PASS**;
+  - Phase 4 pose behavior remains usable — **PASS**;
+  - actual finite physical walking became intermittent because the v2 tracker hard-required near-equal left/right support displacement — **FAIL / correction required**.
+- Physical root tracking v3 keeps ankle/heel/toe composite feet but replaces hard agreement with:
+  - `common = (L + R) / 2` as the support-centroid/room-position candidate;
+  - `differential = (L - R) / 2` as gait/asymmetry evidence.
+- Lateral X follows common support displacement continuously, so one foot beginning a real step starts moving the physical centroid instead of forcing Holding.
+- Depth Z uses common support Y as the primary candidate, requires same-sign torso apparent-scale corroboration for meaningful depth, and progressively reduces depth trust under strong differential foot-Y motion. Torso scale cannot initiate physical depth by itself.
+- Missing/insufficient trusted support still holds the last trusted physical displacement; there is no torso fallback.
+- Physical prototype scales remain `0.9` lateral / `1.5` depth for the next QA.
+- The persistent Inspector controller remains authoritative for Phase 5A tuning. New v3 depth-differential thresholds are exposed alongside existing root/fusion/cadence/heading settings.
+- Motion Engine Lab now adds **F12 = Lab View / Game View**:
+  - Lab View preserves webcam + existing F1–F11 debug presentation;
+  - Game View hides webcam/IMGUI and enables the dedicated third-person Lab camera only;
+  - tracking, calibration, Phase 4 retargeting, cadence, and Phase 5 locomotion continue in either mode;
+  - F12 does not mutate F1–F11 visibility state.
+- Third-person camera follows `HumanoidRigBinding.AvatarRoot.position` and the persistent mapped Phase 5A world heading, smoothing both position and heading. Heading loss retains the last valid heading.
+- Game View reuses the existing Phase 5A grid/environment; no production level/collision/Phase 6 work is included.
+- Next action: USER re-QA common/differential walking response, jogging-in-place separation, depth behavior, support loss, retained `0.9/1.5` scale feel, and F12 Lab/Game switching.
+- Phase 6 has **NOT STARTED**. Do not merge without explicit USER approval.
 <!-- LATEST_CHECKPOINT_2026_09_08:END -->
 
 This is the concise durable snapshot of the accepted Motion Engine through Phase 4 and the next-stage handoff.
@@ -147,7 +149,7 @@ cadence + heading
             -> bound AvatarRoot world X/Z only
 ```
 
-The camera-space root tracker does **not** use canonical pelvis/world position as absolute room position and no longer lets torso-center motion drive room translation. It forms a left and right support-foot estimate from ankle/heel/toe image observations, compares each foot with its own recenter reference, and accepts a new physical displacement only when the two feet agree that the support base relocated. Torso apparent scale is auxiliary: it remains useful for cadence normalization and confirms the sign of meaningful support-base depth movement, but it cannot create translation by itself.
+The camera-space root tracker does **not** use canonical pelvis/world position as absolute room position and does not let torso-center motion drive room translation. It forms left/right ankle/heel/toe composite feet, compares each with its own recenter reference, then decomposes them into common support displacement and differential gait motion. Common displacement drives room position continuously; differential motion reduces depth trust rather than hard-blocking lateral walking. Torso apparent scale remains auxiliary depth corroboration only.
 
 Cadence uses alternating left/right ankle rhythm with knee rhythm as supporting evidence. It has short acquisition, interval consistency, sustain confidence, and a short stop timeout. No arm-based fallback is implemented in Phase 5A.
 

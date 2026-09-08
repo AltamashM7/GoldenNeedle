@@ -77,6 +77,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         [SerializeField] private ProceduralDebugRigView rigView;
         [SerializeField] private EmbodiedLocomotionController locomotion;
         [SerializeField] private LocomotionPrototypeView locomotionView;
+        [SerializeField] private ThirdPersonLabCamera gameViewCamera;
 
         private HumanoidRigBinding _rigBinding;
 
@@ -146,6 +147,11 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             {
                 locomotionView = gameObject.AddComponent<LocomotionPrototypeView>();
             }
+
+            if (gameViewCamera == null)
+            {
+                gameViewCamera = Object.FindFirstObjectByType<ThirdPersonLabCamera>();
+            }
         }
 
         private void Update()
@@ -214,6 +220,11 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 _hideAllDebugPresentation = !_hideAllDebugPresentation;
             }
 
+            if (keyboard != null && keyboard.f12Key.wasPressedThisFrame && gameViewCamera != null)
+            {
+                gameViewCamera.ToggleGameView();
+            }
+
             if (keyboard != null && keyboard.cKey.wasPressedThisFrame && runtime != null)
             {
                 runtime.BeginCalibration();
@@ -232,6 +243,13 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
         private void OnGUI()
         {
+            // F12 Game View is presentation-only: the presenter skips webcam/IMGUI while every
+            // tracking, calibration, retargeting, cadence and locomotion component keeps running.
+            if (gameViewCamera != null && gameViewCamera.IsGameViewActive)
+            {
+                return;
+            }
+
             if (provider == null)
             {
                 return;
@@ -537,7 +555,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 : root.hasOrigin ? "Holding" : "Waiting";
             var text =
                 "PHASE 5A / EMBODIED LOCOMOTION\n" +
-                $"Support tracking: {rootState}   conf={root.confidence:0.00}   agree X/Z={FormatLocomotionVector(root.supportAgreementXZ)}\n" +
+                $"Support tracking: {rootState}   conf={root.confidence:0.00}   depthTrust={root.depthReliability:0.00}\n" +
+                $"Support common X/Z: {FormatLocomotionVector(root.supportCommonXZ)}   diff={FormatLocomotionVector(root.supportDifferentialXZ)}\n" +
                 $"Camera support displacement X/Z: {FormatLocomotionVector(root.displacementXZ)}   depthConfirm={(root.depthCorroborated ? "yes" : "hold")}\n" +
                 $"Physical translation: {(fusionResult.physicalTranslationActive ? "ACTIVE" : "idle")}   activity={fusionResult.physicalActivity:0.00}\n" +
                 $"Cadence: {(fusionResult.cadenceActive ? "ACTIVE" : "idle")}   conf={cadenceSample.confidence:0.00}   rate={cadenceSample.rateStepsPerSecond:0.00}/s\n" +
@@ -1150,7 +1169,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             var text =
                 "POSE: F1 Raw | F2 Canonical | F3 3D | F4 Stabilized\n" +
-                "ENGINE: F5 Drive | F6 Coord\n" +
+                "ENGINE: F5 Drive | F6 Coord | MODE: F12 Game/Lab\n" +
                 "PANELS: F7 Engine | F8 Rig | F9 Loco Data | F10 World | F11 UI\n" +
                 "ACTIONS: R Retry | C Calibrate | X Reset | K Recenter";
             GUI.Label(

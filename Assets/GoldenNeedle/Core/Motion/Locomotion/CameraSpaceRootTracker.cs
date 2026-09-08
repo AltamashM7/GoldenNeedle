@@ -17,10 +17,13 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [Tooltip("Floor used when correcting shoulder/hip width for torso yaw.")]
         [Range(0.15f, 0.70f)] public float minimumYawCosine = 0.30f;
 
-        [Tooltip("Maximum normalized disagreement allowed between left/right foot displacement before support relocation is considered gait/cycling instead of room translation.")]
-        [Min(0.01f)] public float supportAgreementTolerance = 0.12f;
+        [Tooltip("Differential foot-Y magnitude where gait asymmetry begins reducing camera-depth trust.")]
+        [Min(0f)] public float depthDifferentialStart = 0.05f;
 
-        [Tooltip("Minimum support-base depth displacement that requires torso-scale corroboration. Smaller values are treated as stationary depth.")]
+        [Tooltip("Differential foot-Y magnitude where gait asymmetry fully suppresses new camera-depth updates.")]
+        [Min(0.01f)] public float depthDifferentialFull = 0.20f;
+
+        [Tooltip("Minimum common support-base depth displacement that requires torso-scale corroboration. Smaller values may return toward the physical origin without scale evidence.")]
         [Min(0f)] public float minimumSupportDepthDisplacement = 0.018f;
 
         [Tooltip("Minimum matching torso apparent-scale depth evidence required before support Y motion is accepted as room-depth translation.")]
@@ -40,7 +43,12 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             minimumJointConfidence = Mathf.Clamp01(Safe(minimumJointConfidence, 0.40f));
             minimumImageMeasurement = Mathf.Max(0.001f, Safe(minimumImageMeasurement, 0.005f));
             minimumYawCosine = Mathf.Clamp(Safe(minimumYawCosine, 0.30f), 0.15f, 0.70f);
-            supportAgreementTolerance = Mathf.Max(0.01f, Safe(supportAgreementTolerance, 0.12f));
+            depthDifferentialStart = Mathf.Max(
+                0f,
+                Safe(depthDifferentialStart, 0.05f));
+            depthDifferentialFull = Mathf.Max(
+                depthDifferentialStart + 0.01f,
+                Safe(depthDifferentialFull, 0.20f));
             minimumSupportDepthDisplacement = Mathf.Max(
                 0f,
                 Safe(minimumSupportDepthDisplacement, 0.018f));
@@ -68,16 +76,18 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         public float confidence;
         public float apparentScale;
         public float yawCosine;
-        public Vector2 supportAgreementXZ;
+        public Vector2 supportCommonXZ;
+        public Vector2 supportDifferentialXZ;
+        public float depthReliability;
         public bool depthCorroborated;
     }
 
     /// <summary>
     /// Estimates relative camera-space room displacement from the user's support base, not torso
     /// motion. Each support foot is built from ankle/heel/toe image observations and compared with
-    /// that same foot's recenter reference. Both feet must agree before the support base can update.
-    /// Torso geometry is retained only for scale normalization/cadence support and as corroborating
-    /// evidence for camera-depth relocation.
+    /// that same foot's recenter reference. The midpoint/common displacement drives physical room
+    /// position continuously; the half-difference indicates asymmetric gait and only reduces depth
+    /// trust. Torso geometry remains auxiliary scale/depth evidence and never initiates translation.
     /// </summary>
     public sealed class CameraSpaceRootTracker
     {
@@ -143,6 +153,8 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 true,
                 _latestMeasurement,
                 Vector2.zero,
+                Vector2.zero,
+                1f,
                 true);
             return true;
         }
@@ -176,6 +188,8 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                     true,
                     measurement,
                     Vector2.zero,
+                    Vector2.zero,
+                    1f,
                     true);
                 return LatestSample;
             }
@@ -199,60 +213,59 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             // Canonical image X already follows the fixed camera/view frame. Canonical image Y is
             // bottom-up; a support base moving farther from the camera appears higher, so +dY is
             // the same sign as camera +Z (away).
-            var agreement = new Vector2(
-                Mathf.Abs(leftDelta.x - rightDelta.x),
-                Mathf.Abs(leftDelta.y - rightDelta.y));
-            var lateralConsensus =
-                agreement.x <= _settings.supportAgreementTolerance;
-            var depthConsensus =
-                agreement.y <= _settings.supportAgreementTolerance;
+            var commonDisplacement = (leftDelta + rightDelta) * 0.5f;
+            var differentialDisplacement = (leftDelta - rightDelta) * 0.5f;
 
+            // Lateral room motion follows the support centroid continuously. One foot beginning a
+            // real step therefore moves the midpoint immediately instead of forcing a hard HOLD.
             var targetDisplacement = _filteredDisplacement;
-            if (lateralConsensus)
-            {
-                targetDisplacement.x = (leftDelta.x + rightDelta.x) * 0.5f;
-            }
+            targetDisplacement.x = commonDisplacement.x;
 
-            var supportDepth = (leftDelta.y + rightDelta.y) * 0.5f;
+            // Differential foot-Y motion is expected during gait/jogging. It progressively lowers
+            // confidence in interpreting support midpoint Y as camera-depth movement, but it does
+            // not invalidate otherwise trustworthy lateral support tracking.
+            var differentialDepth = Mathf.Abs(differentialDisplacement.y);
+            var depthReliability = 1f - Mathf.SmoothStep(
+                0f,
+                1f,
+                Mathf.InverseLerp(
+                    _settings.depthDifferentialStart,
+                    _settings.depthDifferentialFull,
+                    differentialDepth));
+            var supportDepth = commonDisplacement.y;
             var depthCorroborated = false;
-            if (depthConsensus)
+
+            if (Mathf.Abs(supportDepth) <=
+                _settings.minimumSupportDepthDisplacement)
             {
-                if (Mathf.Abs(supportDepth) <=
-                    _settings.minimumSupportDepthDisplacement)
+                targetDisplacement.y = Mathf.Lerp(
+                    _filteredDisplacement.y,
+                    supportDepth,
+                    depthReliability);
+                depthCorroborated = true;
+            }
+            else if (measurement.hasBodyScale)
+            {
+                var bodyDepthEvidence = -Mathf.Log(
+                    Mathf.Max(
+                        _settings.minimumImageMeasurement,
+                        measurement.apparentScale) /
+                    referenceScale);
+                var sameDirection =
+                    Mathf.Sign(bodyDepthEvidence) ==
+                    Mathf.Sign(supportDepth);
+                if (sameDirection &&
+                    Mathf.Abs(bodyDepthEvidence) >=
+                    _settings.minimumDepthScaleEvidence)
                 {
-                    targetDisplacement.y = 0f;
+                    // Common support movement remains the authority. Torso scale only corroborates
+                    // depth, while differential gait motion smoothly attenuates the new update.
+                    targetDisplacement.y = Mathf.Lerp(
+                        _filteredDisplacement.y,
+                        supportDepth,
+                        depthReliability);
                     depthCorroborated = true;
                 }
-                else if (measurement.hasBodyScale)
-                {
-                    var bodyDepthEvidence = -Mathf.Log(
-                        Mathf.Max(
-                            _settings.minimumImageMeasurement,
-                            measurement.apparentScale) /
-                        referenceScale);
-                    var sameDirection =
-                        Mathf.Sign(bodyDepthEvidence) ==
-                        Mathf.Sign(supportDepth);
-                    if (sameDirection &&
-                        Mathf.Abs(bodyDepthEvidence) >=
-                        _settings.minimumDepthScaleEvidence)
-                    {
-                        // Support movement remains the authority. Torso scale only confirms that
-                        // the support Y change represents camera-depth relocation rather than lift.
-                        targetDisplacement.y = supportDepth;
-                        depthCorroborated = true;
-                    }
-                }
-            }
-
-            var supportUpdateTrusted =
-                lateralConsensus &&
-                depthConsensus &&
-                depthCorroborated;
-            if (!supportUpdateTrusted)
-            {
-                PublishHolding(measurement, agreement, depthCorroborated);
-                return LatestSample;
             }
 
             targetDisplacement.y = Mathf.Clamp(
@@ -266,7 +279,9 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             Publish(
                 true,
                 measurement,
-                agreement,
+                commonDisplacement,
+                differentialDisplacement,
+                depthReliability,
                 depthCorroborated);
             return LatestSample;
         }
@@ -328,37 +343,19 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 confidence = 0f,
                 apparentScale = LatestSample.apparentScale,
                 yawCosine = LatestSample.yawCosine,
-                supportAgreementXZ = LatestSample.supportAgreementXZ,
+                supportCommonXZ = LatestSample.supportCommonXZ,
+                supportDifferentialXZ = LatestSample.supportDifferentialXZ,
+                depthReliability = 0f,
                 depthCorroborated = false,
-            };
-        }
-
-        private void PublishHolding(
-            RootMeasurement measurement,
-            Vector2 agreement,
-            bool depthCorroborated)
-        {
-            LatestSample = new CameraSpaceRootSample
-            {
-                isValid = false,
-                hasOrigin = _hasReference,
-                positionXZ = _filteredDisplacement,
-                displacementXZ = _filteredDisplacement,
-                velocityXZ = Vector2.zero,
-                confidence = measurement.supportConfidence,
-                apparentScale = measurement.hasBodyScale
-                    ? measurement.apparentScale
-                    : LatestSample.apparentScale,
-                yawCosine = measurement.yawCosine,
-                supportAgreementXZ = agreement,
-                depthCorroborated = depthCorroborated,
             };
         }
 
         private void Publish(
             bool valid,
             RootMeasurement measurement,
-            Vector2 agreement,
+            Vector2 commonDisplacement,
+            Vector2 differentialDisplacement,
+            float depthReliability,
             bool depthCorroborated)
         {
             LatestSample = new CameraSpaceRootSample
@@ -373,7 +370,9 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                     ? measurement.apparentScale
                     : _referenceMeasurement.apparentScale,
                 yawCosine = measurement.yawCosine,
-                supportAgreementXZ = agreement,
+                supportCommonXZ = commonDisplacement,
+                supportDifferentialXZ = differentialDisplacement,
+                depthReliability = Mathf.Clamp01(depthReliability),
                 depthCorroborated = depthCorroborated,
             };
         }

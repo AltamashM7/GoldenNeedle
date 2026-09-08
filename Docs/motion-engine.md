@@ -5,24 +5,24 @@ Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / AWAITING USER Q
 <!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:START -->
 ## Current Phase 5A runtime checkpoint
 
-First USER QA has now occurred. Starting correction checkpoint: `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe`.
+Starting correction checkpoint: `33698719a2907d30bb3396f66e5b79e59ccbfe9e`.
 
-Confirmed working in that first runtime session:
-- idle stability;
-- physical left/right direction;
-- physical forward/back direction;
-- cadence activation.
+Second USER QA confirmed the v2 planted-feet fix: idle remained stable, torso leaning with planted feet no longer translated the root, and Phase 4 remained usable. The new blocker was intermittent real walking because v2 required left/right foot displacement to agree before publishing any physical update.
 
-Confirmed blockers:
-- planted-feet torso/upper-body motion could translate the avatar because physical root authority was torso-center/apparent-scale based;
-- finite physical movement magnitude was too large at the `1.8 / 3.0` scale defaults;
-- the runtime-created controller prevented a convenient persistent Inspector tuning workflow.
+Support tracking v3 preserves composite ankle/heel/toe feet and each foot's recenter reference, but removes the hard consensus gate. It computes:
 
-The correction changes physical root authority to a support-base estimator built from both feet while preserving fixed-camera-to-avatar mapping, cadence heading, recenter, anti-double-counting architecture, root-Y exclusion, and Phase 4.
+```text
+common       = (leftDelta + rightDelta) / 2
+differential = (leftDelta - rightDelta) / 2
+```
 
-Current debug controls remain `F1` Raw, `F2` Canonical 2D, `F3` Canonical 3D, `F4` Stabilized 2D, `F5` Retarget Drive, `F6` Coordinate Focus, `F7` Engine Diagnostics, `F8` Procedural Rig, `F9` Locomotion Diagnostics, `F10` World/Grid, and `F11` Hide/Restore Debug Presentation. `R` retries, `C` calibrates, `X` resets, and `K` recenters locomotion.
+Common displacement is physical support-centroid motion. Differential displacement is gait/asymmetry evidence. Lateral common X updates continuously; depth common Y remains monocular, requires body-scale corroboration for meaningful movement, and is attenuated as differential foot-Y grows.
 
-Phase 5A remains **NOT USER ACCEPTED**. The next authoritative evidence is the focused support-base/reduced-scale USER re-QA.
+Physical scales remain `0.9 / 1.5`. Cadence timing is unchanged.
+
+The Lab adds `F12` as a presentation-only Lab/Game toggle. Lab View keeps the webcam/debug interface. Game View hides webcam/IMGUI and enables the persistent third-person camera that follows avatar root position plus retained mapped Phase 5A heading. Existing F1–F11 states are preserved.
+
+Phase 5A remains **NOT USER ACCEPTED**.
 <!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:END -->
 
 ## Phase 1 spike boundary
@@ -177,11 +177,11 @@ Phase 4 canonical pose/retargeting remains accepted and unchanged. Phase 5A adds
 
 MediaPipe pose-world and canonical local positions remain body/pelvis-relative and are **not** treated as absolute room coordinates. `CameraSpaceRootTracker` uses stabilized canonical **support-foot image positions** as physical room-translation authority.
 
-Each left/right support foot is a weighted centroid of available ankle/heel/toe observations; at least two trusted points are required per foot. Recenter stores each foot's own image reference plus a body-scale reference. Current per-foot X/Y displacement is normalized by that fixed reference scale. A support update is accepted only when left/right per-foot displacements agree within the configured support-consensus tolerance.
+Each left/right support foot is a weighted centroid of available ankle/heel/toe observations; at least two trusted points are required per foot. Recenter stores each foot's own image reference plus a body-scale reference. Current per-foot X/Y displacement is normalized by that fixed reference scale.
 
-This consensus rule intentionally distinguishes room relocation from gait cycling: when one foot lifts/steps while the other remains near its own reference, the two support displacements disagree and the physical root holds its last trusted offset. If feet/support disappear temporarily, the tracker also holds instead of falling back to torso motion.
+The tracker derives common displacement `(L+R)/2` and differential displacement `(L-R)/2`. Common X is the lateral room-position authority and updates continuously, including the first half of a normal step. Differential motion is retained as gait evidence rather than being used as a global hard gate.
 
-Camera-depth authority remains support-based. Common support-foot Y motion is interpreted as camera Z only when left/right support Y agrees. Tiny Y changes are treated as stationary; larger Y changes additionally require same-sign torso apparent-scale evidence. Torso scale therefore **corroborates** depth but cannot initiate it. Shoulder/hip/torso measurements and yaw compensation remain available for that auxiliary scale evidence and cadence normalization.
+Camera-depth authority remains support-based. Common support-foot Y is the depth candidate. Meaningful nonzero depth still requires same-sign torso apparent-scale evidence, so torso lean cannot initiate Z by itself. Strong differential foot-Y progressively lowers depth reliability between the Inspector thresholds `depthDifferentialStart` and `depthDifferentialFull`, reducing foot-lift contamination without blocking lateral motion. If feet/support disappear temporarily, the tracker holds instead of falling back to torso motion.
 
 A lightweight exponential response filters only trusted support-base displacement/velocity. The first valid calibrated sample with support + body-scale evidence establishes the physical tracking origin automatically.
 
@@ -226,3 +226,23 @@ Inspector groups are:
 - **Heading** — heading response.
 
 These are the same settings objects consumed by the runtime modules, so Play Mode edits affect the active prototype without a duplicate tuning system.
+
+
+### Phase 5A Lab/Game presentation mode
+
+`F12` toggles presentation mode only.
+
+- **Lab View:** the existing webcam fullscreen presentation, F1–F11 overlays, diagnostics, and RenderTexture debug views behave as before.
+- **Game View:** webcam IMGUI and all debug IMGUI are skipped; the existing full-screen `PoseTrackingSpikeCamera` is enabled and controlled by `ThirdPersonLabCamera`.
+- Engine components are never disabled by F12.
+
+`ThirdPersonLabCamera` is not parented to the avatar. It follows the bound avatar root from behind the retained mapped Phase 5A heading:
+
+```text
+camera = avatarPosition - heading * followDistance + up * cameraHeight
+look   = avatarPosition + up * lookHeight
+```
+
+The camera smooths heading and position. If current heading data disappears, it retains the last valid heading rather than snapping to global Forward. Inspector settings expose Follow Distance, Camera Height, Look Height, Position Response, Heading Response, and Field Of View.
+
+The screen camera is serialized disabled in Lab View. RenderTexture cameras for the procedural rig and Phase 5A world viewport remain separate debug cameras, so there is no second active full-screen game camera in Lab View.

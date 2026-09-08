@@ -51,27 +51,81 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void SupportBaseRelocationProducesPhysicalLateralDisplacement()
+        public void SingleStepOnsetMovesSupportMidpointWithoutHardHolding()
         {
             var tracker = FastRootTracker();
             var profile = FrontCameraProfile();
 
             tracker.Update(SupportFrame(), profile, 0.1f);
-            var moved = tracker.Update(
+            var onset = tracker.Update(
+                SupportFrame(leftExtraX: 0.04f),
+                profile,
+                0.1f);
+
+            Assert.That(onset.isValid, Is.True);
+            Assert.That(onset.supportCommonXZ.x, Is.GreaterThan(0.035f));
+            Assert.That(onset.supportDifferentialXZ.x, Is.GreaterThan(0.035f));
+            Assert.That(onset.displacementXZ.x, Is.GreaterThan(0.035f));
+        }
+
+        [Test]
+        public void BothFeetRelocatedReachFullPhysicalLateralDisplacement()
+        {
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
+
+            tracker.Update(SupportFrame(), profile, 0.1f);
+            var onset = tracker.Update(
+                SupportFrame(leftExtraX: 0.04f),
+                profile,
+                0.1f);
+            var full = tracker.Update(
                 SupportFrame(supportOffsetX: 0.04f),
                 profile,
                 0.1f);
 
-            Assert.That(moved.isValid, Is.True);
-            Assert.That(moved.displacementXZ.x, Is.GreaterThan(0.08f));
-            Assert.That(
-                Mathf.Abs(moved.displacementXZ.y),
-                Is.LessThan(0.01f));
+            Assert.That(full.isValid, Is.True);
+            Assert.That(full.displacementXZ.x, Is.GreaterThan(onset.displacementXZ.x));
+            Assert.That(full.displacementXZ.x, Is.GreaterThan(0.08f));
 
             Assert.That(tracker.Recenter(), Is.True);
             Assert.That(
                 tracker.LatestSample.displacementXZ.magnitude,
                 Is.LessThan(0.0001f));
+        }
+
+        [Test]
+        public void AlternatingTwoStepWalkProgressesPhysicalDisplacementSmoothly()
+        {
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
+
+            tracker.Update(SupportFrame(), profile, 0.1f);
+            var leftStep = tracker.Update(
+                SupportFrame(leftExtraX: 0.04f),
+                profile,
+                0.1f);
+            var bothFirst = tracker.Update(
+                SupportFrame(supportOffsetX: 0.04f),
+                profile,
+                0.1f);
+            var rightStep = tracker.Update(
+                SupportFrame(
+                    supportOffsetX: 0.04f,
+                    rightExtraX: 0.04f),
+                profile,
+                0.1f);
+            var bothSecond = tracker.Update(
+                SupportFrame(supportOffsetX: 0.08f),
+                profile,
+                0.1f);
+
+            Assert.That(leftStep.isValid, Is.True);
+            Assert.That(rightStep.isValid, Is.True);
+            Assert.That(leftStep.displacementXZ.x, Is.GreaterThan(0f));
+            Assert.That(bothFirst.displacementXZ.x, Is.GreaterThan(leftStep.displacementXZ.x));
+            Assert.That(rightStep.displacementXZ.x, Is.GreaterThan(bothFirst.displacementXZ.x));
+            Assert.That(bothSecond.displacementXZ.x, Is.GreaterThan(rightStep.displacementXZ.x));
         }
 
         [Test]
@@ -90,6 +144,7 @@ namespace GoldenNeedle.Tests
 
             Assert.That(farther.isValid, Is.True);
             Assert.That(farther.depthCorroborated, Is.True);
+            Assert.That(farther.depthReliability, Is.GreaterThan(0.99f));
             Assert.That(farther.displacementXZ.y, Is.GreaterThan(0.08f));
 
             var nearTracker = FastRootTracker();
@@ -143,12 +198,18 @@ namespace GoldenNeedle.Tests
                 0.30f,
                 0.25f);
 
-            Assert.That(rootFirst.isValid, Is.False);
-            Assert.That(rootSecond.isValid, Is.False);
-            Assert.That(rootThird.isValid, Is.False);
+            Assert.That(rootFirst.isValid, Is.True);
+            Assert.That(rootSecond.isValid, Is.True);
+            Assert.That(rootThird.isValid, Is.True);
+            Assert.That(
+                rootThird.supportCommonXZ.magnitude,
+                Is.LessThan(0.01f));
+            Assert.That(
+                rootThird.supportDifferentialXZ.magnitude,
+                Is.GreaterThan(0.10f));
             Assert.That(
                 rootThird.displacementXZ.magnitude,
-                Is.LessThan(0.005f));
+                Is.LessThan(0.01f));
             Assert.That(cadence.active, Is.True);
         }
 
@@ -433,7 +494,8 @@ namespace GoldenNeedle.Tests
                 new CameraSpaceRootTrackerSettings
                 {
                     minimumJointConfidence = 0.2f,
-                    supportAgreementTolerance = 0.12f,
+                    depthDifferentialStart = 0.05f,
+                    depthDifferentialFull = 0.20f,
                     minimumSupportDepthDisplacement = 0.01f,
                     minimumDepthScaleEvidence = 0.01f,
                     positionResponse = 1000f,
@@ -446,21 +508,25 @@ namespace GoldenNeedle.Tests
             float torsoCenterX = 0.50f,
             float torsoScale = 1.00f,
             float supportOffsetX = 0f,
-            float supportOffsetY = 0f)
+            float supportOffsetY = 0f,
+            float leftExtraX = 0f,
+            float rightExtraX = 0f,
+            float leftExtraY = 0f,
+            float rightExtraY = 0f)
         {
             var frame = TorsoOnlyFrame(torsoCenterX, torsoScale);
             AddSupportFoot(
                 frame,
                 true,
                 new Vector2(
-                    0.58f + supportOffsetX,
-                    0.12f + supportOffsetY));
+                    0.58f + supportOffsetX + leftExtraX,
+                    0.12f + supportOffsetY + leftExtraY));
             AddSupportFoot(
                 frame,
                 false,
                 new Vector2(
-                    0.42f + supportOffsetX,
-                    0.12f + supportOffsetY));
+                    0.42f + supportOffsetX + rightExtraX,
+                    0.12f + supportOffsetY + rightExtraY));
             frame.Complete();
             return frame;
         }
@@ -512,8 +578,10 @@ namespace GoldenNeedle.Tests
         private static CanonicalPoseFrame JogInPlaceFrame(bool leftHigh)
         {
             var frame = TorsoOnlyFrame();
-            var leftFootY = leftHigh ? 0.22f : 0.12f;
-            var rightFootY = leftHigh ? 0.12f : 0.22f;
+            // Symmetric around the calibrated 0.12 support Y so common support position
+            // stays fixed while the differential/gait signal alternates strongly.
+            var leftFootY = leftHigh ? 0.17f : 0.07f;
+            var rightFootY = leftHigh ? 0.07f : 0.17f;
 
             AddSupportFoot(
                 frame,

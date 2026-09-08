@@ -57,26 +57,23 @@ Runtime USER QA is authoritative for scale, noise, cadence acquisition/stop, ste
 <!-- PHASE5A_CHECKPOINT_2026_09_08:START -->
 ### Current Phase 5A checkpoint
 
-Starting correction HEAD: `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe`.
+Starting correction HEAD: `33698719a2907d30bb3396f66e5b79e59ccbfe9e`.
 
-First USER runtime QA has occurred.
+Second USER QA:
+- PASS: idle stable;
+- PASS: planted-feet torso leaning no longer moves the physical root;
+- PASS: Phase 4 pose behavior remains usable;
+- FAIL: actual finite walking became intermittent because hard two-foot consensus was too conservative.
 
-Passed:
-- idle stability;
-- physical left/right direction;
-- physical forward/back direction;
-- cadence activation.
+Current correction:
+- common/differential support model replaces hard agreement;
+- lateral support midpoint responds during single-step onset;
+- depth uses support midpoint + matching scale evidence, attenuated by differential foot-Y;
+- missing support holds;
+- physical scales stay `0.9 / 1.5`;
+- F12 adds persistent Inspector-tunable third-person Game View while preserving Lab View/F1–F11.
 
-Corrections before the next QA:
-- replace torso-center/apparent-scale room-position authority with two-foot ankle/heel/toe support-base consensus;
-- hold physical offset during gait disagreement/support loss instead of using torso fallback;
-- require support movement plus matching body-scale evidence for meaningful depth relocation;
-- reduce physical scale defaults to lateral `0.9` / depth `1.5`;
-- serialize `EmbodiedLocomotionController` into the Lab for persistent Inspector tuning.
-
-Cadence acquisition timing, accepted Phase 4 behavior, fixed-camera-to-avatar mapping, recenter semantics, root-Y/root-rotation exclusion, and the debug overlay UX remain unchanged.
-
-**Acceptance gate remains pending:** focused USER re-QA of planted-feet pose changes, actual support relocation, jogging in place, support loss, reduced scale feel, cadence regression, and recenter. No Phase 6 work should begin before this evidence is reviewed.
+**Acceptance remains pending** until USER re-QA confirms walking responsiveness, planted-feet isolation, jogging-in-place separation, depth behavior, support-loss hold, retained scale feel, and F12 switching. No Phase 6 work should begin.
 <!-- PHASE5A_CHECKPOINT_2026_09_08:END -->
 
 ## Phase 6 — End-to-end graybox vertical slice

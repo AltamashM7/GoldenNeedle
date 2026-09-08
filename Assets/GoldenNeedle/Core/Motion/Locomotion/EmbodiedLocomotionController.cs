@@ -63,6 +63,8 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         public bool RecenterPending => _pendingRecenter || (_rootTracker != null && _rootTracker.RecenterPending);
         public int RecenterCount => _recenterCount;
         public Transform PlayerRoot => _playerRoot;
+        public bool HasWorldHeading => _hasHeading;
+        public Vector2 WorldHeadingXZ => _smoothedHeading;
 
         private void Awake()
         {

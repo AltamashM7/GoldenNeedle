@@ -129,6 +129,7 @@ GameObject:
   m_Component:
   - component: {fileID: 179339093}
   - component: {fileID: 179339094}
+  - component: {fileID: 179339095}
   m_Layer: 0
   m_Name: PoseTrackingSpikeCamera
   m_TagString: Untagged
@@ -144,8 +145,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 179339092}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalRotation: {x: 0.128, y: 0, z: 0, w: 0.9918}
+  m_LocalPosition: {x: 0, y: 2.2, z: -4}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -158,7 +159,7 @@ Camera:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 179339092}
-  m_Enabled: 1
+  m_Enabled: 0
   serializedVersion: 2
   m_ClearFlags: 1
   m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
@@ -202,6 +203,27 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
+--- !u!114 &179339095
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 179339092}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b5f3c9e2d1a4f6b8c0e1234567890aa, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Debug.PoseTrackingSpike.ThirdPersonLabCamera
+  controlledCamera: {fileID: 179339094}
+  binding: {fileID: 1225293546}
+  locomotion: {fileID: 1225293547}
+  followDistance: 4
+  cameraHeight: 2.2
+  lookHeight: 1.15
+  positionResponse: 7
+  headingResponse: 8
+  fieldOfView: 55
 --- !u!1 &1225293541
 GameObject:
   m_ObjectHideFlags: 0
@@ -294,6 +316,7 @@ MonoBehaviour:
   rigView: {fileID: 0}
   locomotion: {fileID: 1225293547}
   locomotionView: {fileID: 0}
+  gameViewCamera: {fileID: 179339095}
 --- !u!114 &1225293546
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -342,7 +365,8 @@ MonoBehaviour:
     minimumJointConfidence: 0.4
     minimumImageMeasurement: 0.005
     minimumYawCosine: 0.3
-    supportAgreementTolerance: 0.12
+    depthDifferentialStart: 0.05
+    depthDifferentialFull: 0.2
     minimumSupportDepthDisplacement: 0.018
     minimumDepthScaleEvidence: 0.012
     positionResponse: 10

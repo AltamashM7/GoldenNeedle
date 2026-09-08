@@ -15,32 +15,21 @@ Current branch: `engine/pose-tracking-spike`
 <!-- LATEST_HANDOFF_2026_09_08:START -->
 ## Current authoritative checkpoint
 
-Starting correction checkpoint:
-
-`87698948b12cd10b6fef2072d0ad0ce9eeaecdfe` — `docs: checkpoint phase 5a pre-qa state`.
+Starting correction checkpoint: `33698719a2907d30bb3396f66e5b79e59ccbfe9e`.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
-- Phase 5A: **FIRST USER QA PARTIAL PASS / CORRECTION IN PROGRESS / NOT USER ACCEPTED**.
+- Phase 5A: **SECOND USER QA PARTIAL PASS / V3 CORRECTION PENDING RE-QA / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
-- Do not merge to `main` without explicit USER approval.
+- No merge without explicit USER approval.
 
-First Phase 5A USER QA:
-- idle stable — PASS;
-- physical left/right direction — PASS;
-- physical forward/back direction — PASS;
-- cadence activation — PASS;
-- planted feet + torso motion falsely translated the root — FAIL;
-- finite physical scale felt too large — FAIL/tuning;
-- persistent Inspector tuning workflow was missing.
+Second QA passed idle stability and the planted-feet torso-lean fix, but real physical walking became intermittent because v2 hard-required near-equal left/right support displacement.
 
-Correction direction is support-base authority: both feet are estimated from ankle/heel/toe; each foot is compared with its own recenter reference; coherent common support relocation drives physical room movement; gait-cycle disagreement or support loss holds the last trusted physical offset. Torso scale may corroborate depth but cannot initiate translation.
+V3 keeps ankle/heel/toe composite feet but uses common support displacement for room position and differential displacement only as gait/depth-trust evidence. Lateral movement starts during the first step; depth still needs support-midpoint movement plus matching body-scale evidence. Missing supports hold.
 
-Physical scale defaults move from `1.8 / 3.0` to `0.9 / 1.5`. Cadence acquisition timing is deliberately unchanged.
+Physical scales remain `0.9 / 1.5`; cadence timing and accepted mapping/recenter/Phase 4 behavior remain unchanged.
 
-The Lab now commits a serialized `EmbodiedLocomotionController` so Root Tracking, Physical Fusion, Cadence, and Heading values are directly Inspector-editable. Existing F1–F11/R/C/X/K controls and debug-overlay UX remain unchanged.
-
-Next evidence must come from USER re-QA; do not redesign already-passed direction/cadence behavior without new runtime evidence.
+F12 adds Lab/Game presentation switching. Game View hides webcam/IMGUI and enables the third-person screen camera following avatar root + retained mapped heading. F1–F11 state is preserved exactly.
 <!-- LATEST_HANDOFF_2026_09_08:END -->
 
 Phase 4 handoff HEAD before the correction:
@@ -195,7 +184,7 @@ The USER primarily uses GitHub Desktop for Git mutations. Do not merge without e
 
 New core modules:
 
-- `CameraSpaceRootTracker` — relative camera-space physical displacement from two-foot ankle/heel/toe support consensus, with torso scale used only as auxiliary depth evidence/normalization.
+- `CameraSpaceRootTracker` — relative camera-space physical displacement from ankle/heel/toe support common mode, with differential gait evidence reducing depth trust and torso scale used only as auxiliary depth corroboration/normalization.
 - `CadenceDetector` — alternating ankle/knee lower-body rhythm, cadence rate/confidence, fast stop.
 - `BodyHeadingEstimator` — maps live source torso Forward through the accepted Phase 4 signed map into avatar/game-world heading.
 - `LocomotionFusion` — independent lateral/depth scaling, accepted Phase 4 reference-map conversion from camera X/Z to game-world X/Z, plus mapped physical-velocity suppression of cadence.
