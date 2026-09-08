@@ -15,25 +15,42 @@ Current branch: `engine/pose-tracking-spike`
 <!-- LATEST_HANDOFF_2026_09_08:START -->
 ## Current authoritative checkpoint
 
-Starting correction checkpoint: `4cf8dc029941ee343ac8cd23b6311fb5bad4a57d`.
+Starting correction checkpoint: `6a98003efd427e1c8570bab9b32565673a1f268d`.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
-- Phase 5A: **NOT USER ACCEPTED / NEXT RUNTIME QA PAUSED FOR AVATAR SMOOTHNESS**.
+- Phase 5A: **NOT USER ACCEPTED / FINAL QA WAITING ON EXTERNAL CAMERA + 30 FPS TARGET**.
 - Phase 6: **NOT STARTED**.
 - No merge without explicit USER approval.
 
-USER observed smooth environment rendering but visibly low apparent Neko animation FPS. Repository evidence confirms a sample-and-hold mismatch: rendering may be 60+ FPS while target inference is 20 FPS and actual CPU results may be lower; duplicate provider samples intentionally preserve the stabilizer's previous output.
+Camera infrastructure:
+- one generic `WebCamTexture` provider;
+- preferred camera persisted by WebCamDevice name;
+- custom Inspector dropdown over Unity devices;
+- phone support only through OS/UVC/virtual-webcam exposure;
+- no phone SDK/network streamer;
+- default request `640x480 @ 30`, optional `480x640 @ 30` portrait request;
+- Auto/0/90/180/270 effective rotation shared by inference and Lab display;
+- front-facing metadata still never causes H inference mirror;
+- `V` cycles non-depth/non-IR devices.
 
-Correction:
-- MediaPipe scheduler no longer advances cadence timing while readback/inference is busy. Last accepted request time controls the next eligible launch; no backlog is introduced.
-- Runtime Humanoid presentation now converges at render rate toward the newest exact solved Phase 4 pose. Exact torso/IK solving remains unchanged and presentation targets never queue.
-- Persistent Lab retargeter exposes smoothing ON/OFF, response and maximum blend seconds. Defaults: ON, 45/s, 0.05 s.
-- F7 exposes Render/Camera/Inference Result cadences plus presentation Smooth/Direct status.
-- Phase 5A support/cadence/heading/fusion data paths remain genuine stabilized data and are unchanged.
-- F12 and camera settings remain unchanged.
+Hot switch:
+- request becomes pending and blocks new old-camera work;
+- active readback/inference finishes;
+- old pipeline cleans up;
+- source/session convention version increments;
+- observations clear;
+- one new pipeline starts;
+- existing runtime reset invalidates calibration and Phase 5A support/cadence/fusion assumptions.
 
-Next evidence should be USER smoothness/latency QA before resuming the Phase 5A v3 locomotion re-QA.
+Inference:
+- default target is **30 FPS**;
+- one-outstanding/no-backlog scheduler remains;
+- one latest-frame freshness latch prevents duplicate stale-frame inference;
+- actual result cadence may remain much lower due to CPU/model time;
+- avatar presentation smoothing remains independent.
+
+Existing Phase 5A v3, `0.9/1.5` scales, F12 camera, smoothing `45/0.05`, and accepted Phase 4 code remain frozen.
 <!-- LATEST_HANDOFF_2026_09_08:END -->
 
 Phase 4 handoff HEAD before the correction:
@@ -64,7 +81,7 @@ The Motion Engine intentionally remains on the long-lived `engine/pose-tracking-
 
 - Unity `6000.5.0f1`, URP `17.5.0`.
 - CPU-first; no discrete GPU requirement.
-- Integrated laptop webcam baseline.
+- Integrated laptop webcam baseline plus any external camera exposed to Unity as a WebCamDevice; phone use depends on OS/UVC/virtual-webcam exposure.
 - MediaPipe Pose Landmarker V1, one person, local CPU inference.
 - No face tracking, finger tracking, or segmentation in V1 unless later justified.
 - Partial-body tracking is valid; missing legs must not disable usable upper-body control.

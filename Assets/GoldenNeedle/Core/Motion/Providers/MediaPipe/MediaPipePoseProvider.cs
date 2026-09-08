@@ -62,9 +62,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public bool CanLaunch(
             double nowSeconds,
             double minimumIntervalSeconds,
-            bool busy)
+            bool busy,
+            bool freshFrameAvailable = true)
         {
-            return !busy &&
+            return freshFrameAvailable &&
+                !busy &&
                 IsIntervalElapsed(
                     nowSeconds,
                     minimumIntervalSeconds);
@@ -88,11 +90,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField] private int requestedCameraHeight = 480;
         [SerializeField] private int requestedCameraFps = 30;
         [SerializeField] private float cameraStartupTimeoutSeconds = 8f;
+        [Tooltip("Use Auto for WebCamTexture metadata, or override quarter-turn rotation for USB/virtual camera drivers with incorrect orientation metadata.")]
+        [SerializeField] private CameraRotationOverride manualRotationOverride =
+            CameraRotationOverride.Auto;
         [Tooltip("Optional selfie-style display mirror. Canonical left/right semantics are not changed.")]
         [SerializeField] private bool mirrorFrontFacingDisplay;
 
         [Header("Pose Landmarker")]
-        [SerializeField] private float targetInferenceFps = 20f;
+        [SerializeField] private float targetInferenceFps = 30f;
         [SerializeField] private float readbackTimeoutSeconds = 2f;
         [SerializeField] private PoseTrustSettings trustSettings = new PoseTrustSettings();
 
@@ -110,7 +115,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private PoseLandmarker _poseLandmarker;
         private Coroutine _bootstrapCoroutine;
         private bool _readbackPending;
+        private bool _freshCameraFramePending;
         private bool _shuttingDown;
+        private bool _cameraSwitchPending;
+        private string _pendingCameraName = string.Empty;
+        private string _pendingPreferredCameraName = string.Empty;
         private double _inferenceStartedAtSeconds;
         private double _metricsWindowStartedAtSeconds;
         private int _inferenceOutstanding;
@@ -131,11 +140,17 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public PoseProviderStatus Status { get; private set; } = PoseProviderStatus.Starting;
         public string StatusMessage { get; private set; } = "Starting pose-tracking spike";
         public string SelectedCameraName => _selectedDevice.name;
+        public string PreferredCameraName => preferredCameraName;
         public int CameraDeviceCount { get; private set; }
         public int ActualCameraWidth => _webCamTexture == null ? 0 : _webCamTexture.width;
         public int ActualCameraHeight => _webCamTexture == null ? 0 : _webCamTexture.height;
         public int RequestedCameraFps => requestedCameraFps;
         public int VideoRotationAngle => _webCamTexture == null ? 0 : _webCamTexture.videoRotationAngle;
+        public int EffectiveRotationDegrees => _orientation.SensorRotationDegrees;
+        public CameraRotationOverride ManualRotationOverride => manualRotationOverride;
+        public float TargetInferenceFps => targetInferenceFps;
+        public bool CameraSwitchPending => _cameraSwitchPending;
+        public string PendingCameraName => _pendingCameraName;
         public bool VideoVerticallyMirrored => _webCamTexture != null && _webCamTexture.videoVerticallyMirrored;
         public CameraOrientationState Orientation => _orientation;
         public int CoordinateConventionVersion => _coordinateConventionVersion;
@@ -191,14 +206,33 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 UnityEngine.Debug.Log("[PoseTrackingSpike] Live result callback active");
             }
 
+            if (_cameraSwitchPending)
+            {
+                if (CameraDeviceSelection.CanProcessPendingSwitch(
+                        true,
+                        _bootstrapCoroutine != null,
+                        _readbackPending,
+                        Volatile.Read(ref _inferenceOutstanding)))
+                {
+                    ExecutePendingCameraSwitch();
+                }
+
+                // Once a switch is requested, do not start any additional old-camera work.
+                return;
+            }
+
             if (Status != PoseProviderStatus.Ready || _webCamTexture == null || _poseLandmarker == null || _textureFramePool == null)
             {
                 return;
             }
 
-            if (_webCamTexture.didUpdateThisFrame)
+            var freshCameraFrame = _webCamTexture.didUpdateThisFrame;
+            if (freshCameraFrame)
             {
                 _cameraFramesInWindow++;
+                // One-bit latest-frame latch: multiple arrivals collapse to the newest
+                // WebCamTexture image. This is not a frame queue.
+                _freshCameraFramePending = true;
             }
 
             UpdateInputTransform();
@@ -212,9 +246,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             if (!_inferenceScheduler.CanLaunch(
                     now,
                     interval,
-                    busy))
+                    busy,
+                    _freshCameraFramePending))
             {
                 if (busy &&
+                    _freshCameraFramePending &&
                     _inferenceScheduler.IsIntervalElapsed(
                         now,
                         interval))
@@ -231,6 +267,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
+            _freshCameraFramePending = false;
             _readbackPending = true;
             StartCoroutine(CaptureAndInferAsync(textureFrame));
         }
@@ -537,51 +574,167 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         public void Retry()
         {
-            if (_bootstrapCoroutine != null || _readbackPending || Volatile.Read(ref _inferenceOutstanding) != 0)
+            if (_bootstrapCoroutine != null ||
+                _readbackPending ||
+                Volatile.Read(ref _inferenceOutstanding) != 0 ||
+                _cameraSwitchPending)
             {
                 return;
             }
 
+            RestartProvider(
+                invalidateCameraSession: false);
+        }
+
+        public bool RequestCycleCamera()
+        {
+            var devices = WebCamTexture.devices;
+            CameraDeviceCount = devices.Length;
+            var names = GetDeviceNames(devices);
+            var currentName = !string.IsNullOrWhiteSpace(SelectedCameraName)
+                ? SelectedCameraName
+                : preferredCameraName;
+            var nextName = CameraDeviceSelection.GetNextUsableDeviceName(
+                names,
+                currentName);
+            if (string.IsNullOrWhiteSpace(nextName) ||
+                string.Equals(
+                    nextName,
+                    currentName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                StatusMessage = "No alternate usable color/webcam device is available";
+                return false;
+            }
+
+            return RequestCameraSwitch(nextName);
+        }
+
+        public bool RequestCameraSwitch(string preferredName)
+        {
+            var devices = WebCamTexture.devices;
+            CameraDeviceCount = devices.Length;
+            var names = GetDeviceNames(devices);
+            var selectedIndex =
+                CameraDeviceSelection.SelectPreferredOrFallbackIndex(
+                    names,
+                    preferredName);
+            if (selectedIndex < 0)
+            {
+                StatusMessage = "No webcam devices are available for switching";
+                return false;
+            }
+
+            var targetName = names[selectedIndex];
+            var preferredIdentity =
+                string.IsNullOrWhiteSpace(preferredName)
+                    ? string.Empty
+                    : targetName;
+
+            if (!_cameraSwitchPending &&
+                Status == PoseProviderStatus.Ready &&
+                string.Equals(
+                    SelectedCameraName,
+                    targetName,
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                preferredCameraName = preferredIdentity;
+                StatusMessage = $"Camera already active: {targetName}";
+                return false;
+            }
+
+            _pendingCameraName = targetName;
+            _pendingPreferredCameraName = preferredIdentity;
+            _cameraSwitchPending = true;
+            StatusMessage = $"Camera switch pending: {targetName}";
+            return true;
+        }
+
+        private void ExecutePendingCameraSwitch()
+        {
+            if (!_cameraSwitchPending)
+            {
+                return;
+            }
+
+            var targetName = _pendingCameraName;
+            preferredCameraName = _pendingPreferredCameraName;
+            _cameraSwitchPending = false;
+            _pendingCameraName = string.Empty;
+            _pendingPreferredCameraName = string.Empty;
+
+            RestartProvider(
+                invalidateCameraSession: true);
+            StatusMessage = $"Switching camera: {targetName}";
+        }
+
+        private void RestartProvider(bool invalidateCameraSession)
+        {
             CleanupRuntime();
+            ClearProviderSessionState();
+
+            if (invalidateCameraSession)
+            {
+                // A different physical camera/framing invalidates old calibration and room origin
+                // even when its H/V/rotation convention happens to match the previous device.
+                _coordinateConventionVersion++;
+            }
+
+            Status = PoseProviderStatus.Starting;
+            _bootstrapCoroutine = StartCoroutine(BootstrapAsync());
+        }
+
+        private void ClearProviderSessionState()
+        {
             _pendingObservation.Clear();
             _latestObservation.Clear();
-            Array.Clear(_lastTrackedAtSeconds, 0, _lastTrackedAtSeconds.Length);
-            Interlocked.Exchange(ref _resultCallbackReceived, 0);
-            Interlocked.Exchange(ref _resultCallbackLogPublished, 0);
-            Interlocked.Exchange(ref _totalInferenceRequests, 0);
-            Interlocked.Exchange(ref _totalResultCallbacks, 0);
+            Array.Clear(
+                _lastTrackedAtSeconds,
+                0,
+                _lastTrackedAtSeconds.Length);
+            Interlocked.Exchange(
+                ref _resultCallbackReceived,
+                0);
+            Interlocked.Exchange(
+                ref _resultCallbackLogPublished,
+                0);
+            Interlocked.Exchange(
+                ref _totalInferenceRequests,
+                0);
+            Interlocked.Exchange(
+                ref _totalResultCallbacks,
+                0);
+            Interlocked.Exchange(
+                ref _resultsInWindow,
+                0);
+            _requestsInWindow = 0;
+            _cameraFramesInWindow = 0;
+            _skippedInWindow = 0;
+            _freshCameraFramePending = false;
+            InferenceRequestsPerSecond = 0f;
+            PoseResultsPerSecond = 0f;
+            CameraFramesPerSecond = 0f;
+            LastInferenceDurationMilliseconds = 0f;
+            _metricsWindowStartedAtSeconds = NowSeconds();
             _inferenceRequestLogPublished = false;
-            _bootstrapCoroutine = StartCoroutine(BootstrapAsync());
         }
 
         private int SelectCameraIndex(WebCamDevice[] devices)
         {
-            if (!string.IsNullOrWhiteSpace(preferredCameraName))
-            {
-                for (var i = 0; i < devices.Length; i++)
-                {
-                    if (string.Equals(devices[i].name, preferredCameraName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return i;
-                    }
-                }
-            }
-
-            for (var i = 0; i < devices.Length; i++)
-            {
-                if (!IsDepthLike(devices[i].name))
-                {
-                    return i;
-                }
-            }
-
-            return 0;
+            return CameraDeviceSelection.SelectPreferredOrFallbackIndex(
+                GetDeviceNames(devices),
+                preferredCameraName);
         }
 
-        private static bool IsDepthLike(string deviceName)
+        private static string[] GetDeviceNames(WebCamDevice[] devices)
         {
-            var name = deviceName.ToLowerInvariant();
-            return name.Contains("depth") || name.Contains("infrared") || name.Contains("infra red") || name.Contains(" ir ");
+            var names = new string[devices == null ? 0 : devices.Length];
+            for (var i = 0; i < names.Length; i++)
+            {
+                names[i] = devices[i].name;
+            }
+
+            return names;
         }
 
         private void UpdateInputTransform()
@@ -596,13 +749,19 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             // WebCamTexture as an unmirrored physical camera view, and MediaPipe's landmark IDs
             // are anatomical. Mirroring the inference pixels here would make those semantic IDs
             // describe the opposite physical side. Keep only the transport/orientation correction.
+            var effectiveRotationDegrees =
+                CameraRotationPolicy.ResolveEffectiveRotationDegrees(
+                    _webCamTexture.videoRotationAngle,
+                    manualRotationOverride);
             var transformation = ImageTransformationOptions.Build(
                 shouldFlipHorizontally: false,
                 isVerticallyFlipped: _webCamTexture.videoVerticallyMirrored,
-                rotation: (RotationAngle)_webCamTexture.videoRotationAngle);
+                rotation: (RotationAngle)effectiveRotationDegrees);
 
             var nextOrientation = new CameraOrientationState(
-                sensorRotationDegrees: _webCamTexture.videoRotationAngle,
+                // This field is the effective rotation used by both inference and Lab display.
+                // VideoRotationAngle separately exposes the driver's reported raw metadata.
+                sensorRotationDegrees: effectiveRotationDegrees,
                 sensorVerticallyMirrored: _webCamTexture.videoVerticallyMirrored,
                 frontFacing: _selectedDevice.isFrontFacing,
                 // WebCamTexture is presented from its sensor metadata as-is. Do not infer an
@@ -678,6 +837,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         {
             _shuttingDown = true;
             _readbackPending = false;
+            _freshCameraFramePending = false;
 
             if (_poseLandmarker != null)
             {
@@ -720,6 +880,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private void OnDestroy()
         {
             _bootstrapCoroutine = null;
+            _cameraSwitchPending = false;
+            _pendingCameraName = string.Empty;
+            _pendingPreferredCameraName = string.Empty;
             CleanupRuntime();
             Status = PoseProviderStatus.Stopped;
         }

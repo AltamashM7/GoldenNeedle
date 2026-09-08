@@ -57,22 +57,24 @@ Runtime USER QA is authoritative for scale, noise, cadence acquisition/stop, ste
 <!-- PHASE5A_CHECKPOINT_2026_09_08:START -->
 ### Current Phase 5A checkpoint
 
-Starting correction HEAD: `4cf8dc029941ee343ac8cd23b6311fb5bad4a57d`.
+Starting correction HEAD: `6a98003efd427e1c8570bab9b32565673a1f268d`.
 
-The next v3 support/locomotion QA is paused until avatar-presentation smoothness is checked.
+Final Phase 5A runtime QA is postponed until full-body external-camera infrastructure is available.
 
-Observed blocker:
-- environment/render loop is smooth;
-- Neko looks lower-FPS because real pose results arrive below render cadence and the visible rig sample-and-holds repeated stabilized targets.
+Current infrastructure correction:
+- explicit camera selection by persistent WebCamDevice name;
+- custom Inspector dropdown over OS/Unity webcam devices;
+- runtime `V` cycling over non-depth/non-IR devices;
+- safe pending switch that waits for active work, restarts one provider pipeline, increments source/session convention version, and invalidates old calibration/root assumptions;
+- Auto + manual 0/90/180/270 orientation shared by inference and Lab display;
+- default camera request stays `640x480 @ 30`; USER may request `480x640 @ 30` for portrait full-body phone capture;
+- phone support is generic UVC/virtual-webcam support only;
+- target pose cadence changes from 20 to **30 FPS**;
+- one latest-frame latch prevents duplicate inference on unchanged camera images;
+- scheduler remains one-outstanding/no-backlog and actual result FPS may be below 30;
+- presentation smoothing remains independent and unchanged.
 
-Current correction:
-- inference scheduler avoids busy-slot idle gaps while preserving one-outstanding/no-backlog LIVE_STREAM behavior and the 20 FPS prototype target;
-- persistent Humanoid retargeter adds low-latency render-rate presentation smoothing after exact Phase 4 solving;
-- defaults: smoothing ON, 45/s response, 50 ms hard convergence bound;
-- F7 reports presentation status alongside existing render/camera/inference metrics;
-- no Phase 5A support/cadence/fusion, F12, camera, Neko, coordinate or calibration changes.
-
-**Acceptance remains pending:** USER must first judge visible smoothness vs responsiveness, then continue the previously planned Phase 5A locomotion re-QA.
+**Acceptance remains pending:** USER must select/connect the intended external camera, verify orientation/framing, recalibrate and recenter, then run final Phase 5A motion QA. No Phase 6 work should begin.
 <!-- PHASE5A_CHECKPOINT_2026_09_08:END -->
 
 ## Phase 6 — End-to-end graybox vertical slice

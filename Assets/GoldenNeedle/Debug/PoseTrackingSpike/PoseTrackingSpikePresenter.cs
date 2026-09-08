@@ -163,6 +163,11 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 provider.Retry();
             }
 
+            if (keyboard != null && keyboard.vKey.wasPressedThisFrame && provider != null)
+            {
+                provider.RequestCycleCamera();
+            }
+
             if (keyboard != null && keyboard.f1Key.wasPressedThisFrame)
             {
                 drawRawLandmarks = !drawRawLandmarks;
@@ -502,8 +507,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var kinematicTargets = runtime == null ? null : runtime.KinematicTargets;
             var text =
                 "MOTION ENGINE / TRACKING\n" +
-                $"State: {state}   Camera: {cameraName}\n" +
-                $"Capture: {resolution} @ {(provider == null ? 0f : provider.CameraFramesPerSecond):0.0} fps   Render: {_renderFps:0.0} fps\n" +
+                $"State: {state}   Camera: {cameraName}   Devices: {(provider == null ? 0 : provider.CameraDeviceCount)}\n" +
+                $"Capture: {resolution} @ {(provider == null ? 0f : provider.CameraFramesPerSecond):0.0} fps   Render: {_renderFps:0.0} fps   Inf target={(provider == null ? 0f : provider.TargetInferenceFps):0}\n" +
                 $"Inference req/res: {(provider == null ? 0f : provider.InferenceRequestsPerSecond):0.0}/{(provider == null ? 0f : provider.PoseResultsPerSecond):0.0}/s   age={age}   last={(provider == null ? 0f : provider.LastInferenceDurationMilliseconds):0.0} ms\n" +
                 $"Tracked raw/canonical/stable: {(observation == null ? 0 : observation.trustedCount)}/{PoseObservation.LandmarkCount}   {(rawFrame == null ? 0 : rawFrame.trackedJointCount)}/{CanonicalPoseFrame.JointCount}   {(stabilizedFrame == null ? 0 : stabilizedFrame.trackedJointCount)}/{CanonicalPoseFrame.JointCount}\n" +
                 $"2D↔3D X: {AgreementStatus(coordinateAgreement.hasXEvidence, coordinateAgreement.xPass)} ({coordinateAgreement.xComparisons})   Y: {AgreementStatus(coordinateAgreement.hasYEvidence, coordinateAgreement.yPass)} ({coordinateAgreement.yComparisons}, mismatch {coordinateAgreement.yMismatches})\n" +
@@ -516,8 +521,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 $"Drive: {(retargeter != null && retargeter.DriveRig ? "On" : "Off")}   Present: {FormatPresentationSmoothing(retargeter)}   Targets: {(retargeter != null && retargeter.KinematicTargetsLive && kinematicTargets != null ? "Live" : "Waiting")}\n" +
                 $"Chains source/target/IK: {(retargeter == null ? 0 : retargeter.SourceChainsValid)}/{CanonicalKinematicTargets.ChainCount}   {(retargeter == null ? 0 : retargeter.TargetsGenerated)}/{CanonicalKinematicTargets.ChainCount}   {(retargeter == null ? 0 : retargeter.IkChainsSolved)}/{CanonicalKinematicTargets.ChainCount}   driven={(retargeter == null ? 0 : retargeter.LimbBonesDriven)}/8\n" +
                 $"Errors fidelity/IK/bend: {(retargeter == null ? 0f : retargeter.MaxNormalizedRetargetFidelityError * 100f):0.0}% / {(retargeter == null ? 0f : retargeter.MaxNormalizedIkEndpointResidual * 100f):0.0}% / {(retargeter == null ? 0f : retargeter.MaxBendPlaneErrorDegrees):0.0}°\n" +
-                $"Coords sensor rot/V: {(provider == null ? 0 : provider.Orientation.SensorRotationDegrees)}°/{(provider != null && provider.Orientation.SensorVerticallyMirrored)}   infer H/V={(provider != null && provider.Orientation.InferenceFlipHorizontally)}/{(provider != null && provider.Orientation.InferenceFlipVertically)}\n" +
-                $"Display rot/V/mirror: {(provider == null ? 0 : provider.Orientation.DisplayRotationDegrees)}°/{(provider != null && provider.Orientation.DisplayVerticalCorrection)}/{(provider != null && provider.Orientation.DisplayMirrored)}\n" +
+                $"Rotation effective/reported: {(provider == null ? 0 : provider.EffectiveRotationDegrees)}°/{(provider == null ? 0 : provider.VideoRotationAngle)}°   infer H/V={(provider != null && provider.Orientation.InferenceFlipHorizontally)}/{(provider != null && provider.Orientation.InferenceFlipVertically)}\n" +
+                $"Display rot/V/mirror: {(provider == null ? 0 : provider.Orientation.DisplayRotationDegrees)}°/{(provider != null && provider.Orientation.DisplayVerticalCorrection)}/{(provider != null && provider.Orientation.DisplayMirrored)}   switch={(provider != null && provider.CameraSwitchPending ? "pending" : "ready")}\n" +
                 $"Status: {(provider == null ? "No MediaPipe provider" : provider.StatusMessage)}";
 
             GUI.Label(
@@ -1182,7 +1187,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 "POSE: F1 Raw | F2 Canonical | F3 3D | F4 Stabilized\n" +
                 "ENGINE: F5 Drive | F6 Coord | MODE: F12 Game/Lab\n" +
                 "PANELS: F7 Engine | F8 Rig | F9 Loco Data | F10 World | F11 UI\n" +
-                "ACTIONS: R Retry | C Calibrate | X Reset | K Recenter";
+                "ACTIONS: R Retry | V Camera | C Calibrate | X Reset | K Recenter";
             GUI.Label(
                 new Rect(
                     panel.x + 10f,

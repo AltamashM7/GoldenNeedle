@@ -278,8 +278,9 @@ MonoBehaviour:
   requestedCameraHeight: 480
   requestedCameraFps: 30
   cameraStartupTimeoutSeconds: 8
+  manualRotationOverride: 0
   mirrorFrontFacingDisplay: 0
-  targetInferenceFps: 20
+  targetInferenceFps: 30
   readbackTimeoutSeconds: 2
   trustSettings:
     visibilityThreshold: 0.5

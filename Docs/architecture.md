@@ -182,3 +182,14 @@ Tracking data cadence and avatar presentation cadence are separate architectural
 The persistent `HumanoidRetargeter` owns this presentation layer. Its public exact `ApplyMotionFrame` path is unchanged; runtime `LateUpdate` optionally wraps it by capturing/restoring visible local rotations around the exact torso/IK solve. This prevents presentation state from becoming a new canonical/IK input or changing accepted signed-axis characterization.
 
 The MediaPipe provider remains latest-result LIVE_STREAM with no backlog. Request timing is anchored to the last accepted request rather than a future slot that can be consumed while busy.
+
+
+## External camera and source-session boundary
+
+Golden Needle treats every camera as an OS/Unity `WebCamDevice`. The project has no separate phone-camera backend. Device identity is persisted by name; the Lab Inspector enumerates `WebCamTexture.devices`, and `V` cycles non-depth/non-IR devices.
+
+A physical camera switch is a source-session boundary. The provider waits for active readback/inference to finish, restarts one camera/PoseLandmarker pipeline, and increments the source/session convention version. `MotionEngineRuntime` therefore resets stabilization/calibration/kinematic state, and Phase 5A subsequently resets support/cadence/fusion when calibration is invalid.
+
+One effective camera rotation is shared by inference and display. Auto follows Unity metadata; manual 0/90/180/270 handles incorrect USB/virtual-camera metadata. The accepted no-front-facing-horizontal-inference-mirror rule remains unchanged.
+
+The pose-request target is 30 FPS. Requests additionally require a latched fresh camera frame and a free single-outstanding inference slot; actual results remain CPU/model limited. Render-rate avatar presentation smoothing remains downstream and independent.

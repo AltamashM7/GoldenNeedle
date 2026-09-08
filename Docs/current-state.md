@@ -1,34 +1,24 @@
 # Current state
 
 <!-- LATEST_CHECKPOINT_2026_09_08:START -->
-## Latest checkpoint — Phase 5A avatar-presentation smoothness correction pending USER QA
+## Latest checkpoint — external-camera selection + 30 FPS inference target pending USER QA
 
-- Starting correction checkpoint: `4cf8dc029941ee343ac8cd23b6311fb5bad4a57d` — `fix: clear motion lab compile warnings`.
+- Starting correction checkpoint: `6a98003efd427e1c8570bab9b32565673a1f268d` — `feat: smooth render-rate avatar presentation`.
 - Phase 4 remains **USER ACCEPTED — PASS**.
-- Phase 5A remains **NOT USER ACCEPTED**; USER deliberately paused the next locomotion QA until avatar presentation smoothness was improved.
-- USER evidence: Unity/environment rendering is smooth, while driven Neko visibly updates at a lower apparent FPS.
-- Repository evidence explains the mismatch:
-  - Unity render cadence can be ~60+ FPS;
-  - webcam requests 30 FPS;
-  - `MediaPipePoseProvider.targetInferenceFps` remains 20 FPS;
-  - sustainable CPU Pose Landmarker result rate may be lower than the target;
-  - `CanonicalPoseStabilizer` returns the previous output unchanged when no genuinely new provider sample exists;
-  - Phase 4 retargeting therefore receives repeated exact targets across several render frames.
-- Provider scheduling is corrected so busy readback/inference does **not** advance a future timing slot. The minimum interval is measured from the last accepted inference request; after busy work finishes, the next Unity Update may launch immediately if that interval already elapsed.
-- One readback/inference remains outstanding at most; no request queue/backlog is introduced. Target inference FPS remains Inspector-editable with the prototype default at 20.
-- `HumanoidRetargeter` now has a dedicated **presentation-only** smoothing layer in runtime `LateUpdate`:
-  - capture currently visible driven-bone local rotations;
-  - run the accepted Phase 4 torso + analytic IK solve exactly;
-  - capture exact solved local rotations as the newest presentation target;
-  - restore the visible pose;
-  - advance visible rotations toward the newest target every render frame.
-- The exact public `ApplyMotionFrame(...)` solve path remains unchanged and continues to represent the authoritative Phase 4 target solve.
-- Presentation target transitions do not queue. A newer target redirects from the current visible pose immediately. Default response is `45/s` with a hard `0.05 s` maximum convergence duration.
-- Presentation smoothing changes only the visible driven humanoid rotations. Canonical/stabilized frames, calibration, Phase 5A support tracking v3, cadence, heading, fusion, recenter, root X/Z mapping, root Y exclusion and root rotation exclusion remain unchanged.
-- The Lab now serializes one real `HumanoidRetargeter` for Play Mode tuning. F5 still starts OFF. Smoothing defaults are ON / `45` response / `0.05 s` max blend.
-- F7 diagnostics retain Render FPS, Camera FPS, inference requests/results per second and last inference ms, and now report presentation mode as Smooth/Direct.
-- F12 Lab/Game behavior and third-person camera settings remain unchanged.
-- Next action: USER runtime QA avatar smoothness/latency first, then resume the paused Phase 5A support/locomotion re-QA.
+- Phase 5A remains **NOT USER ACCEPTED**; final runtime QA remains postponed until external-camera/full-body capture and the 30 FPS inference-target baseline are available.
+- Camera input remains one generic Unity `WebCamTexture` pipeline. Built-in webcams, USB webcams, phone UVC webcam modes, and virtual webcam software are usable when Windows/Unity exposes them as `WebCamDevice` entries. No phone-specific SDK/network transport is added.
+- `preferredCameraName` remains the serialized device identity. A custom Inspector dropdown enumerates current `WebCamTexture.devices` and stores the device name rather than an array index.
+- Scene defaults remain automatic/laptop-friendly: blank preferred device, `640x480 @ 30` request, Orientation=Auto, display mirror OFF. USER may locally request `480x640 @ 30` for portrait full-body capture; actual dimensions/FPS remain driver-controlled.
+- Orientation supports `Auto / 0 / 90 / 180 / 270`. The same effective rotation is used for MediaPipe input preparation, Lab preview/display geometry, and convention-version tracking.
+- Accepted horizontal semantics remain unchanged: front-facing metadata does **not** cause an inference H mirror; `shouldFlipHorizontally=false` remains production behavior. Display mirror stays presentation-only.
+- `V` cycles ordinary non-depth/non-IR cameras and wraps. A Play Mode Inspector device change uses the same pending switch path.
+- A switch blocks new old-camera inference launches, waits for any active readback/inference to finish, then cleans one old provider pipeline and bootstraps one new pipeline. No concurrent cameras or duplicate PoseLandmarkers are created.
+- A physical camera restart increments the provider source/session convention version even when orientation happens to match. Existing `MotionEngineRuntime` handling resets stabilization/calibration/targets; Phase 5A then resets support/cadence/fusion/heading when calibration becomes invalid. USER must recalibrate and recenter after switching.
+- Pose target default changes from **20 FPS to 30 FPS** in code and scene. This is a requested maximum cadence, not a guaranteed result rate.
+- Fresh webcam frames are represented by a single latest-frame latch. Multiple frames while busy collapse to the newest WebCamTexture image; the next cadence-eligible free request consumes that latch. This avoids duplicate inference on an unchanged camera image without creating a frame queue.
+- Valid runtime outcomes include Camera≈30 FPS, Target≈30 FPS, Results≈15 FPS, Render≈60 FPS. Render-rate avatar presentation smoothing remains responsible for visual continuity above real pose-result cadence.
+- Existing support model v3, physical scales `0.9/1.5`, F12 camera behavior, smoothing `45/0.05`, Phase 4 mapping/calibration/Neko binding, root Y exclusion and root rotation exclusion remain unchanged.
+- Next action: connect/select the external camera, verify orientation/framing, recalibrate and recenter, then run final Phase 5A USER QA.
 - Phase 6 has **NOT STARTED**. Do not merge without explicit USER approval.
 <!-- LATEST_CHECKPOINT_2026_09_08:END -->
 
@@ -115,7 +105,7 @@ These had repeatedly been reported as pre-existing/unintended editor differences
 ## Locked product/architecture rules that survive Phase 4 uncertainty
 
 - CPU-first; no required discrete GPU.
-- Integrated webcam is a valid baseline.
+- Integrated webcam is a valid baseline. Any external camera exposed to Unity as a WebCamDevice is also supported; phone testing relies on OS/UVC/virtual-webcam exposure rather than a Golden Needle phone protocol.
 - Partial-body tracking remains valid.
 - MediaPipe stays behind a replaceable provider boundary.
 - Downstream systems consume engine-owned canonical data.

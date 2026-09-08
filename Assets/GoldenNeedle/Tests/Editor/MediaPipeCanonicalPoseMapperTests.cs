@@ -487,6 +487,68 @@ namespace GoldenNeedle.Tests
             });
         }
 
+        [Test]
+        public void AutoRotationPreservesReportedCameraMetadata()
+        {
+            Assert.That(
+                CameraRotationPolicy.ResolveEffectiveRotationDegrees(
+                    270,
+                    CameraRotationOverride.Auto),
+                Is.EqualTo(270));
+        }
+
+        [Test]
+        public void ManualRotationOverridesProduceExactQuarterTurns()
+        {
+            Assert.That(
+                CameraRotationPolicy.ResolveEffectiveRotationDegrees(
+                    270,
+                    CameraRotationOverride.Degrees0),
+                Is.EqualTo(0));
+            Assert.That(
+                CameraRotationPolicy.ResolveEffectiveRotationDegrees(
+                    0,
+                    CameraRotationOverride.Degrees90),
+                Is.EqualTo(90));
+            Assert.That(
+                CameraRotationPolicy.ResolveEffectiveRotationDegrees(
+                    90,
+                    CameraRotationOverride.Degrees180),
+                Is.EqualTo(180));
+            Assert.That(
+                CameraRotationPolicy.ResolveEffectiveRotationDegrees(
+                    180,
+                    CameraRotationOverride.Degrees270),
+                Is.EqualTo(270));
+        }
+
+        [Test]
+        public void ManualQuarterTurnCanDriveInferenceAndDisplayInSameFrame()
+        {
+            var effective =
+                CameraRotationPolicy.ResolveEffectiveRotationDegrees(
+                    0,
+                    CameraRotationOverride.Degrees90);
+            var orientation = Orientation(
+                inferenceRotationDegrees: effective,
+                sensorRotationDegrees: effective);
+            var sensorPoint = new Vector2(0.2f, 0.3f);
+
+            var inference =
+                orientation.SensorTopLeftToInferenceNormalized(
+                    sensorPoint);
+            var display =
+                orientation.SensorTopLeftToDisplayNormalized(
+                    sensorPoint);
+
+            Assert.That(
+                inference,
+                Is.EqualTo(new Vector2(0.7f, 0.2f)));
+            Assert.That(
+                display,
+                Is.EqualTo(new Vector2(0.7f, 0.2f)));
+        }
+
         private static CameraOrientationState Orientation(
             bool displayMirrored = false,
             bool inferenceFlipHorizontally = false,

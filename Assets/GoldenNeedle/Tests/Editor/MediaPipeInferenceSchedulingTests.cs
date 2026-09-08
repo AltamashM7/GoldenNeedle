@@ -1,5 +1,6 @@
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace GoldenNeedle.Tests
 {
@@ -71,6 +72,47 @@ namespace GoldenNeedle.Tests
             Assert.That(
                 scheduler.CanLaunch(1.20d, 0.05d, false),
                 Is.False);
+        }
+
+        [Test]
+        public void FreshCameraFrameIsRequiredForLaunch()
+        {
+            var scheduler = new InferenceLaunchScheduler();
+            scheduler.MarkAccepted(0d);
+
+            Assert.That(
+                scheduler.CanLaunch(
+                    0.04d,
+                    1d / 30d,
+                    false,
+                    false),
+                Is.False);
+            Assert.That(
+                scheduler.CanLaunch(
+                    0.04d,
+                    1d / 30d,
+                    false,
+                    true),
+                Is.True);
+        }
+
+        [Test]
+        public void ProviderDefaultInferenceTargetIsThirtyFps()
+        {
+            var gameObject =
+                new GameObject("MediaPipeProviderDefaultTest");
+            try
+            {
+                var provider =
+                    gameObject.AddComponent<MediaPipePoseProvider>();
+                Assert.That(
+                    provider.TargetInferenceFps,
+                    Is.EqualTo(30f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
         }
 
         [Test]

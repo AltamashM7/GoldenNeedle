@@ -2,6 +2,38 @@ using UnityEngine;
 
 namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 {
+    public enum CameraRotationOverride
+    {
+        Auto = 0,
+        Degrees0 = 1,
+        Degrees90 = 2,
+        Degrees180 = 3,
+        Degrees270 = 4,
+    }
+
+    public static class CameraRotationPolicy
+    {
+        public static int ResolveEffectiveRotationDegrees(
+            int reportedSensorRotationDegrees,
+            CameraRotationOverride rotationOverride)
+        {
+            switch (rotationOverride)
+            {
+                case CameraRotationOverride.Degrees0:
+                    return 0;
+                case CameraRotationOverride.Degrees90:
+                    return 90;
+                case CameraRotationOverride.Degrees180:
+                    return 180;
+                case CameraRotationOverride.Degrees270:
+                    return 270;
+                default:
+                    return CameraOrientationState.NormalizeRotation(
+                        reportedSensorRotationDegrees);
+            }
+        }
+    }
+
     /// <summary>
     /// Describes four separate camera concepts: sensor/storage metadata, the input preparation
     /// applied before MediaPipe inference, the resulting canonical inference frame, and the

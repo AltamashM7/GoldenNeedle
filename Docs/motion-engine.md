@@ -5,20 +5,21 @@ Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / AWAITING USER Q
 <!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:START -->
 ## Current Phase 5A runtime checkpoint
 
-Starting correction checkpoint: `4cf8dc029941ee343ac8cd23b6311fb5bad4a57d`.
+Starting correction checkpoint: `6a98003efd427e1c8570bab9b32565673a1f268d`.
 
-Phase 4 remains accepted. Phase 5A remains unaccepted, and the next locomotion USER QA is intentionally paused until visible avatar smoothness is rechecked.
+Phase 4 remains accepted. Phase 5A remains unaccepted. Final locomotion QA is waiting on external/full-body camera infrastructure and the 30 FPS inference-target baseline.
 
-The environment can render at ~60+ FPS while genuine pose results arrive much more slowly. Current capture request is 30 FPS and Pose Landmarker request target remains 20 FPS; actual CPU result cadence can be lower. The stabilizer intentionally holds its previous output on duplicate source samples, so without a separate presentation layer the avatar visibly sample-and-holds between real solved targets.
+`MediaPipePoseProvider` remains the one authoritative camera pipeline. `preferredCameraName` stores a WebCamDevice name; the custom Inspector enumerates `WebCamTexture.devices`; `V` cycles non-depth/non-IR devices. Phones work only when Windows exposes them as UVC/standard/virtual webcams.
 
-Two focused changes address this without fabricating tracking data:
+Switching is safe and serialized: a pending request prevents new old-camera launches, existing readback/inference finishes, the old camera/PoseLandmarker is cleaned up, the source/session convention version increments, observations clear, and one new provider pipeline bootstraps. Runtime convention reset invalidates calibration; Phase 5A resets support/cadence/fusion state through its existing invalid-calibration path.
 
-1. **Sustainable inference scheduler:** minimum cadence is measured from the last accepted inference request. Busy readback/inference skips do not advance scheduling state. Once outstanding work finishes, the next Update may launch immediately if the requested interval has already elapsed. There remains only one readback/inference and no queue.
-2. **Render-rate retarget presentation:** runtime `HumanoidRetargeter.LateUpdate` captures visible local rotations, runs the unchanged exact Phase 4 solve, captures solved rotations, restores the visible pose, then advances the ten driven bones toward the newest solved target. Newer targets redirect immediately; unchanged targets converge by the configured hard maximum.
+Orientation supports Auto or manual 0/90/180/270. One effective quarter-turn drives both MediaPipe preparation and Lab display/convention state. Front-facing metadata still never implies horizontal inference mirroring.
 
-Default presentation smoothing: enabled, response `45/s`, maximum blend `0.05 s`. These values are serialized on the persistent Lab retargeter and Play Mode tunable.
+Camera request defaults remain `640x480 @ 30`; `480x640 @ 30` is a supported lightweight portrait request. Actual resolution/FPS is driver dependent.
 
-Phase 5A locomotion continues consuming genuine `MotionEngineRuntime.StabilizedFrame` data, not presentation-smoothed transforms.
+Pose target is now **30 FPS**. The provider still allows only one readback/inference and no queue/catch-up loop. A one-bit latest-frame freshness latch prevents duplicate inference on unchanged WebCamTexture images while allowing a frame that arrived just before scheduler eligibility to be consumed once.
+
+Actual Pose Results/s may remain below 30 when CPU inference is the limiter. Render-rate avatar smoothing remains independent of real result cadence.
 <!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:END -->
 
 ## Phase 1 spike boundary
@@ -266,3 +267,16 @@ The bounded quaternion transition combines response-based convergence with a har
 Invalid runtime/tracking state resets presentation transition state and preserves the existing reference-return behavior. Smoothing OFF runs the exact direct solve behavior.
 
 This layer affects only the ten driven humanoid local rotations. It does not write canonical data, stabilization output, calibration, support tracking, cadence, heading or locomotion fusion.
+
+
+### Camera selection, portrait capture, and manual orientation
+
+Camera configuration remains on `MediaPipePoseProvider`: preferred device name, requested width/height/FPS, manual rotation override, display mirror, and target inference FPS. The custom Editor renders the preferred name as a device dropdown and preserves disconnected serialized names instead of silently replacing them.
+
+Auto orientation uses `WebCamTexture.videoRotationAngle`. Manual 0/90/180/270 replaces that reported quarter-turn and is used by both `ImageTransformationOptions.Build` and `CameraOrientationState`, so inference and Lab presentation stay in one coordinate convention. Vertical-mirror metadata handling is unchanged.
+
+`V` requests the next ordinary non-depth/non-IR device. While a switch is pending, no new inference request starts. Once bootstrap/readback/inference are idle, the provider restarts and increments the source/session convention version; recalibration and Phase 5A recenter are therefore required.
+
+### 30 FPS target and fresh-frame gating
+
+`targetInferenceFps = 30` is a maximum scheduler cadence, not a result-rate promise. A fresh-frame latch is set by `WebCamTexture.didUpdateThisFrame` and consumed once by the next legal request. Multiple arrivals while busy collapse to the latest frame. This retains latest-frame semantics, avoids repeated inference on stale images, and creates no frame queue.
