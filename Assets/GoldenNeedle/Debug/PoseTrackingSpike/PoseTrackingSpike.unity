@@ -236,6 +236,7 @@ GameObject:
   - component: {fileID: 1225293543}
   - component: {fileID: 1225293545}
   - component: {fileID: 1225293546}
+  - component: {fileID: 1225293548}
   - component: {fileID: 1225293547}
   m_Layer: 0
   m_Name: PoseTrackingSpike
@@ -311,7 +312,7 @@ MonoBehaviour:
   drawLocomotionWorldView: 1
   canonicalSource: {fileID: 0}
   runtime: {fileID: 0}
-  retargeter: {fileID: 0}
+  retargeter: {fileID: 1225293548}
   rigView: {fileID: 0}
   locomotion: {fileID: 1225293547}
   locomotionView: {fileID: 0}
@@ -345,6 +346,25 @@ MonoBehaviour:
   rightHand: {fileID: 0}
   leftFoot: {fileID: 0}
   rightFoot: {fileID: 0}
+--- !u!114 &1225293548
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1225293541}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d11, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Retargeting.HumanoidRetargeter
+  runtime: {fileID: 0}
+  binding: {fileID: 1225293546}
+  unavailableReturnSeconds: 0.2
+  driveRig: 0
+  enablePresentationSmoothing: 1
+  presentationResponse: 45
+  maxPresentationBlendSeconds: 0.05
 --- !u!114 &1225293547
 MonoBehaviour:
   m_ObjectHideFlags: 0

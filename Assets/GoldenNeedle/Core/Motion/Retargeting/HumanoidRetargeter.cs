@@ -31,6 +31,144 @@ namespace GoldenNeedle.Core.Motion.Retargeting
     }
 
     /// <summary>
+    /// Bounded render-rate quaternion transition used only after an exact retarget solve.
+    /// A newer target immediately redirects from the currently visible rotation; no targets queue.
+    /// </summary>
+    public sealed class BoundedQuaternionPresentationSmoother
+    {
+        private const float TargetChangeEpsilonDegrees = 0.05f;
+
+        private bool _hasTransition;
+        private Quaternion _start = Quaternion.identity;
+        private Quaternion _target = Quaternion.identity;
+        private float _elapsedSeconds;
+
+        public bool HasTransition => _hasTransition;
+        public Quaternion Target => _target;
+        public float ElapsedSeconds => _elapsedSeconds;
+
+        public void Reset()
+        {
+            _hasTransition = false;
+            _start = Quaternion.identity;
+            _target = Quaternion.identity;
+            _elapsedSeconds = 0f;
+        }
+
+        public Quaternion Advance(
+            Quaternion visibleRotation,
+            Quaternion solvedTarget,
+            float deltaTime,
+            bool enabled,
+            float response,
+            float maxBlendSeconds)
+        {
+            if (!TryNormalize(solvedTarget, out solvedTarget))
+            {
+                return TryNormalize(visibleRotation, out visibleRotation)
+                    ? visibleRotation
+                    : Quaternion.identity;
+            }
+
+            if (!TryNormalize(visibleRotation, out visibleRotation))
+            {
+                visibleRotation = solvedTarget;
+            }
+
+            if (!enabled)
+            {
+                _hasTransition = false;
+                _start = solvedTarget;
+                _target = solvedTarget;
+                _elapsedSeconds = 0f;
+                return solvedTarget;
+            }
+
+            if (!_hasTransition ||
+                Quaternion.Angle(_target, solvedTarget) >
+                TargetChangeEpsilonDegrees)
+            {
+                _start = visibleRotation;
+                _target = solvedTarget;
+                _elapsedSeconds = 0f;
+                _hasTransition = true;
+            }
+
+            _elapsedSeconds += Mathf.Max(0f, deltaTime);
+            var boundedT = maxBlendSeconds <= 0.0001f
+                ? 1f
+                : Mathf.Clamp01(
+                    _elapsedSeconds /
+                    Mathf.Max(0.0001f, maxBlendSeconds));
+            var responseT =
+                1f -
+                Mathf.Exp(
+                    -Mathf.Max(0.1f, response) *
+                    _elapsedSeconds);
+            var t = Mathf.Clamp01(
+                Mathf.Max(boundedT, responseT));
+
+            if (t >= 0.9999f)
+            {
+                return _target;
+            }
+
+            var result = Quaternion.Slerp(
+                _start,
+                _target,
+                t);
+            return TryNormalize(result, out result)
+                ? result
+                : _target;
+        }
+
+        private static bool TryNormalize(
+            Quaternion value,
+            out Quaternion normalized)
+        {
+            normalized = Quaternion.identity;
+            if (!IsFinite(value))
+            {
+                return false;
+            }
+
+            var magnitudeSquared =
+                value.x * value.x +
+                value.y * value.y +
+                value.z * value.z +
+                value.w * value.w;
+            if (!IsFinite(magnitudeSquared) ||
+                magnitudeSquared <= 0.00000001f)
+            {
+                return false;
+            }
+
+            var inverseMagnitude =
+                1f / Mathf.Sqrt(magnitudeSquared);
+            normalized = new Quaternion(
+                value.x * inverseMagnitude,
+                value.y * inverseMagnitude,
+                value.z * inverseMagnitude,
+                value.w * inverseMagnitude);
+            return IsFinite(normalized);
+        }
+
+        private static bool IsFinite(Quaternion value)
+        {
+            return IsFinite(value.x) &&
+                IsFinite(value.y) &&
+                IsFinite(value.z) &&
+                IsFinite(value.w);
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) &&
+                !float.IsInfinity(value);
+        }
+    }
+
+    /// <summary>
     /// LateUpdate consumer of MotionEngineRuntime. The live production path maps stabilized
     /// canonical torso axes and normalized limb vectors through one signed canonical-to-avatar
     /// reference-basis transform, then poses the eight limb bones with four positional analytic
@@ -47,6 +185,16 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         [SerializeField, Range(0.15f, 0.25f)] private float unavailableReturnSeconds = 0.20f;
         [SerializeField] private bool driveRig;
 
+        [Header("Presentation Smoothing")]
+        [Tooltip("Smooth only the visible humanoid rotations at Unity render rate. Tracking, calibration, IK targets, cadence and locomotion continue to use genuine stabilized data.")]
+        [SerializeField] private bool enablePresentationSmoothing = true;
+
+        [Tooltip("How aggressively the visible rig approaches the newest exact solved pose. Higher values reduce latency; lower values look softer.")]
+        [Min(1f), SerializeField] private float presentationResponse = 45f;
+
+        [Tooltip("Hard upper bound for reaching an unchanged solved rotation target. A new real pose redirects immediately toward the newest target instead of queueing old targets.")]
+        [Min(0.01f), SerializeField] private float maxPresentationBlendSeconds = 0.05f;
+
         private readonly IChainIkSolver _ikSolver = new AnalyticTwoBoneIkSolver();
         private readonly Vector3[] _previousBendDirections = new Vector3[CanonicalKinematicTargets.ChainCount];
         private readonly bool[] _hasPreviousBendDirections = new bool[CanonicalKinematicTargets.ChainCount];
@@ -55,9 +203,16 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         private readonly HumanoidChainDebugState[] _chainDebugStates = new HumanoidChainDebugState[CanonicalKinematicTargets.ChainCount];
         private readonly ChainReferenceCharacterization[] _characterizations = new ChainReferenceCharacterization[CanonicalKinematicTargets.ChainCount];
         private readonly bool[] _hasCharacterizations = new bool[CanonicalKinematicTargets.ChainCount];
+        private readonly BoundedQuaternionPresentationSmoother[] _presentationSmoothers =
+            CreatePresentationSmoothers();
+        private readonly Quaternion[] _presentationVisibleLocalRotations =
+            new Quaternion[CanonicalRotationFrame.BoneCount];
+        private readonly Quaternion[] _presentationSolvedLocalRotations =
+            new Quaternion[CanonicalRotationFrame.BoneCount];
 
         private MotionCalibrationProfile _characterizationProfile;
         private int _characterizationBindingVersion = -1;
+        private int _presentationBindingVersion = -1;
         private int _drivenLimbBoneCount;
 
         public MotionEngineRuntime Runtime => runtime;
@@ -77,6 +232,9 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         public float MaxIkEndpointResidual { get; private set; }
         public float MaxNormalizedIkEndpointResidual { get; private set; }
         public float MaxBendPlaneErrorDegrees { get; private set; }
+        public bool PresentationSmoothingEnabled => enablePresentationSmoothing;
+        public float PresentationResponse => presentationResponse;
+        public float MaxPresentationBlendSeconds => maxPresentationBlendSeconds;
 
         public bool DriveRig
         {
@@ -92,6 +250,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 if (!driveRig)
                 {
                     ClearDiagnostics();
+                    ResetPresentationSmoothingState();
                     binding?.ResetToReferencePose();
                 }
             }
@@ -109,11 +268,22 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
         }
 
+        private void OnValidate()
+        {
+            presentationResponse = Mathf.Max(
+                1f,
+                presentationResponse);
+            maxPresentationBlendSeconds = Mathf.Max(
+                0.01f,
+                maxPresentationBlendSeconds);
+        }
+
         private void LateUpdate()
         {
             if (!driveRig || runtime == null || binding == null || !binding.IsBound)
             {
                 ClearDiagnostics();
+                ResetPresentationSmoothingState();
                 binding?.ResetToReferencePose();
                 return;
             }
@@ -126,16 +296,187 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 !frame.calibrationValid || !targets.calibrationValid || !profile.bodyReferenceValid)
             {
                 ClearDiagnostics();
+                ResetPresentationSmoothingState();
                 binding.ResetToReferencePose();
                 return;
             }
 
-            ApplyMotionFrame(
+            ApplyMotionFrameForPresentation(
                 sourceFrame,
                 frame,
                 targets,
                 profile,
                 Mathf.Max(Time.unscaledDeltaTime, 0f));
+        }
+
+        private void ApplyMotionFrameForPresentation(
+            CanonicalPoseFrame sourceFrame,
+            CanonicalRotationFrame frame,
+            CanonicalKinematicTargets targets,
+            MotionCalibrationProfile profile,
+            float deltaTime)
+        {
+            if (!enablePresentationSmoothing ||
+                binding == null ||
+                !binding.IsBound)
+            {
+                ResetPresentationSmoothingState();
+                ApplyMotionFrame(
+                    sourceFrame,
+                    frame,
+                    targets,
+                    profile,
+                    deltaTime);
+                return;
+            }
+
+            if (_presentationBindingVersion !=
+                binding.ReferencePoseVersion)
+            {
+                ResetPresentationSmoothingState();
+            }
+
+            if (!TryCapturePresentationLocalRotations(
+                    _presentationVisibleLocalRotations))
+            {
+                ResetPresentationSmoothingState();
+                ApplyMotionFrame(
+                    sourceFrame,
+                    frame,
+                    targets,
+                    profile,
+                    deltaTime);
+                return;
+            }
+
+            // Run the accepted Phase 4 solve exactly as before. Chains restore their reference pose
+            // before analytic IK, so this exact target solve is isolated from current presentation.
+            ApplyMotionFrame(
+                sourceFrame,
+                frame,
+                targets,
+                profile,
+                deltaTime);
+
+            if (!TryCapturePresentationLocalRotations(
+                    _presentationSolvedLocalRotations))
+            {
+                ResetPresentationSmoothingState();
+                return;
+            }
+
+            RestorePresentationLocalRotations(
+                _presentationVisibleLocalRotations);
+
+            var response = Mathf.Max(
+                1f,
+                presentationResponse);
+            var maxBlendSeconds = Mathf.Max(
+                0.01f,
+                maxPresentationBlendSeconds);
+            for (var i = 0;
+                 i < CanonicalRotationFrame.BoneCount;
+                 i++)
+            {
+                var bone = binding.GetBoneTransform(
+                    (CanonicalBoneId)i);
+                if (bone == null)
+                {
+                    continue;
+                }
+
+                bone.localRotation =
+                    _presentationSmoothers[i].Advance(
+                        _presentationVisibleLocalRotations[i],
+                        _presentationSolvedLocalRotations[i],
+                        deltaTime,
+                        true,
+                        response,
+                        maxBlendSeconds);
+            }
+        }
+
+        private bool TryCapturePresentationLocalRotations(
+            Quaternion[] destination)
+        {
+            if (binding == null ||
+                !binding.IsBound ||
+                destination == null ||
+                destination.Length <
+                CanonicalRotationFrame.BoneCount)
+            {
+                return false;
+            }
+
+            for (var i = 0;
+                 i < CanonicalRotationFrame.BoneCount;
+                 i++)
+            {
+                var bone = binding.GetBoneTransform(
+                    (CanonicalBoneId)i);
+                if (bone == null ||
+                    !IsFinite(bone.localRotation))
+                {
+                    return false;
+                }
+
+                destination[i] = bone.localRotation;
+            }
+
+            return true;
+        }
+
+        private void RestorePresentationLocalRotations(
+            Quaternion[] source)
+        {
+            if (binding == null ||
+                source == null)
+            {
+                return;
+            }
+
+            for (var i = 0;
+                 i < CanonicalRotationFrame.BoneCount;
+                 i++)
+            {
+                var bone = binding.GetBoneTransform(
+                    (CanonicalBoneId)i);
+                if (bone != null &&
+                    IsFinite(source[i]))
+                {
+                    bone.localRotation = source[i];
+                }
+            }
+        }
+
+        private void ResetPresentationSmoothingState()
+        {
+            _presentationBindingVersion =
+                binding == null
+                    ? -1
+                    : binding.ReferencePoseVersion;
+
+            for (var i = 0;
+                 i < _presentationSmoothers.Length;
+                 i++)
+            {
+                _presentationSmoothers[i].Reset();
+            }
+        }
+
+        private static BoundedQuaternionPresentationSmoother[]
+            CreatePresentationSmoothers()
+        {
+            var smoothers =
+                new BoundedQuaternionPresentationSmoother[
+                    CanonicalRotationFrame.BoneCount];
+            for (var i = 0; i < smoothers.Length; i++)
+            {
+                smoothers[i] =
+                    new BoundedQuaternionPresentationSmoother();
+            }
+
+            return smoothers;
         }
 
         /// <summary>
@@ -868,6 +1209,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         private void OnDisable()
         {
             ClearDiagnostics();
+            ResetPresentationSmoothingState();
             binding?.ResetToReferencePose();
         }
 

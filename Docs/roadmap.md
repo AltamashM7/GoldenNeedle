@@ -57,23 +57,22 @@ Runtime USER QA is authoritative for scale, noise, cadence acquisition/stop, ste
 <!-- PHASE5A_CHECKPOINT_2026_09_08:START -->
 ### Current Phase 5A checkpoint
 
-Starting correction HEAD: `33698719a2907d30bb3396f66e5b79e59ccbfe9e`.
+Starting correction HEAD: `4cf8dc029941ee343ac8cd23b6311fb5bad4a57d`.
 
-Second USER QA:
-- PASS: idle stable;
-- PASS: planted-feet torso leaning no longer moves the physical root;
-- PASS: Phase 4 pose behavior remains usable;
-- FAIL: actual finite walking became intermittent because hard two-foot consensus was too conservative.
+The next v3 support/locomotion QA is paused until avatar-presentation smoothness is checked.
+
+Observed blocker:
+- environment/render loop is smooth;
+- Neko looks lower-FPS because real pose results arrive below render cadence and the visible rig sample-and-holds repeated stabilized targets.
 
 Current correction:
-- common/differential support model replaces hard agreement;
-- lateral support midpoint responds during single-step onset;
-- depth uses support midpoint + matching scale evidence, attenuated by differential foot-Y;
-- missing support holds;
-- physical scales stay `0.9 / 1.5`;
-- F12 adds persistent Inspector-tunable third-person Game View while preserving Lab View/F1–F11.
+- inference scheduler avoids busy-slot idle gaps while preserving one-outstanding/no-backlog LIVE_STREAM behavior and the 20 FPS prototype target;
+- persistent Humanoid retargeter adds low-latency render-rate presentation smoothing after exact Phase 4 solving;
+- defaults: smoothing ON, 45/s response, 50 ms hard convergence bound;
+- F7 reports presentation status alongside existing render/camera/inference metrics;
+- no Phase 5A support/cadence/fusion, F12, camera, Neko, coordinate or calibration changes.
 
-**Acceptance remains pending** until USER re-QA confirms walking responsiveness, planted-feet isolation, jogging-in-place separation, depth behavior, support-loss hold, retained scale feel, and F12 switching. No Phase 6 work should begin.
+**Acceptance remains pending:** USER must first judge visible smoothness vs responsiveness, then continue the previously planned Phase 5A locomotion re-QA.
 <!-- PHASE5A_CHECKPOINT_2026_09_08:END -->
 
 ## Phase 6 — End-to-end graybox vertical slice

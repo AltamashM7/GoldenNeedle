@@ -15,21 +15,25 @@ Current branch: `engine/pose-tracking-spike`
 <!-- LATEST_HANDOFF_2026_09_08:START -->
 ## Current authoritative checkpoint
 
-Starting correction checkpoint: `33698719a2907d30bb3396f66e5b79e59ccbfe9e`.
+Starting correction checkpoint: `4cf8dc029941ee343ac8cd23b6311fb5bad4a57d`.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
-- Phase 5A: **SECOND USER QA PARTIAL PASS / V3 CORRECTION PENDING RE-QA / NOT USER ACCEPTED**.
+- Phase 5A: **NOT USER ACCEPTED / NEXT RUNTIME QA PAUSED FOR AVATAR SMOOTHNESS**.
 - Phase 6: **NOT STARTED**.
 - No merge without explicit USER approval.
 
-Second QA passed idle stability and the planted-feet torso-lean fix, but real physical walking became intermittent because v2 hard-required near-equal left/right support displacement.
+USER observed smooth environment rendering but visibly low apparent Neko animation FPS. Repository evidence confirms a sample-and-hold mismatch: rendering may be 60+ FPS while target inference is 20 FPS and actual CPU results may be lower; duplicate provider samples intentionally preserve the stabilizer's previous output.
 
-V3 keeps ankle/heel/toe composite feet but uses common support displacement for room position and differential displacement only as gait/depth-trust evidence. Lateral movement starts during the first step; depth still needs support-midpoint movement plus matching body-scale evidence. Missing supports hold.
+Correction:
+- MediaPipe scheduler no longer advances cadence timing while readback/inference is busy. Last accepted request time controls the next eligible launch; no backlog is introduced.
+- Runtime Humanoid presentation now converges at render rate toward the newest exact solved Phase 4 pose. Exact torso/IK solving remains unchanged and presentation targets never queue.
+- Persistent Lab retargeter exposes smoothing ON/OFF, response and maximum blend seconds. Defaults: ON, 45/s, 0.05 s.
+- F7 exposes Render/Camera/Inference Result cadences plus presentation Smooth/Direct status.
+- Phase 5A support/cadence/heading/fusion data paths remain genuine stabilized data and are unchanged.
+- F12 and camera settings remain unchanged.
 
-Physical scales remain `0.9 / 1.5`; cadence timing and accepted mapping/recenter/Phase 4 behavior remain unchanged.
-
-F12 adds Lab/Game presentation switching. Game View hides webcam/IMGUI and enables the third-person screen camera following avatar root + retained mapped heading. F1–F11 state is preserved exactly.
+Next evidence should be USER smoothness/latency QA before resuming the Phase 5A v3 locomotion re-QA.
 <!-- LATEST_HANDOFF_2026_09_08:END -->
 
 Phase 4 handoff HEAD before the correction:

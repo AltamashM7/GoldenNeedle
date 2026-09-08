@@ -29,6 +29,54 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         Stopped,
     }
 
+    /// <summary>
+    /// Main-thread request cadence helper. Busy frames never advance timing state, so once the
+    /// previous readback/inference finishes, the next Update may launch immediately if the minimum
+    /// interval since the last accepted request has already elapsed. There is no queue/backlog.
+    /// </summary>
+    public sealed class InferenceLaunchScheduler
+    {
+        private bool _hasAcceptedRequest;
+        private double _lastAcceptedRequestAtSeconds;
+
+        public bool HasAcceptedRequest => _hasAcceptedRequest;
+        public double LastAcceptedRequestAtSeconds => _lastAcceptedRequestAtSeconds;
+
+        public void Reset()
+        {
+            _hasAcceptedRequest = false;
+            _lastAcceptedRequestAtSeconds = 0d;
+        }
+
+        public bool IsIntervalElapsed(double nowSeconds, double minimumIntervalSeconds)
+        {
+            if (!_hasAcceptedRequest)
+            {
+                return true;
+            }
+
+            return nowSeconds - _lastAcceptedRequestAtSeconds >=
+                Math.Max(0d, minimumIntervalSeconds);
+        }
+
+        public bool CanLaunch(
+            double nowSeconds,
+            double minimumIntervalSeconds,
+            bool busy)
+        {
+            return !busy &&
+                IsIntervalElapsed(
+                    nowSeconds,
+                    minimumIntervalSeconds);
+        }
+
+        public void MarkAccepted(double nowSeconds)
+        {
+            _hasAcceptedRequest = true;
+            _lastAcceptedRequestAtSeconds = nowSeconds;
+        }
+    }
+
     public sealed class MediaPipePoseProvider : MonoBehaviour
     {
         private const string ModelFileName = "pose_landmarker_lite.bytes";
@@ -51,6 +99,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private readonly object _observationGate = new object();
         private readonly double[] _lastTrackedAtSeconds = new double[PoseObservation.LandmarkCount];
         private readonly Stopwatch _clock = Stopwatch.StartNew();
+        private readonly InferenceLaunchScheduler _inferenceScheduler =
+            new InferenceLaunchScheduler();
 
         private PoseObservation _pendingObservation;
         private PoseObservation _latestObservation;
@@ -61,7 +111,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private Coroutine _bootstrapCoroutine;
         private bool _readbackPending;
         private bool _shuttingDown;
-        private double _nextInferenceAtSeconds;
         private double _inferenceStartedAtSeconds;
         private double _metricsWindowStartedAtSeconds;
         private int _inferenceOutstanding;
@@ -155,17 +204,24 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             UpdateInputTransform();
 
             var now = NowSeconds();
-            if (now < _nextInferenceAtSeconds)
-            {
-                return;
-            }
-
             var interval = 1d / Mathf.Max(1f, targetInferenceFps);
-            _nextInferenceAtSeconds = now + interval;
+            var busy =
+                _readbackPending ||
+                Volatile.Read(ref _inferenceOutstanding) != 0;
 
-            if (_readbackPending || Volatile.Read(ref _inferenceOutstanding) != 0)
+            if (!_inferenceScheduler.CanLaunch(
+                    now,
+                    interval,
+                    busy))
             {
-                _skippedInWindow++;
+                if (busy &&
+                    _inferenceScheduler.IsIntervalElapsed(
+                        now,
+                        interval))
+                {
+                    _skippedInWindow++;
+                }
+
                 return;
             }
 
@@ -229,7 +285,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 _poseLandmarker = PoseLandmarker.CreateFromOptions(options);
                 _textureFramePool = new TextureFramePool(ActualCameraWidth, ActualCameraHeight, TextureFormat.RGBA32, 2);
                 UpdateInputTransform();
-                _nextInferenceAtSeconds = NowSeconds();
+                _inferenceScheduler.Reset();
                 Status = PoseProviderStatus.Ready;
                 StatusMessage = "Camera and CPU Pose Landmarker are ready";
                 UnityEngine.Debug.Log($"[PoseTrackingSpike] Ready: camera={SelectedCameraName}, resolution={ActualCameraWidth}x{ActualCameraHeight}, requestedFps={requestedCameraFps}, model={ModelFileName}, delegate=CPU, poses=1, segmentation=false");
@@ -343,7 +399,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     {
                         // DetectAsync takes ownership of the image through the input packet.
                         // LIVE_STREAM mode invokes OnPoseLandmarkerResult off the Unity main thread.
-                        _poseLandmarker.DetectAsync(image, timestampMillisec, _imageProcessingOptions);
+                        _poseLandmarker.DetectAsync(
+                            image,
+                            timestampMillisec,
+                            _imageProcessingOptions);
+                        _inferenceScheduler.MarkAccepted(
+                            NowSeconds());
                         Interlocked.Increment(ref _totalInferenceRequests);
                         _requestsInWindow++;
                         if (!_inferenceRequestLogPublished)
@@ -635,6 +696,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _textureFramePool?.Dispose();
             _textureFramePool = null;
             StopCamera();
+            _inferenceScheduler.Reset();
             Interlocked.Exchange(ref _inferenceOutstanding, 0);
         }
 

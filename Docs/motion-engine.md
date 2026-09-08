@@ -5,24 +5,20 @@ Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / AWAITING USER Q
 <!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:START -->
 ## Current Phase 5A runtime checkpoint
 
-Starting correction checkpoint: `33698719a2907d30bb3396f66e5b79e59ccbfe9e`.
+Starting correction checkpoint: `4cf8dc029941ee343ac8cd23b6311fb5bad4a57d`.
 
-Second USER QA confirmed the v2 planted-feet fix: idle remained stable, torso leaning with planted feet no longer translated the root, and Phase 4 remained usable. The new blocker was intermittent real walking because v2 required left/right foot displacement to agree before publishing any physical update.
+Phase 4 remains accepted. Phase 5A remains unaccepted, and the next locomotion USER QA is intentionally paused until visible avatar smoothness is rechecked.
 
-Support tracking v3 preserves composite ankle/heel/toe feet and each foot's recenter reference, but removes the hard consensus gate. It computes:
+The environment can render at ~60+ FPS while genuine pose results arrive much more slowly. Current capture request is 30 FPS and Pose Landmarker request target remains 20 FPS; actual CPU result cadence can be lower. The stabilizer intentionally holds its previous output on duplicate source samples, so without a separate presentation layer the avatar visibly sample-and-holds between real solved targets.
 
-```text
-common       = (leftDelta + rightDelta) / 2
-differential = (leftDelta - rightDelta) / 2
-```
+Two focused changes address this without fabricating tracking data:
 
-Common displacement is physical support-centroid motion. Differential displacement is gait/asymmetry evidence. Lateral common X updates continuously; depth common Y remains monocular, requires body-scale corroboration for meaningful movement, and is attenuated as differential foot-Y grows.
+1. **Sustainable inference scheduler:** minimum cadence is measured from the last accepted inference request. Busy readback/inference skips do not advance scheduling state. Once outstanding work finishes, the next Update may launch immediately if the requested interval has already elapsed. There remains only one readback/inference and no queue.
+2. **Render-rate retarget presentation:** runtime `HumanoidRetargeter.LateUpdate` captures visible local rotations, runs the unchanged exact Phase 4 solve, captures solved rotations, restores the visible pose, then advances the ten driven bones toward the newest solved target. Newer targets redirect immediately; unchanged targets converge by the configured hard maximum.
 
-Physical scales remain `0.9 / 1.5`. Cadence timing is unchanged.
+Default presentation smoothing: enabled, response `45/s`, maximum blend `0.05 s`. These values are serialized on the persistent Lab retargeter and Play Mode tunable.
 
-The Lab adds `F12` as a presentation-only Lab/Game toggle. Lab View keeps the webcam/debug interface. Game View hides webcam/IMGUI and enables the persistent third-person camera that follows avatar root position plus retained mapped Phase 5A heading. Existing F1–F11 states are preserved.
-
-Phase 5A remains **NOT USER ACCEPTED**.
+Phase 5A locomotion continues consuming genuine `MotionEngineRuntime.StabilizedFrame` data, not presentation-smoothed transforms.
 <!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:END -->
 
 ## Phase 1 spike boundary
@@ -51,7 +47,8 @@ Phase 5A remains **NOT USER ACCEPTED**.
 - Processing is local, CPU-oriented, and single-person.
 - Approximately 20 usable pose results per second is the initial target.
 - Pose inference frequency remains independent from Unity's rendering frequency.
-- Consumers should use the latest usable pose rather than allowing an unbounded inference backlog.
+- The provider measures its minimum request interval from the **last accepted request**. If readback/inference is busy after the interval elapsed, the skip does not move a future slot; the next free Update may launch immediately.
+- Consumers should use the latest usable pose rather than allowing an unbounded inference backlog. At most one readback and one inference remain outstanding.
 - MediaPipe is replaceable; downstream game and course systems must not be rewritten when the backend changes.
 
 ## Raw pose boundary
@@ -246,3 +243,26 @@ look   = avatarPosition + up * lookHeight
 The camera smooths heading and position. If current heading data disappears, it retains the last valid heading rather than snapping to global Forward. Inspector settings expose Follow Distance, Camera Height, Look Height, Position Response, Heading Response, and Field Of View.
 
 The screen camera is serialized disabled in Lab View. RenderTexture cameras for the procedural rig and Phase 5A world viewport remain separate debug cameras, so there is no second active full-screen game camera in Lab View.
+
+
+### Phase 4/5A avatar presentation layer
+
+The accepted Phase 4 solve math remains the authoritative pose target. Runtime presentation smoothing wraps that solve rather than modifying its source inputs or IK math.
+
+For a valid runtime frame:
+
+```text
+capture visible local rotations
+-> exact ApplyMotionFrame solve
+-> capture exact solved local rotations
+-> restore visible rotations
+-> bounded render-rate quaternion transition toward newest solved rotations
+```
+
+Because each production IK chain already restores its cached reference root/mid rotations before solving, the exact limb target is isolated from the currently displayed smoothed limb state. Torso target rotations are likewise solved exactly before being captured. Diagnostics/fidelity metrics are computed from that exact solve.
+
+The bounded quaternion transition combines response-based convergence with a hard maximum duration. If an unchanged target remains for multiple render frames, presentation keeps advancing each frame. A newer target replaces the old one immediately and restarts from the current visible pose; no pose history or delayed interpolation buffer is used.
+
+Invalid runtime/tracking state resets presentation transition state and preserves the existing reference-return behavior. Smoothing OFF runs the exact direct solve behavior.
+
+This layer affects only the ten driven humanoid local rotations. It does not write canonical data, stabilization output, calibration, support tracking, cadence, heading or locomotion fusion.

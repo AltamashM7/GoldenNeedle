@@ -640,6 +640,124 @@ namespace GoldenNeedle.Tests
             }
         }
 
+        [Test]
+        public void PresentationSmoothingDisabledReturnsExactSolvedTarget()
+        {
+            var smoother = new BoundedQuaternionPresentationSmoother();
+            var visible = Quaternion.identity;
+            var target = Quaternion.Euler(0f, 60f, 0f);
+
+            var result = smoother.Advance(
+                visible,
+                target,
+                1f / 60f,
+                false,
+                45f,
+                0.05f);
+
+            Assert.That(
+                Quaternion.Angle(result, target),
+                Is.LessThan(0.0001f));
+        }
+
+        [Test]
+        public void PresentationSmoothingAdvancesAcrossRepeatedRenderFramesAndIsBounded()
+        {
+            var smoother = new BoundedQuaternionPresentationSmoother();
+            var target = Quaternion.Euler(0f, 90f, 0f);
+            var first = smoother.Advance(
+                Quaternion.identity,
+                target,
+                1f / 60f,
+                true,
+                45f,
+                0.05f);
+            var second = smoother.Advance(
+                first,
+                target,
+                1f / 60f,
+                true,
+                45f,
+                0.05f);
+            var third = smoother.Advance(
+                second,
+                target,
+                1f / 60f,
+                true,
+                45f,
+                0.05f);
+
+            Assert.That(
+                Quaternion.Angle(Quaternion.identity, first),
+                Is.GreaterThan(0f));
+            Assert.That(
+                Quaternion.Angle(first, target),
+                Is.GreaterThan(Quaternion.Angle(second, target)));
+            Assert.That(
+                Quaternion.Angle(second, target),
+                Is.GreaterThanOrEqualTo(Quaternion.Angle(third, target)));
+            Assert.That(
+                Quaternion.Angle(third, target),
+                Is.LessThan(0.0001f));
+        }
+
+        [Test]
+        public void PresentationSmoothingRedirectsImmediatelyToNewestTarget()
+        {
+            var smoother = new BoundedQuaternionPresentationSmoother();
+            var firstTarget = Quaternion.Euler(0f, 90f, 0f);
+            var visible = smoother.Advance(
+                Quaternion.identity,
+                firstTarget,
+                1f / 60f,
+                true,
+                30f,
+                0.05f);
+
+            var newestTarget = Quaternion.Euler(0f, -70f, 0f);
+            var redirected = smoother.Advance(
+                visible,
+                newestTarget,
+                1f / 60f,
+                true,
+                30f,
+                0.05f);
+
+            Assert.That(
+                Quaternion.Angle(redirected, newestTarget),
+                Is.LessThan(Quaternion.Angle(visible, newestTarget)));
+            Assert.That(
+                Quaternion.Angle(redirected, firstTarget),
+                Is.GreaterThan(Quaternion.Angle(visible, firstTarget)));
+            Assert.That(
+                Quaternion.Angle(smoother.Target, newestTarget),
+                Is.LessThan(0.0001f));
+        }
+
+        [Test]
+        public void PresentationSmoothingRejectsInvalidTargetQuaternion()
+        {
+            var smoother = new BoundedQuaternionPresentationSmoother();
+            var visible = Quaternion.Euler(5f, 10f, 15f);
+            var invalid = new Quaternion(float.NaN, 0f, 0f, 1f);
+
+            var result = smoother.Advance(
+                visible,
+                invalid,
+                1f / 60f,
+                true,
+                45f,
+                0.05f);
+
+            Assert.That(float.IsNaN(result.x), Is.False);
+            Assert.That(float.IsNaN(result.y), Is.False);
+            Assert.That(float.IsNaN(result.z), Is.False);
+            Assert.That(float.IsNaN(result.w), Is.False);
+            Assert.That(
+                Quaternion.Angle(result, visible),
+                Is.LessThan(0.001f));
+        }
+
         private static void Apply(RigContext context, CanonicalKinematicTargets targets, CanonicalRotationFrame frame)
         {
             context.retargeter.ApplyRotationFrame(frame, targets, Quaternion.identity, 1f / 60f);

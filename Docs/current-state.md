@@ -1,32 +1,34 @@
 # Current state
 
 <!-- LATEST_CHECKPOINT_2026_09_08:START -->
-## Latest checkpoint — Phase 5A second USER QA reviewed; support model v3 + Game View pending re-QA
+## Latest checkpoint — Phase 5A avatar-presentation smoothness correction pending USER QA
 
-- Starting correction checkpoint: `33698719a2907d30bb3396f66e5b79e59ccbfe9e` — `fix: anchor physical locomotion to support base`.
+- Starting correction checkpoint: `4cf8dc029941ee343ac8cd23b6311fb5bad4a57d` — `fix: clear motion lab compile warnings`.
 - Phase 4 remains **USER ACCEPTED — PASS**.
-- Phase 5A remains **NOT USER ACCEPTED**.
-- Second Phase 5A USER runtime QA:
-  - idle stability remains **PASS**;
-  - planted-feet torso leaning no longer causes physical root motion — **PASS**;
-  - Phase 4 pose behavior remains usable — **PASS**;
-  - actual finite physical walking became intermittent because the v2 tracker hard-required near-equal left/right support displacement — **FAIL / correction required**.
-- Physical root tracking v3 keeps ankle/heel/toe composite feet but replaces hard agreement with:
-  - `common = (L + R) / 2` as the support-centroid/room-position candidate;
-  - `differential = (L - R) / 2` as gait/asymmetry evidence.
-- Lateral X follows common support displacement continuously, so one foot beginning a real step starts moving the physical centroid instead of forcing Holding.
-- Depth Z uses common support Y as the primary candidate, requires same-sign torso apparent-scale corroboration for meaningful depth, and progressively reduces depth trust under strong differential foot-Y motion. Torso scale cannot initiate physical depth by itself.
-- Missing/insufficient trusted support still holds the last trusted physical displacement; there is no torso fallback.
-- Physical prototype scales remain `0.9` lateral / `1.5` depth for the next QA.
-- The persistent Inspector controller remains authoritative for Phase 5A tuning. New v3 depth-differential thresholds are exposed alongside existing root/fusion/cadence/heading settings.
-- Motion Engine Lab now adds **F12 = Lab View / Game View**:
-  - Lab View preserves webcam + existing F1–F11 debug presentation;
-  - Game View hides webcam/IMGUI and enables the dedicated third-person Lab camera only;
-  - tracking, calibration, Phase 4 retargeting, cadence, and Phase 5 locomotion continue in either mode;
-  - F12 does not mutate F1–F11 visibility state.
-- Third-person camera follows `HumanoidRigBinding.AvatarRoot.position` and the persistent mapped Phase 5A world heading, smoothing both position and heading. Heading loss retains the last valid heading.
-- Game View reuses the existing Phase 5A grid/environment; no production level/collision/Phase 6 work is included.
-- Next action: USER re-QA common/differential walking response, jogging-in-place separation, depth behavior, support loss, retained `0.9/1.5` scale feel, and F12 Lab/Game switching.
+- Phase 5A remains **NOT USER ACCEPTED**; USER deliberately paused the next locomotion QA until avatar presentation smoothness was improved.
+- USER evidence: Unity/environment rendering is smooth, while driven Neko visibly updates at a lower apparent FPS.
+- Repository evidence explains the mismatch:
+  - Unity render cadence can be ~60+ FPS;
+  - webcam requests 30 FPS;
+  - `MediaPipePoseProvider.targetInferenceFps` remains 20 FPS;
+  - sustainable CPU Pose Landmarker result rate may be lower than the target;
+  - `CanonicalPoseStabilizer` returns the previous output unchanged when no genuinely new provider sample exists;
+  - Phase 4 retargeting therefore receives repeated exact targets across several render frames.
+- Provider scheduling is corrected so busy readback/inference does **not** advance a future timing slot. The minimum interval is measured from the last accepted inference request; after busy work finishes, the next Unity Update may launch immediately if that interval already elapsed.
+- One readback/inference remains outstanding at most; no request queue/backlog is introduced. Target inference FPS remains Inspector-editable with the prototype default at 20.
+- `HumanoidRetargeter` now has a dedicated **presentation-only** smoothing layer in runtime `LateUpdate`:
+  - capture currently visible driven-bone local rotations;
+  - run the accepted Phase 4 torso + analytic IK solve exactly;
+  - capture exact solved local rotations as the newest presentation target;
+  - restore the visible pose;
+  - advance visible rotations toward the newest target every render frame.
+- The exact public `ApplyMotionFrame(...)` solve path remains unchanged and continues to represent the authoritative Phase 4 target solve.
+- Presentation target transitions do not queue. A newer target redirects from the current visible pose immediately. Default response is `45/s` with a hard `0.05 s` maximum convergence duration.
+- Presentation smoothing changes only the visible driven humanoid rotations. Canonical/stabilized frames, calibration, Phase 5A support tracking v3, cadence, heading, fusion, recenter, root X/Z mapping, root Y exclusion and root rotation exclusion remain unchanged.
+- The Lab now serializes one real `HumanoidRetargeter` for Play Mode tuning. F5 still starts OFF. Smoothing defaults are ON / `45` response / `0.05 s` max blend.
+- F7 diagnostics retain Render FPS, Camera FPS, inference requests/results per second and last inference ms, and now report presentation mode as Smooth/Direct.
+- F12 Lab/Game behavior and third-person camera settings remain unchanged.
+- Next action: USER runtime QA avatar smoothness/latency first, then resume the paused Phase 5A support/locomotion re-QA.
 - Phase 6 has **NOT STARTED**. Do not merge without explicit USER approval.
 <!-- LATEST_CHECKPOINT_2026_09_08:END -->
 
@@ -171,3 +173,10 @@ Run the next focused Phase 5A USER QA: planted-feet torso lean/bend/twist must n
 
 Phase 4 remains accepted and unchanged. Phase 5A remains unaccepted; do not begin Phase 6 or merge to `main` without explicit USER approval.
 
+
+
+## Render-rate avatar presentation smoothing
+
+Tracking cadence and presentation cadence are deliberately separate. The Motion Engine does not synthesize extra MediaPipe detections. When a real solved pose remains unchanged across multiple Unity frames, the visual humanoid can continue converging toward that same newest exact target at render rate.
+
+Low-latency defaults are intentionally bounded: presentation response `45/s`, maximum unchanged-target blend `50 ms`. Disable smoothing for the previous sample-and-hold/direct-target behavior.

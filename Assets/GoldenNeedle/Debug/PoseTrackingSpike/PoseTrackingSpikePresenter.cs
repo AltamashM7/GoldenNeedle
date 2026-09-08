@@ -513,7 +513,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 $"Dims shoulder/hip/torso: {(calibration == null ? 0f : calibration.Profile.shoulderWidth):0.00} / {(calibration == null ? 0f : calibration.Profile.hipWidth):0.00} / {(calibration == null ? 0f : calibration.Profile.torsoLength):0.00}\n" +
                 $"Rotation: {rotationState}   bones={(rotationFrame == null ? 0 : rotationFrame.validBoneCount)}/{GoldenNeedle.Core.Motion.Rotation.CanonicalRotationFrame.BoneCount}\n" +
                 $"Rig: {(debugRigPresent ? "Present" : "Missing")} view={(rigView != null && rigView.IsReady ? "Ready" : "Missing")}   Retarget={(retargeted ? "Bound" : "Unbound")} { (retargeter == null ? "" : retargeter.BindingModeName) }\n" +
-                $"Drive: {(retargeter != null && retargeter.DriveRig ? "On" : "Off")}   Targets: {(retargeter != null && retargeter.KinematicTargetsLive && kinematicTargets != null ? "Live" : "Waiting")}\n" +
+                $"Drive: {(retargeter != null && retargeter.DriveRig ? "On" : "Off")}   Present: {FormatPresentationSmoothing(retargeter)}   Targets: {(retargeter != null && retargeter.KinematicTargetsLive && kinematicTargets != null ? "Live" : "Waiting")}\n" +
                 $"Chains source/target/IK: {(retargeter == null ? 0 : retargeter.SourceChainsValid)}/{CanonicalKinematicTargets.ChainCount}   {(retargeter == null ? 0 : retargeter.TargetsGenerated)}/{CanonicalKinematicTargets.ChainCount}   {(retargeter == null ? 0 : retargeter.IkChainsSolved)}/{CanonicalKinematicTargets.ChainCount}   driven={(retargeter == null ? 0 : retargeter.LimbBonesDriven)}/8\n" +
                 $"Errors fidelity/IK/bend: {(retargeter == null ? 0f : retargeter.MaxNormalizedRetargetFidelityError * 100f):0.0}% / {(retargeter == null ? 0f : retargeter.MaxNormalizedIkEndpointResidual * 100f):0.0}% / {(retargeter == null ? 0f : retargeter.MaxBendPlaneErrorDegrees):0.0}°\n" +
                 $"Coords sensor rot/V: {(provider == null ? 0 : provider.Orientation.SensorRotationDegrees)}°/{(provider != null && provider.Orientation.SensorVerticallyMirrored)}   infer H/V={(provider != null && provider.Orientation.InferenceFlipHorizontally)}/{(provider != null && provider.Orientation.InferenceFlipVertically)}\n" +
@@ -604,6 +604,19 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         private static string FormatLocomotionVector(Vector2 value)
         {
             return $"({value.x:+0.00;-0.00;0.00}, {value.y:+0.00;-0.00;0.00})";
+        }
+
+        private static string FormatPresentationSmoothing(
+            HumanoidRetargeter retargeter)
+        {
+            if (retargeter == null)
+            {
+                return "n/a";
+            }
+
+            return retargeter.PresentationSmoothingEnabled
+                ? $"Smooth {retargeter.PresentationResponse:0}/s <= {retargeter.MaxPresentationBlendSeconds * 1000f:0} ms"
+                : "Direct";
         }
 
         private static string FormatBodyReferenceStatus(MotionCalibrationSession calibration)

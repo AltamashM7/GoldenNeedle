@@ -49,3 +49,7 @@ These decisions describe the current product and architecture direction. A later
 
 | Phase 5A support model v3 | **SECOND-QA CORRECTION / AWAITING RE-QA** | Replace hard two-foot agreement with common `(L+R)/2` room displacement and differential `(L-R)/2` gait evidence. Common X updates continuously; differential Y attenuates depth trust. |
 | Phase 5A F12 Lab/Game mode | **IMPLEMENTED / AWAITING RE-QA** | F12 is presentation-only. Lab View keeps webcam/debug UI; Game View hides IMGUI and enables the single persistent third-person screen camera. F1–F11 state and all engine behavior remain unchanged. |
+
+| MediaPipe sustainable scheduler | **IMPLEMENTED / AWAITING USER QA** | Request interval is anchored to the last accepted DetectAsync request. Busy readback/inference skips do not consume future cadence slots; once free, the next Update can launch immediately if the interval already elapsed. One outstanding inference/no backlog remains. |
+| Humanoid render-rate presentation smoothing | **IMPLEMENTED / AWAITING USER QA** | Exact Phase 4 torso + analytic IK solve remains authoritative. Runtime presentation captures the exact solved local rotations and moves visible bones toward the newest target each render frame with no delayed pose buffer. Defaults: ON, response 45/s, max blend 50 ms. |
+| Tracking vs presentation data | **LOCKED BOUNDARY** | Phase 5A support/cadence/heading/fusion consume genuine stabilized tracking data. Smoothed avatar rotations are presentation-only and must not become locomotion measurements. |

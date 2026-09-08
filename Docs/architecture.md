@@ -173,3 +173,12 @@ The permanent Lab now **serializes** the Phase 5A `EmbodiedLocomotionController`
 The existing full-screen `PoseTrackingSpikeCamera` is the single screen camera for F12 Game View and is serialized disabled during Lab View. `ThirdPersonLabCamera` controls it without parenting it to Neko. The component follows the bound avatar root and persistent mapped Phase 5A heading with Inspector-tunable follow distance, height, look height, position response, heading response, and FOV.
 
 `PoseTrackingSpikePresenter` owns only the F12 presentation switch: Game View causes `OnGUI` to return before webcam/debug drawing, while engine Update/LateUpdate paths continue. F12 does not mutate any F1–F11 flags. The current Phase 5A grid is shared with Game View rather than creating a second environment.
+
+
+## Render-rate retarget presentation boundary
+
+Tracking data cadence and avatar presentation cadence are separate architectural concerns. `MotionEngineRuntime.StabilizedFrame` remains the genuine data source for calibration, Phase 4 target solving and Phase 5A locomotion consumers. The visible Humanoid may interpolate/converge at Unity render rate only **after** the exact Phase 4 solve.
+
+The persistent `HumanoidRetargeter` owns this presentation layer. Its public exact `ApplyMotionFrame` path is unchanged; runtime `LateUpdate` optionally wraps it by capturing/restoring visible local rotations around the exact torso/IK solve. This prevents presentation state from becoming a new canonical/IK input or changing accepted signed-axis characterization.
+
+The MediaPipe provider remains latest-result LIVE_STREAM with no backlog. Request timing is anchored to the last accepted request rather than a future slot that can be consumed while busy.
