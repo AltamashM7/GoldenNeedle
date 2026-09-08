@@ -214,6 +214,7 @@ GameObject:
   - component: {fileID: 1225293543}
   - component: {fileID: 1225293545}
   - component: {fileID: 1225293546}
+  - component: {fileID: 1225293547}
   m_Layer: 0
   m_Name: PoseTrackingSpike
   m_TagString: Untagged
@@ -291,6 +292,8 @@ MonoBehaviour:
   runtime: {fileID: 0}
   retargeter: {fileID: 0}
   rigView: {fileID: 0}
+  locomotion: {fileID: 1225293547}
+  locomotionView: {fileID: 0}
 --- !u!114 &1225293546
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -320,6 +323,52 @@ MonoBehaviour:
   rightHand: {fileID: 0}
   leftFoot: {fileID: 0}
   rightFoot: {fileID: 0}
+--- !u!114 &1225293547
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1225293541}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b5f3c9e2d1a4f6b8c0e1234567890a6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Locomotion.EmbodiedLocomotionController
+  runtime: {fileID: 0}
+  binding: {fileID: 1225293546}
+  driveLocomotion: 1
+  rootTracking:
+    minimumJointConfidence: 0.4
+    minimumImageMeasurement: 0.005
+    minimumYawCosine: 0.3
+    supportAgreementTolerance: 0.12
+    minimumSupportDepthDisplacement: 0.018
+    minimumDepthScaleEvidence: 0.012
+    positionResponse: 10
+    velocityResponse: 8
+    maximumDepthProxy: 1.5
+  fusion:
+    lateralScale: 0.9
+    depthScale: 1.5
+    lateralDeadzone: 0.012
+    depthDeadzone: 0.012
+    physicalVelocityStart: 0.08
+    physicalVelocityFull: 0.32
+    minimumRootConfidence: 0.3
+  cadence:
+    minimumJointConfidence: 0.4
+    signalResponse: 14
+    eventThreshold: 0.07
+    minimumStepRate: 0.8
+    maximumStepRate: 4.5
+    acquisitionEvents: 3
+    acquireConfidence: 0.5
+    sustainConfidence: 0.25
+    stopTimeoutSeconds: 0.5
+    virtualStridePerStep: 0.42
+    maximumVirtualSpeed: 2.5
+  headingResponse: 8
 --- !u!1001 &1875825362
 PrefabInstance:
   m_ObjectHideFlags: 0

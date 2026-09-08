@@ -7,16 +7,37 @@ namespace GoldenNeedle.Core.Motion.Locomotion
     [Serializable]
     public sealed class CadenceDetectorSettings
     {
+        [Tooltip("Minimum confidence for lower-body joints used by cadence.")]
         [Range(0f, 1f)] public float minimumJointConfidence = 0.40f;
+
+        [Tooltip("Response speed of the alternating cadence signal filter.")]
         [Min(1f)] public float signalResponse = 14f;
+
+        [Tooltip("Normalized alternating-foot signal required to register a cadence event.")]
         [Min(0.01f)] public float eventThreshold = 0.07f;
+
+        [Tooltip("Slowest plausible alternating step-event rate.")]
         [Min(0.1f)] public float minimumStepRate = 0.8f;
+
+        [Tooltip("Fastest plausible alternating step-event rate.")]
         [Min(0.5f)] public float maximumStepRate = 4.5f;
+
+        [Tooltip("Alternating events required before cadence can acquire.")]
         [Range(2, 6)] public int acquisitionEvents = 3;
+
+        [Tooltip("Confidence required to enter cadence locomotion.")]
         [Range(0f, 1f)] public float acquireConfidence = 0.50f;
+
+        [Tooltip("Confidence required to remain in cadence locomotion.")]
         [Range(0f, 1f)] public float sustainConfidence = 0.25f;
+
+        [Tooltip("No-event time after which cadence stops.")]
         [Range(0.2f, 1.0f)] public float stopTimeoutSeconds = 0.50f;
+
+        [Tooltip("Prototype virtual distance generated per detected step.")]
         [Min(0.05f)] public float virtualStridePerStep = 0.42f;
+
+        [Tooltip("Maximum cadence-generated virtual speed.")]
         [Min(0.1f)] public float maximumVirtualSpeed = 2.5f;
 
         public void Sanitize()

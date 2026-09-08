@@ -14,12 +14,26 @@ namespace GoldenNeedle.Core.Motion.Locomotion
     [DefaultExecutionOrder(150)]
     public sealed class EmbodiedLocomotionController : MonoBehaviour
     {
+        [Header("Runtime Wiring")]
         [SerializeField] private MotionEngineRuntime runtime;
         [SerializeField] private HumanoidRigBinding binding;
+        [Tooltip("Enable Phase 5A avatar-root X/Z translation. Phase 4 pose retargeting is independent.")]
         [SerializeField] private bool driveLocomotion = true;
+
+        [Header("Root / Physical Tracking")]
+        [Tooltip("Support-foot tracking, filtering, and depth-corroboration settings.")]
         [SerializeField] private CameraSpaceRootTrackerSettings rootTracking = new CameraSpaceRootTrackerSettings();
-        [SerializeField] private CadenceDetectorSettings cadence = new CadenceDetectorSettings();
+
+        [Header("Physical Locomotion / Fusion")]
+        [Tooltip("Physical mapping scale/deadzones and physical-vs-cadence suppression settings.")]
         [SerializeField] private LocomotionFusionSettings fusion = new LocomotionFusionSettings();
+
+        [Header("Cadence")]
+        [Tooltip("Lower-body cadence acquisition, confidence, stop, and virtual-speed settings.")]
+        [SerializeField] private CadenceDetectorSettings cadence = new CadenceDetectorSettings();
+
+        [Header("Heading")]
+        [Tooltip("Response speed for smoothing cadence travel heading. Physical room displacement does not use live heading.")]
         [Min(0.1f), SerializeField] private float headingResponse = 8f;
 
         private CameraSpaceRootTracker _rootTracker;

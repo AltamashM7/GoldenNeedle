@@ -15,30 +15,32 @@ Current branch: `engine/pose-tracking-spike`
 <!-- LATEST_HANDOFF_2026_09_08:START -->
 ## Current authoritative checkpoint
 
-The current pre-QA Phase 5A runtime checkpoint is:
+Starting correction checkpoint:
 
-`a4b0ffb7b817f42bd3901da7e0676b68abca70a3` — `fix: organize motion lab debug overlays`.
+`87698948b12cd10b6fef2072d0ad0ce9eeaecdfe` — `docs: checkpoint phase 5a pre-qa state`.
 
-Important status:
-
+Status:
 - Phase 4: **USER ACCEPTED — PASS**.
-- Phase 5A: **IMPLEMENTED + ORCHESTRATOR CODE-AUDITED / USER RUNTIME QA PENDING**.
+- Phase 5A: **FIRST USER QA PARTIAL PASS / CORRECTION IN PROGRESS / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 - Do not merge to `main` without explicit USER approval.
 
-Phase 5A's approved locomotion model is **embodied hybrid locomotion**:
-1. finite physical room displacement is reconstructed relative to the fixed webcam;
-2. cadence extends travel when the user walks/jogs rhythmically with little net physical translation;
-3. cadence direction follows live mapped body heading;
-4. real physical translation suppresses cadence extension so movement is not blindly double-counted;
-5. recenter changes the physical origin while preserving the current virtual position.
+First Phase 5A USER QA:
+- idle stable — PASS;
+- physical left/right direction — PASS;
+- physical forward/back direction — PASS;
+- cadence activation — PASS;
+- planted feet + torso motion falsely translated the root — FAIL;
+- finite physical scale felt too large — FAIL/tuning;
+- persistent Inspector tuning workflow was missing.
 
-Speech is intentionally reserved for future discrete commands such as Recenter/Pause/Resume rather than continuous directional locomotion.
+Correction direction is support-base authority: both feet are estimated from ankle/heel/toe; each foot is compared with its own recenter reference; coherent common support relocation drives physical room movement; gait-cycle disagreement or support loss holds the last trusted physical offset. Torso scale may corroborate depth but cannot initiate translation.
 
-Current Lab controls:
-`F1` Raw, `F2` Canonical 2D, `F3` Canonical 3D, `F4` Stabilized 2D, `F5` Retarget Drive, `F6` Coordinate Focus, `F7` Engine Diagnostics, `F8` Procedural Rig, `F9` Locomotion Data, `F10` World/Grid, `F11` Hide/Restore Debug Presentation; `R` Retry, `C` Calibrate, `X` Reset, `K` Recenter.
+Physical scale defaults move from `1.8 / 3.0` to `0.9 / 1.5`. Cadence acquisition timing is deliberately unchanged.
 
-The USER has not yet performed Phase 5A runtime QA. The next development conversation should resume from that test, not redesign the locomotion model pre-emptively unless runtime evidence requires it.
+The Lab now commits a serialized `EmbodiedLocomotionController` so Root Tracking, Physical Fusion, Cadence, and Heading values are directly Inspector-editable. Existing F1–F11/R/C/X/K controls and debug-overlay UX remain unchanged.
+
+Next evidence must come from USER re-QA; do not redesign already-passed direction/cadence behavior without new runtime evidence.
 <!-- LATEST_HANDOFF_2026_09_08:END -->
 
 Phase 4 handoff HEAD before the correction:
@@ -177,9 +179,9 @@ The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings
 
 ## Recommended next task
 
-Phase 4 is accepted and frozen. USER-QA Phase 5A in one continuous session: stillness, finite physical lateral/depth/diagonal movement, body turning, in-place cadence, heading changes during cadence, rapid cadence stop, actual walking without obvious double-counting, and K recenter.
+Phase 4 is accepted and frozen. Next USER-QA Phase 5A should first verify the correction: planted-feet torso lean/bend/twist must not translate; actual support relocation must still move laterally/depth/diagonally in the already-passed directions; jogging in place must remain physical-stationary while cadence activates; temporary support loss must hold; reduced scale feel and K recenter must be checked. Then continue heading/stop/double-counting checks.
 
-The new root estimator is image/scale based and intentionally does not consume canonical pelvis/world positions as absolute room coordinates. Cadence is lower-body-only in this prototype. Locomotion changes only bound avatar-root X/Z; root Y/rotation and Phase 4 bone retargeting stay outside Phase 5A authority.
+The root estimator intentionally does not consume canonical pelvis/world positions as absolute room coordinates and no longer uses torso center as room-position authority. Cadence remains lower-body-only. Locomotion changes only bound avatar-root X/Z; root Y/rotation and Phase 4 bone retargeting stay outside Phase 5A authority.
 
 Do not begin Phase 6 and do not merge until the USER explicitly approves the Phase 5 checkpoint.
 
@@ -193,7 +195,7 @@ The USER primarily uses GitHub Desktop for Git mutations. Do not merge without e
 
 New core modules:
 
-- `CameraSpaceRootTracker` — relative camera-space physical displacement from image torso center and yaw-compensated apparent scale.
+- `CameraSpaceRootTracker` — relative camera-space physical displacement from two-foot ankle/heel/toe support consensus, with torso scale used only as auxiliary depth evidence/normalization.
 - `CadenceDetector` — alternating ankle/knee lower-body rhythm, cadence rate/confidence, fast stop.
 - `BodyHeadingEstimator` — maps live source torso Forward through the accepted Phase 4 signed map into avatar/game-world heading.
 - `LocomotionFusion` — independent lateral/depth scaling, accepted Phase 4 reference-map conversion from camera X/Z to game-world X/Z, plus mapped physical-velocity suppression of cadence.
@@ -201,3 +203,11 @@ New core modules:
 - `LocomotionPrototypeView` — runtime-only fixed grid/world-reference viewport.
 
 Existing F1–F6/R/C/X controls remain. **K** invokes the same public `Recenter()` action reserved for a future discrete voice command.
+
+
+### Phase 5A first-QA correction notes
+
+- Support disagreement (including alternating jog/step cycling) is a hold condition, not a torso fallback.
+- Temporary support loss holds the last trusted physical contribution through the existing fusion behavior.
+- Prototype physical scale defaults: lateral `0.9`, depth `1.5`.
+- `PoseTrackingSpike.unity` now serializes `EmbodiedLocomotionController`; presenter runtime creation is fallback-only.

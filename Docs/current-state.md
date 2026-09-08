@@ -1,35 +1,30 @@
 # Current state
 
 <!-- LATEST_CHECKPOINT_2026_09_08:START -->
-## Latest checkpoint — Phase 5A ready for USER runtime QA
+## Latest checkpoint — Phase 5A first USER QA reviewed; support-root correction pending next QA
 
-- Current tested/audited branch checkpoint before this docs commit: `a4b0ffb7b817f42bd3901da7e0676b68abca70a3` — `fix: organize motion lab debug overlays`.
+- Starting correction checkpoint: `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe` — `docs: checkpoint phase 5a pre-qa state`.
 - Phase 4 remains **USER ACCEPTED — PASS**. Accepted implementation: `f0c81e84d0a482c40448505f2904af93ef4aa881`.
-- Phase 5A — **Embodied Hybrid Locomotion Prototype** — is implemented, repository-audited, and **NOT USER ACCEPTED** because the first USER runtime locomotion QA has not yet been performed.
-- Phase 5A core implementation commit: `c7756dd1c085d67aad31272a5968bfb1a58093da`.
-- Physical camera-space displacement mapping correction: `5ed42bc1c15b058016ea24036aa8dd490a5f67f4`.
-- Motion Engine Lab overlay UX/layout pass: `a4b0ffb7b817f42bd3901da7e0676b68abca70a3`.
-- The physical root tracker uses image-space torso placement plus yaw-compensated apparent scale; it does not misuse pelvis-relative MediaPipe/canonical 3D as absolute room position.
-- Physical displacement remains fixed-camera data, is scaled, then mapped through the accepted Phase 4 reference `CanonicalToAvatarAxisMap` before world X/Z application.
-- Cadence provides infinite-range extension along live body heading and is suppressed during meaningful real physical translation to reduce double-counting.
-- `K` recenters the physical tracking origin without jumping the current virtual X/Z.
-- Root Y and root rotation remain outside Phase 5A locomotion authority.
-- Speech is reserved as a future **discrete command source** (for example Recenter/Pause/Resume), not the primary continuous locomotion channel.
-- Current Motion Engine Lab presentation controls:
-  - `F1` raw landmarks
-  - `F2` canonical 2D
-  - `F3` canonical 3D inspection
-  - `F4` stabilized 2D
-  - `F5` retarget rig drive ON/OFF
-  - `F6` coordinate diagnostic focus view
-  - `F7` main Motion Engine diagnostics
-  - `F8` procedural rig viewport
-  - `F9` Phase 5A locomotion diagnostics
-  - `F10` Phase 5A fixed-world/grid viewport
-  - `F11` hide/restore all debug presentation
-  - `R` retry, `C` calibrate, `X` reset, `K` recenter.
-- Default Phase 5A debug layout keeps Engine diagnostics, Locomotion diagnostics, and World/Grid ON; Procedural Rig, Canonical 3D, and Coordinate Focus are OFF. F3 owns the right inspection column; F6 is a focus view; F11 hides presentation only and does not stop tracking/retargeting/locomotion.
-- Next action: perform the single USER runtime QA session covering stillness, physical lateral/depth/diagonal movement, Phase 4 regression, in-place cadence, cadence steering, stop behavior, double-counting, and recenter.
+- Phase 5A remains **NOT USER ACCEPTED**.
+- First Phase 5A USER runtime QA evidence:
+  - idle stability **PASSED**;
+  - finite physical left/right direction **PASSED**;
+  - finite physical forward/back direction **PASSED**;
+  - cadence activation **PASSED**;
+  - defect: planted-feet torso/upper-body lean incorrectly caused physical locomotion;
+  - defect: finite physical travel magnitude felt too large;
+  - workflow defect: Phase 5A tunables were runtime-created rather than persistently editable in the Lab Inspector.
+- The physical root estimator is being corrected so **support feet/base are the authority for room translation**. Each foot is estimated from ankle/heel/toe image observations and compared with that same foot's recenter reference.
+- Physical translation updates only when trusted left/right support displacement agrees. Gait/cadence-style foot cycling, one-foot support disagreement, or temporary support loss holds the last trusted physical offset instead of falling back to torso motion.
+- Torso apparent scale remains auxiliary only: it can normalize cadence and corroborate support-base depth relocation, but torso motion alone cannot initiate physical X/Z translation.
+- Camera-space physical displacement remains fixed-camera data, is scaled, then mapped through the accepted Phase 4 reference `CanonicalToAvatarAxisMap` before world X/Z application.
+- Prototype physical scales are reduced to `lateralScale = 0.9` and `depthScale = 1.5`; these remain USER-tunable prototype values.
+- The Lab now commits a real serialized `EmbodiedLocomotionController` so Root Tracking, Physical Locomotion/Fusion, Cadence, and Heading settings are editable directly in the Inspector, including during Play Mode for quick feel tests.
+- Cadence acquisition/stop defaults are intentionally unchanged in this correction.
+- `K` recenter semantics remain unchanged; root Y and root rotation remain outside Phase 5A authority.
+- F9 diagnostics report support tracking state/confidence, support agreement, camera support displacement, mapped physical contribution, cadence, heading, and recenter state.
+- Existing debug overlay controls F1–F11 remain unchanged.
+- Next action: USER re-QA planted-feet lean/bend/twist, actual lateral/depth/diagonal relocation, jogging in place, temporary support loss, physical scale feel, cadence regression, and K recenter.
 - Phase 6 has **NOT STARTED**. Do not merge the Motion Engine branch to `main` without explicit USER approval.
 <!-- LATEST_CHECKPOINT_2026_09_08:END -->
 
@@ -152,7 +147,7 @@ cadence + heading
             -> bound AvatarRoot world X/Z only
 ```
 
-The camera-space root tracker does **not** use canonical pelvis/world position as absolute room position. Lateral position comes from the absolute image-space torso center, normalized by apparent body scale. Relative depth is a monocular proxy from the log of apparent torso/body scale. Shoulder/hip apparent widths are compensated by torso yaw and fade out near side-on poses; torso height remains as stable support. The result is filtered relative displacement, not claimed metric camera depth.
+The camera-space root tracker does **not** use canonical pelvis/world position as absolute room position and no longer lets torso-center motion drive room translation. It forms a left and right support-foot estimate from ankle/heel/toe image observations, compares each foot with its own recenter reference, and accepts a new physical displacement only when the two feet agree that the support base relocated. Torso apparent scale is auxiliary: it remains useful for cadence normalization and confirms the sign of meaningful support-base depth movement, but it cannot create translation by itself.
 
 Cadence uses alternating left/right ankle rhythm with knee rhythm as supporting evidence. It has short acquisition, interval consistency, sustain confidence, and a short stop timeout. No arm-based fallback is implemented in Phase 5A.
 
@@ -162,7 +157,7 @@ Physical and cadence movement are fused rather than blindly added. Camera-space 
 
 Root Y and root rotation are never driven by locomotion. Crouch remains pose reproduction; jump/gravity remain future gameplay/physics interpretation.
 
-Default prototype tunables are deliberately exposed in serializable settings, including lateral/depth physical scale, tracking response, yaw compensation floor, cadence thresholds/rates/virtual stride, physical-velocity suppression thresholds, and physical deadzones.
+Default prototype tunables are deliberately exposed through a **serialized scene `EmbodiedLocomotionController`**. Inspector groups cover Root / Physical Tracking, Physical Locomotion / Fusion, Cadence, and Heading. Current physical scale defaults are `0.9` lateral and `1.5` depth; cadence acquisition timing is unchanged.
 
 The Lab adds compact locomotion diagnostics, **K = recenter**, and a runtime-created fixed world grid viewport. Existing R/C/X and F1–F6 controls remain unchanged.
 
@@ -170,7 +165,7 @@ Phase 5A is **NOT USER ACCEPTED**.
 
 ## Next action
 
-Run one continuous Phase 5A USER QA session: stillness, physical X/Z displacement, diagonal movement, body turning, in-place cadence, turn-while-cadencing, cadence stop, real walking without obvious double-counting, and K recenter. Tune only what runtime feel exposes.
+Run the next focused Phase 5A USER QA: planted-feet torso lean/bend/twist must not move the root; actual support relocation must still move in the already-correct directions; jogging in place should remain physical-stationary while cadence activates; verify reduced scale feel, support-loss holding, and K recenter. Then continue the broader cadence steering/stop/double-counting checks.
 
 Phase 4 remains accepted and unchanged. Phase 5A remains unaccepted; do not begin Phase 6 or merge to `main` without explicit USER approval.
 

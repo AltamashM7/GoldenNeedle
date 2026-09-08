@@ -537,8 +537,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 : root.hasOrigin ? "Holding" : "Waiting";
             var text =
                 "PHASE 5A / EMBODIED LOCOMOTION\n" +
-                $"Root tracking: {rootState}   conf={root.confidence:0.00}   scale={root.apparentScale:0.000}   yawCos={root.yawCosine:0.00}\n" +
-                $"Camera displacement X/Z: {FormatLocomotionVector(root.displacementXZ)}\n" +
+                $"Support tracking: {rootState}   conf={root.confidence:0.00}   agree X/Z={FormatLocomotionVector(root.supportAgreementXZ)}\n" +
+                $"Camera support displacement X/Z: {FormatLocomotionVector(root.displacementXZ)}   depthConfirm={(root.depthCorroborated ? "yes" : "hold")}\n" +
                 $"Physical translation: {(fusionResult.physicalTranslationActive ? "ACTIVE" : "idle")}   activity={fusionResult.physicalActivity:0.00}\n" +
                 $"Cadence: {(fusionResult.cadenceActive ? "ACTIVE" : "idle")}   conf={cadenceSample.confidence:0.00}   rate={cadenceSample.rateStepsPerSecond:0.00}/s\n" +
                 $"Body heading world X/Z: {(heading.isValid ? FormatLocomotionVector(heading.worldHeadingXZ) : "unavailable")}\n" +

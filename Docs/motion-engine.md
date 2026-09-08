@@ -5,18 +5,24 @@ Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / AWAITING USER Q
 <!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:START -->
 ## Current Phase 5A runtime checkpoint
 
-Pre-QA implementation checkpoint: `a4b0ffb7b817f42bd3901da7e0676b68abca70a3`.
+First USER QA has now occurred. Starting correction checkpoint: `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe`.
 
-The Phase 5A implementation has passed repository/code audit but has **not yet passed USER runtime QA**. The implementation sequence is:
-- `c7756dd1c085d67aad31272a5968bfb1a58093da` — initial embodied hybrid locomotion prototype;
-- `5ed42bc1c15b058016ea24036aa8dd490a5f67f4` — maps fixed camera-space physical displacement/velocity through the accepted Phase 4 reference axis map before game-world X/Z use;
-- `a4b0ffb7b817f42bd3901da7e0676b68abca70a3` — non-overlapping, independently toggleable Motion Engine Lab overlays for reliable QA.
+Confirmed working in that first runtime session:
+- idle stability;
+- physical left/right direction;
+- physical forward/back direction;
+- cadence activation.
 
-Current debug controls are `F1` Raw, `F2` Canonical 2D, `F3` Canonical 3D, `F4` Stabilized 2D, `F5` Retarget Drive, `F6` Coordinate Focus, `F7` Engine Diagnostics, `F8` Procedural Rig, `F9` Locomotion Diagnostics, `F10` World/Grid, and `F11` Hide/Restore Debug Presentation. `R` retries, `C` calibrates, `X` resets, and `K` recenters locomotion.
+Confirmed blockers:
+- planted-feet torso/upper-body motion could translate the avatar because physical root authority was torso-center/apparent-scale based;
+- finite physical movement magnitude was too large at the `1.8 / 3.0` scale defaults;
+- the runtime-created controller prevented a convenient persistent Inspector tuning workflow.
 
-F11 is presentation-only: it does not stop tracking, calibration, retargeting, cadence, locomotion, or recenter state. F6 is a diagnostic focus view and F3 owns the right-side inspection column so normal Phase 5A panels do not render underneath specialist inspection views.
+The correction changes physical root authority to a support-base estimator built from both feet while preserving fixed-camera-to-avatar mapping, cadence heading, recenter, anti-double-counting architecture, root-Y exclusion, and Phase 4.
 
-The next authoritative evidence must come from USER runtime QA, especially depth stability/scale, cadence acquisition and stopping, heading steering, physical/cadence fusion, and no-jump recenter.
+Current debug controls remain `F1` Raw, `F2` Canonical 2D, `F3` Canonical 3D, `F4` Stabilized 2D, `F5` Retarget Drive, `F6` Coordinate Focus, `F7` Engine Diagnostics, `F8` Procedural Rig, `F9` Locomotion Diagnostics, `F10` World/Grid, and `F11` Hide/Restore Debug Presentation. `R` retries, `C` calibrates, `X` resets, and `K` recenters locomotion.
+
+Phase 5A remains **NOT USER ACCEPTED**. The next authoritative evidence is the focused support-base/reduced-scale USER re-QA.
 <!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:END -->
 
 ## Phase 1 spike boundary
@@ -169,11 +175,15 @@ Phase 4 canonical pose/retargeting remains accepted and unchanged. Phase 5A adds
 
 ### Camera-space root tracking
 
-MediaPipe pose-world and canonical local positions remain body/pelvis-relative and are **not** treated as absolute room coordinates. `CameraSpaceRootTracker` instead reads stabilized canonical image positions for shoulders, hips, pelvis, and chest.
+MediaPipe pose-world and canonical local positions remain body/pelvis-relative and are **not** treated as absolute room coordinates. `CameraSpaceRootTracker` uses stabilized canonical **support-foot image positions** as physical room-translation authority.
 
-The lateral proxy is based on the absolute torso image-center offset from the optical/image center divided by an effective apparent scale. At recenter, torso height and yaw-corrected shoulder/hip widths are stored as reference measurements. Relative depth is the weighted **negative log ratio** of the current measurements to those references, so getting farther produces positive depth and getting nearer produces negative depth. Widths are compensated by the live torso-yaw cosine and down-weighted near 90-degree yaw; because the ratios are against their own recenter references, changing side-on reliability does not move the depth zero point. The resulting relative scale is also used for lateral perspective normalization. The estimator is explicitly relative/monocular, not metric depth.
+Each left/right support foot is a weighted centroid of available ankle/heel/toe observations; at least two trusted points are required per foot. Recenter stores each foot's own image reference plus a body-scale reference. Current per-foot X/Y displacement is normalized by that fixed reference scale. A support update is accepted only when left/right per-foot displacements agree within the configured support-consensus tolerance.
 
-A lightweight exponential response filters position and velocity. The first valid calibrated sample establishes the physical tracking origin automatically.
+This consensus rule intentionally distinguishes room relocation from gait cycling: when one foot lifts/steps while the other remains near its own reference, the two support displacements disagree and the physical root holds its last trusted offset. If feet/support disappear temporarily, the tracker also holds instead of falling back to torso motion.
+
+Camera-depth authority remains support-based. Common support-foot Y motion is interpreted as camera Z only when left/right support Y agrees. Tiny Y changes are treated as stationary; larger Y changes additionally require same-sign torso apparent-scale evidence. Torso scale therefore **corroborates** depth but cannot initiate it. Shoulder/hip/torso measurements and yaw compensation remain available for that auxiliary scale evidence and cadence normalization.
+
+A lightweight exponential response filters only trusted support-base displacement/velocity. The first valid calibrated sample with support + body-scale evidence establishes the physical tracking origin automatically.
 
 ### Cadence and heading
 
@@ -183,7 +193,7 @@ A lightweight exponential response filters position and velocity. The first vali
 
 ### Fusion and application
 
-`LocomotionFusion` scales the camera-space X/Z displacement independently, embeds it as `(cameraX, 0, cameraZ)`, maps it through the accepted Phase 4 reference `CanonicalToAvatarAxisMap`, then projects the mapped result to game-world X/Z. The same mapping is applied to scaled physical velocity before computing `physicalActivity`. Live body heading is used only for cadence travel; it never rotates physical room displacement. Cadence blend is approximately:
+`LocomotionFusion` scales the trusted camera-space support X/Z displacement independently (current defaults `0.9` lateral / `1.5` depth), embeds it as `(cameraX, 0, cameraZ)`, maps it through the accepted Phase 4 reference `CanonicalToAvatarAxisMap`, then projects the mapped result to game-world X/Z. The same mapping is applied to scaled physical velocity before computing `physicalActivity`. Live body heading is used only for cadence travel; it never rotates physical room displacement. Cadence blend is approximately:
 
 ```text
 cadenceBlend = cadenceConfidence * (1 - physicalActivity)
@@ -202,3 +212,17 @@ to the bound avatar root. Root Y and root rotation are preserved.
 `Recenter()` preserves the current world X/Z as the new virtual origin, then resets the physical origin. This keeps the avatar stationary in the virtual world during recenter and provides a clean future discrete-command API. Speech recognition itself is excluded.
 
 The Lab uses **K** for recenter and shows physical displacement/confidence, cadence state/rate, heading, physical/cadence contributions, final frame motion, and recenter state. A runtime-created fixed grid viewport provides visual world-reference feedback.
+
+
+### Phase 5A Inspector tuning
+
+The permanent Motion Engine Lab serializes a real `EmbodiedLocomotionController` on the `PoseTrackingSpike` GameObject. The presenter resolves/reuses it and retains runtime `AddComponent` only as a defensive fallback.
+
+Inspector groups are:
+
+- **Root / Physical Tracking** — support joint confidence, minimum image measurement, yaw floor, support agreement tolerance, depth corroboration thresholds, position/velocity response, depth clamp.
+- **Physical Locomotion / Fusion** — lateral/depth scale, X/Z deadzones, physical suppression start/full thresholds, minimum trusted support confidence.
+- **Cadence** — lower-body confidence, signal response, event threshold, step-rate limits, acquisition events, acquire/sustain confidence, stop timeout, virtual stride, maximum virtual speed.
+- **Heading** — heading response.
+
+These are the same settings objects consumed by the runtime modules, so Play Mode edits affect the active prototype without a duplicate tuning system.

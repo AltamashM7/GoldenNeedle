@@ -7,18 +7,30 @@ namespace GoldenNeedle.Core.Motion.Locomotion
     [Serializable]
     public sealed class LocomotionFusionSettings
     {
-        [Min(0f)] public float lateralScale = 1.8f;
-        [Min(0f)] public float depthScale = 3.0f;
+        [Tooltip("Game-world scale applied to mapped physical left/right support displacement.")]
+        [Min(0f)] public float lateralScale = 0.9f;
+
+        [Tooltip("Game-world scale applied to mapped physical toward/away support displacement.")]
+        [Min(0f)] public float depthScale = 1.5f;
+        [Tooltip("Camera-space lateral support displacement ignored before physical scaling.")]
         [Min(0f)] public float lateralDeadzone = 0.012f;
+
+        [Tooltip("Camera-space depth support displacement ignored before physical scaling.")]
         [Min(0f)] public float depthDeadzone = 0.012f;
+
+        [Tooltip("Mapped physical speed where cadence suppression begins.")]
         [Min(0f)] public float physicalVelocityStart = 0.08f;
+
+        [Tooltip("Mapped physical speed where cadence is fully suppressed.")]
         [Min(0f)] public float physicalVelocityFull = 0.32f;
+
+        [Tooltip("Minimum trusted support-base confidence required for a live physical update.")]
         [Range(0f, 1f)] public float minimumRootConfidence = 0.30f;
 
         public void Sanitize()
         {
-            lateralScale = Mathf.Max(0f, Safe(lateralScale, 1.8f));
-            depthScale = Mathf.Max(0f, Safe(depthScale, 3.0f));
+            lateralScale = Mathf.Max(0f, Safe(lateralScale, 0.9f));
+            depthScale = Mathf.Max(0f, Safe(depthScale, 1.5f));
             lateralDeadzone = Mathf.Max(0f, Safe(lateralDeadzone, 0.012f));
             depthDeadzone = Mathf.Max(0f, Safe(depthDeadzone, 0.012f));
             physicalVelocityStart = Mathf.Max(0f, Safe(physicalVelocityStart, 0.08f));

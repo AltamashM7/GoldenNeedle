@@ -10,36 +10,181 @@ namespace GoldenNeedle.Tests
     public sealed class Phase5LocomotionTests
     {
         [Test]
-        public void CameraSpaceRootTrackerUsesImagePlacementScaleAndRecenters()
+        public void PlantedFeetIgnoreTorsoLateralLean()
         {
-            var settings = new CameraSpaceRootTrackerSettings
-            {
-                minimumJointConfidence = 0.2f,
-                positionResponse = 1000f,
-                velocityResponse = 1000f,
-                maximumDepthProxy = 5f,
-            };
-            var tracker = new CameraSpaceRootTracker(settings);
+            var tracker = FastRootTracker();
             var profile = FrontCameraProfile();
 
-            var baseline = RootFrame(0.50f, 1.00f);
-            var baselineSample = tracker.Update(baseline, profile, 0.1f);
-            Assert.That(baselineSample.isValid, Is.True);
-            Assert.That(baselineSample.hasOrigin, Is.True);
-            Assert.That(baselineSample.displacementXZ.magnitude, Is.LessThan(0.0001f));
+            var baseline = tracker.Update(
+                SupportFrame(),
+                profile,
+                0.1f);
+            Assert.That(baseline.isValid, Is.True);
 
-            var shifted = tracker.Update(RootFrame(0.56f, 1.00f), profile, 0.1f);
-            Assert.That(shifted.displacementXZ.x, Is.GreaterThan(0.05f));
-            Assert.That(Mathf.Abs(shifted.displacementXZ.y), Is.LessThan(0.01f));
+            var leaned = tracker.Update(
+                SupportFrame(torsoCenterX: 0.62f),
+                profile,
+                0.1f);
+
+            Assert.That(leaned.isValid, Is.True);
+            Assert.That(
+                leaned.displacementXZ.magnitude,
+                Is.LessThan(0.005f));
+        }
+
+        [Test]
+        public void PlantedFeetIgnoreTorsoForwardBackScaleChange()
+        {
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
+
+            tracker.Update(SupportFrame(), profile, 0.1f);
+            var leanedTowardCamera = tracker.Update(
+                SupportFrame(torsoScale: 1.18f),
+                profile,
+                0.1f);
+
+            Assert.That(leanedTowardCamera.isValid, Is.True);
+            Assert.That(
+                Mathf.Abs(leanedTowardCamera.displacementXZ.y),
+                Is.LessThan(0.005f));
+        }
+
+        [Test]
+        public void SupportBaseRelocationProducesPhysicalLateralDisplacement()
+        {
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
+
+            tracker.Update(SupportFrame(), profile, 0.1f);
+            var moved = tracker.Update(
+                SupportFrame(supportOffsetX: 0.04f),
+                profile,
+                0.1f);
+
+            Assert.That(moved.isValid, Is.True);
+            Assert.That(moved.displacementXZ.x, Is.GreaterThan(0.08f));
+            Assert.That(
+                Mathf.Abs(moved.displacementXZ.y),
+                Is.LessThan(0.01f));
 
             Assert.That(tracker.Recenter(), Is.True);
-            Assert.That(tracker.LatestSample.displacementXZ.magnitude, Is.LessThan(0.0001f));
+            Assert.That(
+                tracker.LatestSample.displacementXZ.magnitude,
+                Is.LessThan(0.0001f));
+        }
 
-            var yawOnly = tracker.Update(RootFrame(0.56f, 1.00f, 60f), profile, 0.1f);
-            Assert.That(Mathf.Abs(yawOnly.displacementXZ.y), Is.LessThan(0.03f));
+        [Test]
+        public void SupportBaseRelocationPlusScaleEvidenceProducesDepthDisplacement()
+        {
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
 
-            var farther = tracker.Update(RootFrame(0.56f, 0.80f, 60f), profile, 0.1f);
-            Assert.That(farther.displacementXZ.y, Is.GreaterThan(0.10f));
+            tracker.Update(SupportFrame(), profile, 0.1f);
+            var farther = tracker.Update(
+                SupportFrame(
+                    torsoScale: 0.84f,
+                    supportOffsetY: 0.035f),
+                profile,
+                0.1f);
+
+            Assert.That(farther.isValid, Is.True);
+            Assert.That(farther.depthCorroborated, Is.True);
+            Assert.That(farther.displacementXZ.y, Is.GreaterThan(0.08f));
+
+            var nearTracker = FastRootTracker();
+            nearTracker.Update(SupportFrame(), profile, 0.1f);
+            var nearer = nearTracker.Update(
+                SupportFrame(
+                    torsoScale: 1.18f,
+                    supportOffsetY: -0.035f),
+                profile,
+                0.1f);
+
+            Assert.That(nearer.isValid, Is.True);
+            Assert.That(nearer.depthCorroborated, Is.True);
+            Assert.That(nearer.displacementXZ.y, Is.LessThan(-0.08f));
+        }
+
+        [Test]
+        public void JoggingInPlaceHoldsPhysicalSupportWhileCadenceCanActivate()
+        {
+            var tracker = FastRootTracker();
+            var cadenceDetector = new CadenceDetector(
+                new CadenceDetectorSettings
+                {
+                    minimumJointConfidence = 0.2f,
+                    signalResponse = 1000f,
+                    eventThreshold = 0.05f,
+                    minimumStepRate = 0.5f,
+                    maximumStepRate = 5f,
+                    acquisitionEvents = 3,
+                    acquireConfidence = 0.40f,
+                    sustainConfidence = 0.20f,
+                    stopTimeoutSeconds = 0.45f,
+                    virtualStridePerStep = 0.4f,
+                });
+            var profile = FrontCameraProfile();
+
+            tracker.Update(SupportFrame(), profile, 0.1f);
+
+            var first = JogInPlaceFrame(true);
+            var rootFirst = tracker.Update(first, profile, 0.10f);
+            cadenceDetector.Update(first, 0.30f, 0.10f);
+
+            var second = JogInPlaceFrame(false);
+            var rootSecond = tracker.Update(second, profile, 0.25f);
+            cadenceDetector.Update(second, 0.30f, 0.25f);
+
+            var third = JogInPlaceFrame(true);
+            var rootThird = tracker.Update(third, profile, 0.25f);
+            var cadence = cadenceDetector.Update(
+                third,
+                0.30f,
+                0.25f);
+
+            Assert.That(rootFirst.isValid, Is.False);
+            Assert.That(rootSecond.isValid, Is.False);
+            Assert.That(rootThird.isValid, Is.False);
+            Assert.That(
+                rootThird.displacementXZ.magnitude,
+                Is.LessThan(0.005f));
+            Assert.That(cadence.active, Is.True);
+        }
+
+        [Test]
+        public void TemporarySupportLossHoldsLastTrustedPhysicalDisplacement()
+        {
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
+
+            tracker.Update(SupportFrame(), profile, 0.1f);
+            var moved = tracker.Update(
+                SupportFrame(supportOffsetX: 0.04f),
+                profile,
+                0.1f);
+            Assert.That(moved.isValid, Is.True);
+
+            var noSupport = TorsoOnlyFrame(
+                torsoCenterX: 0.70f,
+                torsoScale: 1.20f);
+            noSupport.Complete();
+            var lost = tracker.Update(
+                noSupport,
+                profile,
+                0.1f);
+
+            Assert.That(lost.isValid, Is.False);
+            Assert.That(lost.hasOrigin, Is.True);
+            Assert.That(
+                lost.displacementXZ.x,
+                Is.EqualTo(moved.displacementXZ.x).Within(0.0001f));
+            Assert.That(
+                lost.displacementXZ.y,
+                Is.EqualTo(moved.displacementXZ.y).Within(0.0001f));
+            Assert.That(
+                lost.velocityXZ.magnitude,
+                Is.LessThan(0.0001f));
         }
 
         [Test]
@@ -282,52 +427,145 @@ namespace GoldenNeedle.Tests
             };
         }
 
-        private static CanonicalPoseFrame RootFrame(
-            float centerX,
-            float scale,
-            float yawDegrees = 0f)
+        private static CameraSpaceRootTracker FastRootTracker()
+        {
+            return new CameraSpaceRootTracker(
+                new CameraSpaceRootTrackerSettings
+                {
+                    minimumJointConfidence = 0.2f,
+                    supportAgreementTolerance = 0.12f,
+                    minimumSupportDepthDisplacement = 0.01f,
+                    minimumDepthScaleEvidence = 0.01f,
+                    positionResponse = 1000f,
+                    velocityResponse = 1000f,
+                    maximumDepthProxy = 5f,
+                });
+        }
+
+        private static CanonicalPoseFrame SupportFrame(
+            float torsoCenterX = 0.50f,
+            float torsoScale = 1.00f,
+            float supportOffsetX = 0f,
+            float supportOffsetY = 0f)
+        {
+            var frame = TorsoOnlyFrame(torsoCenterX, torsoScale);
+            AddSupportFoot(
+                frame,
+                true,
+                new Vector2(
+                    0.58f + supportOffsetX,
+                    0.12f + supportOffsetY));
+            AddSupportFoot(
+                frame,
+                false,
+                new Vector2(
+                    0.42f + supportOffsetX,
+                    0.12f + supportOffsetY));
+            frame.Complete();
+            return frame;
+        }
+
+        private static CanonicalPoseFrame TorsoOnlyFrame(
+            float torsoCenterX = 0.50f,
+            float torsoScale = 1.00f)
         {
             var frame = new CanonicalPoseFrame();
             frame.Begin(1L, 0d, true);
-            var yawCosine = Mathf.Abs(Mathf.Cos(yawDegrees * Mathf.Deg2Rad));
-            var shoulderHalf = 0.15f * scale * yawCosine;
-            var hipHalf = 0.10f * scale * yawCosine;
+            var shoulderHalf = 0.15f * torsoScale;
+            var hipHalf = 0.10f * torsoScale;
             var pelvisY = 0.42f;
-            var chestY = pelvisY + 0.30f * scale;
-            var yaw = Quaternion.Euler(0f, yawDegrees, 0f);
+            var chestY = pelvisY + 0.30f * torsoScale;
 
             SetTracked(
                 frame,
                 CanonicalJointId.LeftShoulder,
-                new Vector2(centerX + shoulderHalf, chestY),
-                yaw * new Vector3(0.20f, 0f, 0f) + new Vector3(0f, 0.50f, 0f));
+                new Vector2(torsoCenterX + shoulderHalf, chestY),
+                new Vector3(0.20f, 0.50f, 0f));
             SetTracked(
                 frame,
                 CanonicalJointId.RightShoulder,
-                new Vector2(centerX - shoulderHalf, chestY),
-                yaw * new Vector3(-0.20f, 0f, 0f) + new Vector3(0f, 0.50f, 0f));
+                new Vector2(torsoCenterX - shoulderHalf, chestY),
+                new Vector3(-0.20f, 0.50f, 0f));
             SetTracked(
                 frame,
                 CanonicalJointId.LeftHip,
-                new Vector2(centerX + hipHalf, pelvisY),
-                yaw * new Vector3(0.15f, 0f, 0f));
+                new Vector2(torsoCenterX + hipHalf, pelvisY),
+                new Vector3(0.15f, 0f, 0f));
             SetTracked(
                 frame,
                 CanonicalJointId.RightHip,
-                new Vector2(centerX - hipHalf, pelvisY),
-                yaw * new Vector3(-0.15f, 0f, 0f));
+                new Vector2(torsoCenterX - hipHalf, pelvisY),
+                new Vector3(-0.15f, 0f, 0f));
             SetTracked(
                 frame,
                 CanonicalJointId.Pelvis,
-                new Vector2(centerX, pelvisY),
+                new Vector2(torsoCenterX, pelvisY),
                 Vector3.zero);
             SetTracked(
                 frame,
                 CanonicalJointId.Chest,
-                new Vector2(centerX, chestY),
+                new Vector2(torsoCenterX, chestY),
                 new Vector3(0f, 0.50f, 0f));
+            return frame;
+        }
+
+        private static CanonicalPoseFrame JogInPlaceFrame(bool leftHigh)
+        {
+            var frame = TorsoOnlyFrame();
+            var leftFootY = leftHigh ? 0.22f : 0.12f;
+            var rightFootY = leftHigh ? 0.12f : 0.22f;
+
+            AddSupportFoot(
+                frame,
+                true,
+                new Vector2(0.58f, leftFootY));
+            AddSupportFoot(
+                frame,
+                false,
+                new Vector2(0.42f, rightFootY));
+            SetImageOnly(
+                frame,
+                CanonicalJointId.LeftKnee,
+                new Vector2(
+                    0.56f,
+                    leftHigh ? 0.50f : 0.44f));
+            SetImageOnly(
+                frame,
+                CanonicalJointId.RightKnee,
+                new Vector2(
+                    0.44f,
+                    leftHigh ? 0.44f : 0.50f));
             frame.Complete();
             return frame;
+        }
+
+        private static void AddSupportFoot(
+            CanonicalPoseFrame frame,
+            bool left,
+            Vector2 center)
+        {
+            var ankle = left
+                ? CanonicalJointId.LeftAnkle
+                : CanonicalJointId.RightAnkle;
+            var heel = left
+                ? CanonicalJointId.LeftHeel
+                : CanonicalJointId.RightHeel;
+            var toe = left
+                ? CanonicalJointId.LeftToe
+                : CanonicalJointId.RightToe;
+
+            SetImageOnly(
+                frame,
+                ankle,
+                center + new Vector2(0f, 0.010f));
+            SetImageOnly(
+                frame,
+                heel,
+                center + new Vector2(-0.012f, -0.006f));
+            SetImageOnly(
+                frame,
+                toe,
+                center + new Vector2(0.018f, -0.004f));
         }
 
         private static CanonicalPoseFrame CadenceFrame(bool leftHigh)
