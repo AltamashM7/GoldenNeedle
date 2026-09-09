@@ -1,26 +1,27 @@
 # Current state
 
-<!-- LATEST_CHECKPOINT_2026_09_08:START -->
-## Latest checkpoint — external-camera selection + 30 FPS inference target pending USER QA
+<!-- LATEST_CHECKPOINT_2026_09_09:START -->
+## Latest checkpoint — external-camera infrastructure + rotated Lab presentation audited, USER QA pending
 
-- Starting correction checkpoint: `6a98003efd427e1c8570bab9b32565673a1f268d` — `feat: smooth render-rate avatar presentation`.
+- **Authoritative runtime implementation checkpoint:** `db9c4a175f5a1bf607ec25e182d06c76648370ff` — `fix: align rotated Lab camera preview geometry`.
+- Direct runtime parent: `4033b2677a46b98af8c3201d82771300f1614140` — `feat: support external cameras and 30 fps pose target`.
+- Earlier presentation-smoothing checkpoint: `6a98003efd427e1c8570bab9b32565673a1f268d`.
 - Phase 4 remains **USER ACCEPTED — PASS**.
-- Phase 5A remains **NOT USER ACCEPTED**; final runtime QA remains postponed until external-camera/full-body capture and the 30 FPS inference-target baseline are available.
-- Camera input remains one generic Unity `WebCamTexture` pipeline. Built-in webcams, USB webcams, phone UVC webcam modes, and virtual webcam software are usable when Windows/Unity exposes them as `WebCamDevice` entries. No phone-specific SDK/network transport is added.
-- `preferredCameraName` remains the serialized device identity. A custom Inspector dropdown enumerates current `WebCamTexture.devices` and stores the device name rather than an array index.
-- Scene defaults remain automatic/laptop-friendly: blank preferred device, `640x480 @ 30` request, Orientation=Auto, display mirror OFF. USER may locally request `480x640 @ 30` for portrait full-body capture; actual dimensions/FPS remain driver-controlled.
-- Orientation supports `Auto / 0 / 90 / 180 / 270`. The same effective rotation is used for MediaPipe input preparation, Lab preview/display geometry, and convention-version tracking.
-- Accepted horizontal semantics remain unchanged: front-facing metadata does **not** cause an inference H mirror; `shouldFlipHorizontally=false` remains production behavior. Display mirror stays presentation-only.
-- `V` cycles ordinary non-depth/non-IR cameras and wraps. A Play Mode Inspector device change uses the same pending switch path.
-- A switch blocks new old-camera inference launches, waits for any active readback/inference to finish, then cleans one old provider pipeline and bootstraps one new pipeline. No concurrent cameras or duplicate PoseLandmarkers are created.
-- A physical camera restart increments the provider source/session convention version even when orientation happens to match. Existing `MotionEngineRuntime` handling resets stabilization/calibration/targets; Phase 5A then resets support/cadence/fusion/heading when calibration becomes invalid. USER must recalibrate and recenter after switching.
-- Pose target default changes from **20 FPS to 30 FPS** in code and scene. This is a requested maximum cadence, not a guaranteed result rate.
-- Fresh webcam frames are represented by a single latest-frame latch. Multiple frames while busy collapse to the newest WebCamTexture image; the next cadence-eligible free request consumes that latch. This avoids duplicate inference on an unchanged camera image without creating a frame queue.
-- Valid runtime outcomes include Camera≈30 FPS, Target≈30 FPS, Results≈15 FPS, Render≈60 FPS. Render-rate avatar presentation smoothing remains responsible for visual continuity above real pose-result cadence.
-- Existing support model v3, physical scales `0.9/1.5`, F12 camera behavior, smoothing `45/0.05`, Phase 4 mapping/calibration/Neko binding, root Y exclusion and root rotation exclusion remain unchanged.
-- Next action: connect/select the external camera, verify orientation/framing, recalibrate and recenter, then run final Phase 5A USER QA.
-- Phase 6 has **NOT STARTED**. Do not merge without explicit USER approval.
-<!-- LATEST_CHECKPOINT_2026_09_08:END -->
+- Phase 5A remains **NOT USER ACCEPTED**. Final USER runtime QA has not yet been performed on the external-camera/30-FPS/portrait-Lab checkpoint.
+- Phase 6 has **NOT STARTED**.
+- Remote working branch remains `engine/pose-tracking-spike`; do not merge to `main` without explicit USER approval.
+- External camera support remains one generic Unity `WebCamTexture` / `WebCamDevice` provider path. Laptop webcams, USB webcams, phone UVC webcam modes, and virtual webcams are usable only when Windows/Unity exposes them as a `WebCamDevice`. No phone-specific SDK/network transport exists.
+- `preferredCameraName` persists device identity by name. A custom Inspector dropdown enumerates current devices. `V` cycles ordinary non-depth/non-IR cameras through the same safe pending-switch path.
+- Camera switching blocks new old-camera work, waits for bootstrap/readback/inference to become idle, then restarts one provider pipeline and increments the source/session convention version. Existing Motion Engine reset handling invalidates stabilization/calibration/targets; Phase 5A then resets support/cadence/fusion/heading assumptions. Recalibrate with `C` and recenter with `K` after changing physical cameras.
+- Camera orientation supports `Auto / 0 / 90 / 180 / 270`. The effective rotation is shared by inference preparation and Lab display geometry. Front-facing metadata still does **not** cause an inference horizontal mirror; production remains `shouldFlipHorizontally=false`. Display mirror is presentation-only.
+- Scene defaults remain blank/automatic device, `640x480 @ 30` camera request, Orientation=Auto, display mirror OFF, and **30 FPS target inference cadence**. USER may locally request `480x640 @ 30` for portrait full-body phone capture.
+- Inference remains one-outstanding/no-backlog LIVE_STREAM. Requests require a fresh-frame latch, elapsed target interval, and a free provider. Multiple arriving camera frames while busy collapse to one latest-frame-available state; actual pose results remain CPU/model constrained.
+- Render-rate Humanoid presentation smoothing remains isolated after the exact Phase 4 solve with defaults `45/s` response and `0.05 s` maximum blend; it does not change genuine tracking or Phase 5A locomotion data.
+- Phase 5A support model v3, physical scales `0.9/1.5`, cadence timing, body heading, root-Y/root-rotation exclusion, and F12 third-person Game View remain unchanged.
+- The Motion Engine Lab portrait/rotated preview bug identified during Orchestrator audit is corrected at `db9c4a17…`. `LabCameraPresentationGeometry` now computes one fitted whole-frame geometry for webcam texture and F1/F2/F4 overlays. The complete oriented frame is letterboxed/pillarboxed rather than cropped; 0/90/180/270 use one shared content-rect authority.
+- The `db9c4a17…` correction received an independent source audit and has **no code-level blocker identified**, but Unity compilation/Test Runner and real phone/UVC visual alignment were not executed by the Web Builder/Orchestrator environment.
+- **Next action:** on the USER machine, pull the latest branch, verify Unity compiles, connect/select the phone camera, confirm full-body preview + F1/F2/F4 alignment, calibrate/recenter, then perform the postponed Phase 5A runtime QA.
+<!-- LATEST_CHECKPOINT_2026_09_09:END -->
 
 This is the concise durable snapshot of the accepted Motion Engine through Phase 4 and the next-stage handoff.
 
@@ -153,7 +154,7 @@ Root Y and root rotation are never driven by locomotion. Crouch remains pose rep
 
 Default prototype tunables are deliberately exposed through a **serialized scene `EmbodiedLocomotionController`**. Inspector groups cover Root / Physical Tracking, Physical Locomotion / Fusion, Cadence, and Heading. Current physical scale defaults are `0.9` lateral and `1.5` depth; cadence acquisition timing is unchanged.
 
-The Lab adds compact locomotion diagnostics, **K = recenter**, and a runtime-created fixed world grid viewport. Existing R/C/X and F1–F6 controls remain unchanged.
+The Lab adds compact locomotion diagnostics, **K = recenter**, **V = cycle camera**, F12 Lab/Game presentation switching, and a runtime-created fixed world grid viewport. Existing pose/debug controls remain available.
 
 Phase 5A is **NOT USER ACCEPTED**.
 
