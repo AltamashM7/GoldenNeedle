@@ -260,32 +260,47 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             EnsureStyles();
 
-            var previewRect = new Rect(0f, 0f, Screen.width, Screen.height);
+            var previewTargetRect = new Rect(0f, 0f, Screen.width, Screen.height);
             var orientation = provider.Orientation;
-            var contentRect = GetContentRect(
-                previewRect,
-                provider.ActualCameraWidth,
-                provider.ActualCameraHeight,
-                orientation.DisplayRotationDegrees);
+            var presentationGeometry =
+                LabCameraPresentationGeometry.Create(
+                    previewTargetRect,
+                    provider.ActualCameraWidth,
+                    provider.ActualCameraHeight,
+                    orientation.DisplayRotationDegrees);
+            var contentRect = presentationGeometry.OrientedContentRect;
             var oldMatrix = GUI.matrix;
 
-            // The preview uses sensor/display metadata plus any explicitly verified raw-source
-            // correction. Inference readback flags are not GUI instructions. Restore the caller's matrix
-            // before drawing any overlay so its coordinates are transformed exactly once by the
-            // shared content rectangle.
-            ApplyDisplayPreviewTransform(previewRect, orientation);
+            // The Lab deliberately shows the complete oriented camera frame. The fitted content
+            // rectangle is the single geometry authority for both the webcam and every 2D overlay.
+            // The raw texture draw rectangle is the inverse quarter-turn footprint of that same
+            // content rectangle, so applying the existing display transform lands it exactly under
+            // the overlay bounds without ScaleAndCrop.
+            GUI.color = new Color(0.04f, 0.05f, 0.07f, 1f);
+            GUI.DrawTexture(previewTargetRect, Texture2D.whiteTexture);
             GUI.color = Color.white;
+
+            ApplyDisplayPreviewTransform(
+                presentationGeometry.TransformPivot,
+                orientation);
             if (provider.CameraTexture != null)
             {
-                GUI.DrawTexture(previewRect, provider.CameraTexture, ScaleMode.ScaleAndCrop, false);
+                GUI.DrawTexture(
+                    presentationGeometry.RawTextureDrawRect,
+                    provider.CameraTexture,
+                    ScaleMode.StretchToFill,
+                    false);
             }
             else
             {
-                GUI.color = new Color(0.04f, 0.05f, 0.07f, 1f);
-                GUI.DrawTexture(previewRect, Texture2D.whiteTexture);
+                GUI.color = new Color(0.07f, 0.08f, 0.10f, 1f);
+                GUI.DrawTexture(
+                    presentationGeometry.RawTextureDrawRect,
+                    Texture2D.whiteTexture);
             }
 
             GUI.matrix = oldMatrix;
+            GUI.color = Color.white;
 
             if (_hideAllDebugPresentation)
             {
@@ -982,15 +997,18 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 orientation);
         }
 
-        private static void ApplyDisplayPreviewTransform(Rect previewRect, CameraOrientationState orientation)
+        private static void ApplyDisplayPreviewTransform(
+            Vector2 pivot,
+            CameraOrientationState orientation)
         {
-            var pivot = previewRect.center;
             GUIUtility.ScaleAroundPivot(
                 new Vector2(
                     orientation.PresentationHorizontalMirror ? -1f : 1f,
                     orientation.DisplayVerticalCorrection ? -1f : 1f),
                 pivot);
-            GUIUtility.RotateAroundPivot(-orientation.DisplayRotationDegrees, pivot);
+            GUIUtility.RotateAroundPivot(
+                -orientation.DisplayRotationDegrees,
+                pivot);
         }
 
         private void DrawDebugRigView(Rect panel)
@@ -1203,32 +1221,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var perspective = 1f / Mathf.Max(0.45f, 1f + position.z * 0.45f);
             var scale = Mathf.Min(view.width, view.height) * 0.42f;
             return view.center + new Vector2(position.x * scale * perspective, -position.y * scale * perspective);
-        }
-
-        private static Rect GetContentRect(Rect target, int width, int height, int imageRotationDegrees)
-        {
-            if (width <= 0 || height <= 0)
-            {
-                return target;
-            }
-
-            if (imageRotationDegrees == 90 || imageRotationDegrees == 270)
-            {
-                var swapped = width;
-                width = height;
-                height = swapped;
-            }
-
-            var sourceAspect = width / (float)height;
-            var targetAspect = target.width / target.height;
-            if (sourceAspect > targetAspect)
-            {
-                var drawnWidth = target.height * sourceAspect;
-                return new Rect(target.center.x - drawnWidth * 0.5f, target.y, drawnWidth, target.height);
-            }
-
-            var drawnHeight = target.width / sourceAspect;
-            return new Rect(target.x, target.center.y - drawnHeight * 0.5f, target.width, drawnHeight);
         }
 
         private static bool IsDerivedJoint(CanonicalJointId id)
