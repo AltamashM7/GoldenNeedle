@@ -12,46 +12,47 @@ Repository: `AltamashM7/GoldenNeedle`
 
 Current branch: `engine/pose-tracking-spike`
 
-<!-- LATEST_HANDOFF_2026_09_08:START -->
-## Current authoritative checkpoint
+<!-- LATEST_HANDOFF_2026_09_09:START -->
+## Current authoritative handoff
 
-Starting correction checkpoint: `6a98003efd427e1c8570bab9b32565673a1f268d`.
+**Runtime implementation checkpoint:** `db9c4a175f5a1bf607ec25e182d06c76648370ff` — `fix: align rotated Lab camera preview geometry`.
+
+Its direct parent is `4033b2677a46b98af8c3201d82771300f1614140` — `feat: support external cameras and 30 fps pose target`. The branch may contain only documentation-normalization commits on top of `db9c4a17…`; when starting a new Orchestrator session, verify the current remote `engine/pose-tracking-spike` HEAD and treat `db9c4a17…` as the authoritative runtime code checkpoint unless a later runtime commit is explicitly documented.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
-- Phase 5A: **NOT USER ACCEPTED / FINAL QA WAITING ON EXTERNAL CAMERA + 30 FPS TARGET**.
+- Phase 5A: **NOT USER ACCEPTED / FINAL USER QA PENDING**.
 - Phase 6: **NOT STARTED**.
-- No merge without explicit USER approval.
+- No merge to `main` without explicit USER approval.
 
-Camera infrastructure:
-- one generic `WebCamTexture` provider;
-- preferred camera persisted by WebCamDevice name;
-- custom Inspector dropdown over Unity devices;
-- phone support only through OS/UVC/virtual-webcam exposure;
-- no phone SDK/network streamer;
-- default request `640x480 @ 30`, optional `480x640 @ 30` portrait request;
-- Auto/0/90/180/270 effective rotation shared by inference and Lab display;
-- front-facing metadata still never causes H inference mirror;
-- `V` cycles non-depth/non-IR devices.
+What is now implemented and source-audited:
+- Phase 5A v3 common/differential support-foot locomotion, physical scales `0.9/1.5`, cadence extension, mapped body heading, safe recenter, root X/Z only.
+- F12 Lab/Game presentation switch and Inspector-tunable third-person camera.
+- render-rate Humanoid presentation smoothing after the exact Phase 4 solve, defaults `45/s` and `0.05 s`, with genuine stabilized tracking data left untouched.
+- generic external-camera selection through Unity `WebCamDevice` names, custom Inspector device dropdown, and `V` camera cycling.
+- safe pending camera switch: no new old-camera work after request; wait for bootstrap/readback/inference idle; restart one provider; invalidate source session; existing runtime reset clears stale calibration and Phase 5A assumptions.
+- camera request default `640x480 @ 30`; portrait `480x640 @ 30` is a recommended local USER test request, subject to driver support.
+- camera orientation `Auto / 0 / 90 / 180 / 270`; same effective rotation for inference/display; front-facing metadata never automatically horizontally mirrors inference.
+- pose target default **30 FPS**, still CPU-limited in reality; one-outstanding/no-backlog scheduling plus one fresh-frame latch prevents duplicate stale-frame inference.
+- whole-frame Motion Engine Lab camera presentation via `LabCameraPresentationGeometry`: rotated portrait sources are fitted without crop, and webcam + F1/F2/F4 share one oriented content rectangle. Letterboxing/pillarboxing is expected.
 
-Hot switch:
-- request becomes pending and blocks new old-camera work;
-- active readback/inference finishes;
-- old pipeline cleans up;
-- source/session convention version increments;
-- observations clear;
-- one new pipeline starts;
-- existing runtime reset invalidates calibration and Phase 5A support/cadence/fusion assumptions.
+Audit state:
+- `db9c4a17…` is exactly one runtime commit after `4033b267…` and changed only the Lab presentation helper/presenter plus focused tests.
+- Protected provider, Phase 4 retargeting, Phase 5A locomotion, scene serialization, and F12 camera behavior were not part of that correction.
+- No code-level blocker was found in the independent Orchestrator source audit.
+- Unity compilation/Test Runner was **not** executed in the Web Builder/Orchestrator environment.
+- Real phone/UVC hardware, driver orientation metadata, actual portrait preview, and overlay alignment remain USER-machine runtime checks.
 
-Inference:
-- default target is **30 FPS**;
-- one-outstanding/no-backlog scheduler remains;
-- one latest-frame freshness latch prevents duplicate stale-frame inference;
-- actual result cadence may remain much lower due to CPU/model time;
-- avatar presentation smoothing remains independent.
-
-Existing Phase 5A v3, `0.9/1.5` scales, F12 camera, smoothing `45/0.05`, and accepted Phase 4 code remain frozen.
-<!-- LATEST_HANDOFF_2026_09_08:END -->
+Immediate next USER flow:
+1. Pull current `engine/pose-tracking-spike`.
+2. Open `PoseTrackingSpike.unity` and confirm clean Unity compilation.
+3. Connect the phone so Windows/Unity exposes it as a webcam.
+4. Select the phone in `MediaPipePoseProvider`; request `480x640 @ 30` if supported; start Orientation=Auto and use 90/180/270 only if driver metadata is wrong.
+5. In Lab view verify full head + feet, undistorted frame, and F1/F2/F4 alignment. Display Mirror should mirror webcam + overlays together without changing anatomy.
+6. After a camera change, run `C` calibration and `K` recenter.
+7. Perform final Phase 5A USER QA: planted-feet lean immunity; one-foot onset; alternating room walking; toward/away and diagonal motion; jog-in-place cadence with little physical leakage; stop behavior; direction follows heading; no obvious double count; support loss holds; K recenter no jump; F12 third-person behavior.
+8. Only after USER runtime acceptance should Phase 5A be marked PASS or Phase 6 begin.
+<!-- LATEST_HANDOFF_2026_09_09:END -->
 
 Phase 4 handoff HEAD before the correction:
 
