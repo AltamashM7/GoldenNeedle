@@ -97,7 +97,13 @@ The source audit confirmed the downstream latest-result model is already appropr
 
 No canonical coordinate semantics, calibration math, signed-axis mapping, Phase 4 IK/retargeting, Phase 5A locomotion algorithm, physical scale defaults `0.9 / 1.5`, cadence logic, root-Y/root-rotation exclusion, Neko binding, 30-FPS target, camera selection, hot switching, or fitted-preview geometry was redesigned in this task.
 
-No separate lower inference resolution was introduced. The source audit identified a concrete avoidable serialization bottleneck first; inference-size tuning should only be considered after clean USER measurements show it is still needed.
+## Bounded body-pose inference resolution experiment
+
+The provider now has a reversible body-pose-only downscale experiment. The original full-resolution `WebCamTexture` remains authoritative for `CameraTexture` and Lab presentation. When enabled, the newest full-resolution frame is scaled into one persistent, aspect-preserving inference `RenderTexture` before the existing `TextureFrame.ReadTextureAsync` path. The default target is an approximately `320`-pixel long edge, so a `640x480` source uses `320x240`; disabling the option restores the exact actual camera dimensions.
+
+The `TextureFramePool` matches the selected body-inference dimensions, while the existing one-readback, one-prepared-frame, one-inference latest-frame bounds and accepted orientation/flip/rotation semantics remain unchanged. F7 identifies the active body input as `scaled` or `native` alongside the existing timing and wait diagnostics.
+
+This is an implementation checkpoint for USER A/B measurement, not USER acceptance. Lower body-pose resolution does not constrain future high-detail hand/finger tracking: later hand systems may consume the unchanged full-resolution camera or separate high-resolution hand ROIs. No hand/finger tracking was added. Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED** and Phase 6 remains **NOT STARTED**.
 
 ## Verification state and next action
 

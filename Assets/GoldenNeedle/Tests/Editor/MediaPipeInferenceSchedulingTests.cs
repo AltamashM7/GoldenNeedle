@@ -123,5 +123,67 @@ namespace GoldenNeedle.Tests
             Assert.That(scheduler.HasAcceptedRequest, Is.False);
             Assert.That(scheduler.CanLaunch(10d, 0.05d, false), Is.True);
         }
+
+        [Test]
+        public void BodyInferenceResolutionPreservesLandscapeAspectRatio()
+        {
+            var dimensions = BodyInferenceResolution.Calculate(640, 480, true, 320);
+
+            Assert.That(dimensions.x, Is.EqualTo(320));
+            Assert.That(dimensions.y, Is.EqualTo(240));
+        }
+
+        [Test]
+        public void BodyInferenceResolutionPreservesPortraitAspectRatio()
+        {
+            var dimensions = BodyInferenceResolution.Calculate(480, 640, true, 320);
+
+            Assert.That(dimensions.x, Is.EqualTo(240));
+            Assert.That(dimensions.y, Is.EqualTo(320));
+        }
+
+        [Test]
+        public void BodyInferenceResolutionRetainsAspectRatioWithinIntegerRounding()
+        {
+            var dimensions = BodyInferenceResolution.Calculate(1280, 720, true, 320);
+
+            Assert.That(dimensions.x, Is.EqualTo(320));
+            Assert.That(dimensions.y, Is.EqualTo(180));
+            Assert.That(
+                dimensions.x / (double)dimensions.y,
+                Is.EqualTo(1280d / 720d).Within(0.01d));
+        }
+
+        [Test]
+        public void DisabledBodyInferenceDownscaleUsesSourceDimensionsExactly()
+        {
+            var dimensions = BodyInferenceResolution.Calculate(641, 479, false, 1);
+
+            Assert.That(dimensions.x, Is.EqualTo(641));
+            Assert.That(dimensions.y, Is.EqualTo(479));
+        }
+
+        [Test]
+        public void BodyInferenceResolutionNeverProducesZeroDimensions()
+        {
+            var dimensions = BodyInferenceResolution.Calculate(0, 0, true, 0);
+
+            Assert.That(dimensions.x, Is.GreaterThanOrEqualTo(1));
+            Assert.That(dimensions.y, Is.GreaterThanOrEqualTo(1));
+        }
+
+        [Test]
+        public void BodyInferenceLongEdgeIsBoundedToSafeEvenRange()
+        {
+            Assert.That(
+                BodyInferenceResolution.ClampLongEdge(1),
+                Is.EqualTo(BodyInferenceResolution.MinimumLongEdge));
+            Assert.That(
+                BodyInferenceResolution.ClampLongEdge(321),
+                Is.EqualTo(320));
+            Assert.That(
+                BodyInferenceResolution.ClampLongEdge(int.MaxValue),
+                Is.EqualTo(BodyInferenceResolution.MaximumLongEdge));
+        }
     }
 }

@@ -97,6 +97,68 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         }
     }
 
+    /// <summary>
+    /// Selects the texture dimensions used only by the body-pose inference path.
+    /// The source webcam dimensions remain authoritative and are never changed here.
+    /// </summary>
+    public static class BodyInferenceResolution
+    {
+        public const int MinimumLongEdge = 2;
+        public const int MaximumLongEdge = 4096;
+
+        public static int ClampLongEdge(int requestedLongEdge)
+        {
+            var bounded = Math.Min(MaximumLongEdge, Math.Max(MinimumLongEdge, requestedLongEdge));
+            if (bounded > MinimumLongEdge && (bounded & 1) != 0)
+            {
+                bounded--;
+            }
+            return bounded;
+        }
+
+        public static Vector2Int Calculate(
+            int sourceWidth,
+            int sourceHeight,
+            bool downscaleEnabled,
+            int requestedLongEdge)
+        {
+            var safeWidth = Math.Max(1, sourceWidth);
+            var safeHeight = Math.Max(1, sourceHeight);
+            if (!downscaleEnabled)
+            {
+                return new Vector2Int(safeWidth, safeHeight);
+            }
+
+            var sourceLongEdge = Math.Max(safeWidth, safeHeight);
+            var targetLongEdge = ClampLongEdge(requestedLongEdge);
+            if (targetLongEdge >= sourceLongEdge)
+            {
+                return new Vector2Int(safeWidth, safeHeight);
+            }
+
+            if (safeWidth >= safeHeight)
+            {
+                return new Vector2Int(
+                    targetLongEdge,
+                    RoundToSafeDimension(safeHeight * (double)targetLongEdge / safeWidth));
+            }
+
+            return new Vector2Int(
+                RoundToSafeDimension(safeWidth * (double)targetLongEdge / safeHeight),
+                targetLongEdge);
+        }
+
+        private static int RoundToSafeDimension(double value)
+        {
+            var rounded = Math.Max(1, (int)Math.Round(value, MidpointRounding.AwayFromZero));
+            if (rounded > 1 && (rounded & 1) != 0)
+            {
+                rounded--;
+            }
+            return Math.Max(1, rounded);
+        }
+    }
+
     public sealed class MediaPipePoseProvider : MonoBehaviour
     {
         private const string ModelFileName = "pose_landmarker_lite.bytes";
@@ -118,6 +180,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField] private float readbackTimeoutSeconds = 2f;
         [SerializeField] private PoseTrustSettings trustSettings = new PoseTrustSettings();
 
+        [Header("Body Pose Inference")]
+        [Tooltip("Scale only the body-pose inference input. CameraTexture remains the original full-resolution WebCamTexture.")]
+        [SerializeField] private bool enableBodyInferenceDownscale = true;
+        [Tooltip("Target long edge for body-pose inference. The source aspect ratio is preserved and the value is safely bounded.")]
+        [SerializeField] private int bodyInferenceLongEdge = 320;
+
         private readonly object _observationGate = new object();
         private readonly double[] _lastTrackedAtSeconds = new double[PoseObservation.LandmarkCount];
         private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -128,6 +196,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private WebCamTexture _webCamTexture;
         private WebCamDevice _selectedDevice;
         private TextureFramePool _textureFramePool;
+        private RenderTexture _bodyInferenceRenderTexture;
+        private int _bodyInferenceWidth;
+        private int _bodyInferenceHeight;
+        private int _configuredCameraWidth;
+        private int _configuredCameraHeight;
+        private bool _configuredBodyInferenceDownscale;
+        private int _configuredBodyInferenceLongEdge;
         private PoseLandmarker _poseLandmarker;
         private Coroutine _bootstrapCoroutine;
         private bool _readbackPending;
@@ -189,6 +264,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public int InputRotationDegrees => _orientation.InferenceRotationDegrees;
         public bool DisplayMirror => _orientation.DisplayMirrored;
         public Texture CameraTexture => _webCamTexture;
+        public int BodyInferenceWidth => _bodyInferenceWidth;
+        public int BodyInferenceHeight => _bodyInferenceHeight;
+        public bool BodyInferenceDownscaleEnabled => enableBodyInferenceDownscale;
+        public bool BodyInferenceUsesScaledTexture =>
+            _bodyInferenceRenderTexture != null &&
+            (_bodyInferenceWidth != ActualCameraWidth || _bodyInferenceHeight != ActualCameraHeight);
         public float CameraFramesPerSecond { get; private set; }
         public float InferenceRequestsPerSecond { get; private set; }
         public float ResultCallbacksPerSecond { get; private set; }
@@ -265,6 +346,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
 
             if (Status != PoseProviderStatus.Ready || _webCamTexture == null || _poseLandmarker == null || _textureFramePool == null)
+            {
+                return;
+            }
+
+            if (!EnsureBodyInferenceResources())
             {
                 return;
             }
@@ -450,12 +536,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     resultCallback: OnPoseLandmarkerResult);
 
                 _poseLandmarker = PoseLandmarker.CreateFromOptions(options);
-                _textureFramePool = new TextureFramePool(ActualCameraWidth, ActualCameraHeight, TextureFormat.RGBA32, 2);
+                RebuildBodyInferenceResources();
                 UpdateInputTransform();
                 _inferenceScheduler.Reset();
                 Status = PoseProviderStatus.Ready;
                 StatusMessage = "Camera and CPU Pose Landmarker are ready";
-                UnityEngine.Debug.Log($"[PoseTrackingSpike] Ready: camera={SelectedCameraName}, resolution={ActualCameraWidth}x{ActualCameraHeight}, requestedFps={requestedCameraFps}, model={ModelFileName}, delegate=CPU, poses=1, segmentation=false");
+                UnityEngine.Debug.Log($"[PoseTrackingSpike] Ready: camera={SelectedCameraName}, resolution={ActualCameraWidth}x{ActualCameraHeight}, bodyInference={BodyInferenceWidth}x{BodyInferenceHeight}, bodyMode={(BodyInferenceUsesScaledTexture ? "scaled" : "native")}, requestedFps={requestedCameraFps}, model={ModelFileName}, delegate=CPU, poses=1, segmentation=false");
             }
             catch (Exception exception)
             {
@@ -506,6 +592,92 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             UnityEngine.Debug.Log($"[PoseTrackingSpike] Webcam started: {_selectedDevice.name}, actualResolution={ActualCameraWidth}x{ActualCameraHeight}, requestedFps={requestedCameraFps}, rotation={VideoRotationAngle}, verticallyMirrored={VideoVerticallyMirrored}");
         }
 
+        private bool EnsureBodyInferenceResources()
+        {
+            var desiredDimensions = BodyInferenceResolution.Calculate(
+                ActualCameraWidth,
+                ActualCameraHeight,
+                enableBodyInferenceDownscale,
+                bodyInferenceLongEdge);
+            var configurationMatches = _textureFramePool != null &&
+                _configuredCameraWidth == ActualCameraWidth &&
+                _configuredCameraHeight == ActualCameraHeight &&
+                _configuredBodyInferenceDownscale == enableBodyInferenceDownscale &&
+                _configuredBodyInferenceLongEdge == BodyInferenceResolution.ClampLongEdge(bodyInferenceLongEdge) &&
+                _bodyInferenceWidth == desiredDimensions.x &&
+                _bodyInferenceHeight == desiredDimensions.y;
+            if (configurationMatches)
+            {
+                return true;
+            }
+
+            if (_readbackPending || Volatile.Read(ref _inferenceOutstanding) != 0)
+            {
+                return false;
+            }
+
+            if (_preparedTextureFrame != null)
+            {
+                ReleasePreparedFrame();
+            }
+
+            try
+            {
+                RebuildBodyInferenceResources();
+                return _textureFramePool != null;
+            }
+            catch (Exception exception)
+            {
+                SetFailure(PoseProviderStatus.InferenceFailed, $"Body inference resource setup failed: {exception.Message}");
+                UnityEngine.Debug.LogException(exception, this);
+                return false;
+            }
+        }
+
+        private void RebuildBodyInferenceResources()
+        {
+            ReleaseBodyInferenceRenderTexture();
+            _textureFramePool?.Dispose();
+            _textureFramePool = null;
+
+            var dimensions = BodyInferenceResolution.Calculate(
+                ActualCameraWidth,
+                ActualCameraHeight,
+                enableBodyInferenceDownscale,
+                bodyInferenceLongEdge);
+            _bodyInferenceWidth = dimensions.x;
+            _bodyInferenceHeight = dimensions.y;
+
+            if (_bodyInferenceWidth != ActualCameraWidth || _bodyInferenceHeight != ActualCameraHeight)
+            {
+                _bodyInferenceRenderTexture = new RenderTexture(
+                    _bodyInferenceWidth,
+                    _bodyInferenceHeight,
+                    0,
+                    RenderTextureFormat.ARGB32,
+                    RenderTextureReadWrite.Default)
+                {
+                    name = "GoldenNeedle Body Pose Inference",
+                    filterMode = FilterMode.Bilinear,
+                    wrapMode = TextureWrapMode.Clamp,
+                    useMipMap = false,
+                    autoGenerateMips = false,
+                    antiAliasing = 1
+                };
+                _bodyInferenceRenderTexture.Create();
+            }
+
+            _textureFramePool = new TextureFramePool(
+                _bodyInferenceWidth,
+                _bodyInferenceHeight,
+                TextureFormat.RGBA32,
+                2);
+            _configuredCameraWidth = ActualCameraWidth;
+            _configuredCameraHeight = ActualCameraHeight;
+            _configuredBodyInferenceDownscale = enableBodyInferenceDownscale;
+            _configuredBodyInferenceLongEdge = BodyInferenceResolution.ClampLongEdge(bodyInferenceLongEdge);
+        }
+
         private IEnumerator CapturePreparedFrameAsync(
             TextureFrame textureFrame,
             double frameObservedAtSeconds,
@@ -517,7 +689,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             var readbackStartedAtSeconds = NowSeconds();
             try
             {
-                request = textureFrame.ReadTextureAsync(_webCamTexture, flipHorizontally, flipVertically);
+                Texture readbackSource = _webCamTexture;
+                if (_bodyInferenceRenderTexture != null)
+                {
+                    Graphics.Blit(_webCamTexture, _bodyInferenceRenderTexture);
+                    readbackSource = _bodyInferenceRenderTexture;
+                }
+
+                request = textureFrame.ReadTextureAsync(readbackSource, flipHorizontally, flipVertically);
             }
             catch (Exception exception)
             {
@@ -888,7 +1067,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             if (Status == PoseProviderStatus.Ready && !_cameraSwitchPending)
             {
                 StatusMessage =
-                    $"Camera/Pose ready | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
+                    $"Camera/Pose ready | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
                     $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s";
             }
 
@@ -962,10 +1141,31 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
             _textureFramePool?.Dispose();
             _textureFramePool = null;
+            ReleaseBodyInferenceRenderTexture();
+            _bodyInferenceWidth = 0;
+            _bodyInferenceHeight = 0;
+            _configuredCameraWidth = 0;
+            _configuredCameraHeight = 0;
             StopCamera();
             _inferenceScheduler.Reset();
             _readbackPending = false;
             Interlocked.Exchange(ref _inferenceOutstanding, 0);
+        }
+
+        private void ReleaseBodyInferenceRenderTexture()
+        {
+            if (_bodyInferenceRenderTexture == null)
+            {
+                return;
+            }
+
+            if (_bodyInferenceRenderTexture.IsCreated())
+            {
+                _bodyInferenceRenderTexture.Release();
+            }
+
+            Destroy(_bodyInferenceRenderTexture);
+            _bodyInferenceRenderTexture = null;
         }
 
         private void StopCamera()

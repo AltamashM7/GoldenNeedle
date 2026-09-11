@@ -75,7 +75,13 @@ A newer completed readback replaces/releases an older prepared frame. There is n
 
 Orientation/convention version is snapshotted for each readback. Prepared work from an obsolete coordinate convention is discarded rather than submitted. Camera switching still waits for active readback/inference, then the ordinary cleanup path releases any prepared frame before provider restart.
 
-No separate inference resolution was introduced in this checkpoint. Benchmark the source-proven scheduling fix first.
+## Bounded body-pose inference experiment
+
+The provider now contains one reversible, body-pose-only resolution experiment. The full-resolution `WebCamTexture` remains the authoritative `CameraTexture` and Lab display source. When enabled, the newest source frame is scale-submitted into one persistent, aspect-preserving inference `RenderTexture` before the existing `TextureFrame.ReadTextureAsync` path. The default target is a `320`-pixel long edge, producing `320x240` from `640x480` and `240x320` from `480x640`. Disabling the option uses the exact actual camera dimensions.
+
+The `TextureFramePool` matches the body-inference texture, resource lifecycle follows camera start/restart/switch/shutdown, and the one-readback/one-prepared-frame/one-inference latest-frame policy is unchanged. Existing orientation metadata, flip arguments and `ImageProcessingOptions` rotation are preserved; the scale submission itself does not rotate or mirror. F7 reports the body input dimensions and whether the active path is `scaled` or `native`.
+
+This checkpoint is not USER accepted; the USER must run the comparable `640x480` native versus approximately `320x240` body-inference A/B benchmark. The lower body-pose resolution is not a master camera resolution and does not constrain future high-detail hand/finger tracking, which may use the unchanged full-resolution camera or separate high-resolution hand ROIs. No hand/finger tracking was added. Phase 5A remains **NOT USER ACCEPTED** and Phase 6 remains **NOT STARTED**.
 
 ## F7 diagnostics
 
