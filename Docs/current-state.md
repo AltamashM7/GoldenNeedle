@@ -85,6 +85,8 @@ The fitted whole-frame Lab preview introduced at `db9c4a175f5a1bf607ec25e182d06c
 
 Unity's `Display 1 — No cameras rendering` message was a Lab presentation artifact, not a webcam-resolution problem. The persistent third-person Camera used to be disabled in Lab while the webcam was drawn only by IMGUI. It now stays enabled in Lab as a lightweight clear-only camera with `cullingMask = 0`; therefore Unity has a valid camera without rendering the world a second time. F12 Game View restores the original camera culling/clear/background settings and keeps the existing follow behavior. The IMGUI webcam/fitted geometry is not changed by this fix.
 
+`ThirdPersonLabCamera` normalizes the controlled camera Transform quaternion immediately before enabling the Camera. This preserves the intentional clear-only Lab mode while preventing URP `Camera.GetCullingParameters` `QuaternionToEuler` spam from slightly non-unit serialized camera rotations.
+
 ## Motion Engine behavior preserved
 
 The source audit confirmed the downstream latest-result model is already appropriate:

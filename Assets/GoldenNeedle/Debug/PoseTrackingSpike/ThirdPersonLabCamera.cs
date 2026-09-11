@@ -270,6 +270,15 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             // Keep one lightweight Camera active in Lab so Unity does not display the
             // "No cameras rendering" placeholder. The webcam remains an IMGUI presentation
             // drawn later and retains its fitted whole-frame geometry.
+            var cameraRotation = controlledCamera.transform.rotation;
+            if (!TryNormalizeQuaternion(ref cameraRotation))
+            {
+                // An invalid camera rotation cannot preserve a meaningful orientation. Use a
+                // known-valid fallback before allowing the Camera back into the render path.
+                cameraRotation = Quaternion.identity;
+            }
+
+            controlledCamera.transform.rotation = cameraRotation;
             controlledCamera.enabled = true;
             if (_gameViewActive)
             {
@@ -282,6 +291,45 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             controlledCamera.cullingMask = 0;
             controlledCamera.clearFlags = CameraClearFlags.SolidColor;
             controlledCamera.backgroundColor = Color.black;
+        }
+
+        private static bool TryNormalizeQuaternion(ref Quaternion rotation)
+        {
+            if (!IsFinite(rotation.x) ||
+                !IsFinite(rotation.y) ||
+                !IsFinite(rotation.z) ||
+                !IsFinite(rotation.w))
+            {
+                return false;
+            }
+
+            var magnitudeSquared =
+                rotation.x * rotation.x +
+                rotation.y * rotation.y +
+                rotation.z * rotation.z +
+                rotation.w * rotation.w;
+            if (!IsFinite(magnitudeSquared) || magnitudeSquared <= 0.000000000001f)
+            {
+                return false;
+            }
+
+            var magnitude = Mathf.Sqrt(magnitudeSquared);
+            if (!IsFinite(magnitude) || magnitude <= 0.000001f)
+            {
+                return false;
+            }
+
+            rotation = new Quaternion(
+                rotation.x / magnitude,
+                rotation.y / magnitude,
+                rotation.z / magnitude,
+                rotation.w / magnitude);
+            return true;
+        }
+
+        private static bool IsFinite(float value)
+        {
+            return !float.IsNaN(value) && !float.IsInfinity(value);
         }
     }
 }

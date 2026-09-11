@@ -105,6 +105,8 @@ The webcam is still drawn by IMGUI and continues to use the fitted `LabCameraPre
 
 `ThirdPersonLabCamera` now keeps its Camera component enabled in Lab but with `cullingMask=0`, `SolidColor` clear and black background. This removes Unity's `Display 1 — No cameras rendering` placeholder without a second world render. In F12 Game View, original culling mask, clear flags and background color are restored and the same existing third-person follow behavior runs. F12 still causes `PoseTrackingSpikePresenter.OnGUI()` to return before drawing webcam/debug IMGUI.
 
+Before enabling the controlled Camera, `ThirdPersonLabCamera` now safely normalizes its Transform quaternion component-wise (with finite/near-zero validation). The intentional clear-only Lab presentation remains unchanged; this prevents URP `Camera.GetCullingParameters` `QuaternionToEuler` spam from slightly non-unit serialized camera rotations.
+
 ## Frozen behavior / do not reopen
 
 Preserve unless new reproducible USER evidence requires otherwise:
