@@ -5,9 +5,10 @@ using UnityEngine;
 namespace GoldenNeedle.Debug.PoseTrackingSpike
 {
     /// <summary>
-    /// Presentation-only third-person camera for the Motion Engine Lab. It follows the bound
-    /// avatar root and the persistent mapped world heading from Phase 5A. The Camera component is
-    /// disabled in Lab View and enabled only while F12 Game View is active.
+    /// Presentation-only third-person camera for the Motion Engine Lab. In Lab View the Camera
+    /// remains enabled as a clear-only, culling-mask-zero camera so Unity has a valid render target
+    /// behind the IMGUI webcam without rendering the world. F12 restores the original world camera
+    /// settings and enables the existing third-person follow behavior.
     /// </summary>
     [DefaultExecutionOrder(200)]
     public sealed class ThirdPersonLabCamera : MonoBehaviour
@@ -39,16 +40,27 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         private bool _gameViewActive;
         private bool _hasHeading;
         private Vector2 _smoothedHeading;
+        private Camera _capturedCamera;
+        private int _gameCullingMask;
+        private CameraClearFlags _gameClearFlags;
+        private Color _gameBackgroundColor;
 
         public bool IsGameViewActive => _gameViewActive;
         public bool HasRetainedHeading => _hasHeading;
         public Vector2 RetainedHeadingXZ => _smoothedHeading;
+        public bool IsLabClearOnly =>
+            controlledCamera != null &&
+            controlledCamera.enabled &&
+            controlledCamera.cullingMask == 0 &&
+            controlledCamera.clearFlags == CameraClearFlags.SolidColor &&
+            !_gameViewActive;
 
         private void Awake()
         {
             ResolveReferences();
+            CaptureGameCameraSettings();
             ApplyCameraSettings();
-            SetCameraEnabled(false);
+            ApplyCameraRenderMode();
         }
 
         private void OnValidate()
@@ -71,8 +83,9 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         {
             _gameViewActive = active;
             ResolveReferences();
+            CaptureGameCameraSettings();
             ApplyCameraSettings();
-            SetCameraEnabled(active);
+            ApplyCameraRenderMode();
 
             if (active)
             {
@@ -156,6 +169,19 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             }
         }
 
+        private void CaptureGameCameraSettings()
+        {
+            if (controlledCamera == null || controlledCamera == _capturedCamera)
+            {
+                return;
+            }
+
+            _capturedCamera = controlledCamera;
+            _gameCullingMask = controlledCamera.cullingMask;
+            _gameClearFlags = controlledCamera.clearFlags;
+            _gameBackgroundColor = controlledCamera.backgroundColor;
+        }
+
         private Transform ResolvePlayerRoot()
         {
             if (locomotion != null && locomotion.PlayerRoot != null)
@@ -234,12 +260,28 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             }
         }
 
-        private void SetCameraEnabled(bool enabled)
+        private void ApplyCameraRenderMode()
         {
-            if (controlledCamera != null)
+            if (controlledCamera == null)
             {
-                controlledCamera.enabled = enabled;
+                return;
             }
+
+            // Keep one lightweight Camera active in Lab so Unity does not display the
+            // "No cameras rendering" placeholder. The webcam remains an IMGUI presentation
+            // drawn later and retains its fitted whole-frame geometry.
+            controlledCamera.enabled = true;
+            if (_gameViewActive)
+            {
+                controlledCamera.cullingMask = _gameCullingMask;
+                controlledCamera.clearFlags = _gameClearFlags;
+                controlledCamera.backgroundColor = _gameBackgroundColor;
+                return;
+            }
+
+            controlledCamera.cullingMask = 0;
+            controlledCamera.clearFlags = CameraClearFlags.SolidColor;
+            controlledCamera.backgroundColor = Color.black;
         }
     }
 }

@@ -31,7 +31,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
     /// <summary>
     /// Main-thread request cadence helper. Busy frames never advance timing state, so once the
-    /// previous readback/inference finishes, the next Update may launch immediately if the minimum
+    /// previous inference finishes, the next prepared frame may launch immediately if the minimum
     /// interval since the last accepted request has already elapsed. There is no queue/backlog.
     /// </summary>
     public sealed class InferenceLaunchScheduler
@@ -63,19 +63,37 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             double nowSeconds,
             double minimumIntervalSeconds,
             bool busy,
-            bool freshFrameAvailable = true)
+            bool preparedFrameAvailable = true)
         {
-            return freshFrameAvailable &&
+            return preparedFrameAvailable &&
                 !busy &&
-                IsIntervalElapsed(
-                    nowSeconds,
-                    minimumIntervalSeconds);
+                IsIntervalElapsed(nowSeconds, minimumIntervalSeconds);
         }
 
         public void MarkAccepted(double nowSeconds)
         {
             _hasAcceptedRequest = true;
             _lastAcceptedRequestAtSeconds = nowSeconds;
+        }
+    }
+
+    /// <summary>
+    /// Pure policy surface for deterministic tests of the bounded latest-frame pipeline.
+    /// Readback may overlap one active inference, but neither stage can have more than one item.
+    /// </summary>
+    public static class LatestFramePipelinePolicy
+    {
+        public static bool CanStartReadback(bool readbackPending, bool freshFramePending)
+        {
+            return !readbackPending && freshFramePending;
+        }
+
+        public static bool CanLaunchInference(
+            bool preparedFrameAvailable,
+            bool inferenceOutstanding,
+            bool intervalElapsed)
+        {
+            return preparedFrameAvailable && !inferenceOutstanding && intervalElapsed;
         }
     }
 
@@ -91,8 +109,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField] private int requestedCameraFps = 30;
         [SerializeField] private float cameraStartupTimeoutSeconds = 8f;
         [Tooltip("Use Auto for WebCamTexture metadata, or override quarter-turn rotation for USB/virtual camera drivers with incorrect orientation metadata.")]
-        [SerializeField] private CameraRotationOverride manualRotationOverride =
-            CameraRotationOverride.Auto;
+        [SerializeField] private CameraRotationOverride manualRotationOverride = CameraRotationOverride.Auto;
         [Tooltip("Optional selfie-style display mirror. Canonical left/right semantics are not changed.")]
         [SerializeField] private bool mirrorFrontFacingDisplay;
 
@@ -104,8 +121,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private readonly object _observationGate = new object();
         private readonly double[] _lastTrackedAtSeconds = new double[PoseObservation.LandmarkCount];
         private readonly Stopwatch _clock = Stopwatch.StartNew();
-        private readonly InferenceLaunchScheduler _inferenceScheduler =
-            new InferenceLaunchScheduler();
+        private readonly InferenceLaunchScheduler _inferenceScheduler = new InferenceLaunchScheduler();
 
         private PoseObservation _pendingObservation;
         private PoseObservation _latestObservation;
@@ -116,17 +132,31 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private Coroutine _bootstrapCoroutine;
         private bool _readbackPending;
         private bool _freshCameraFramePending;
+        private double _latestFreshFrameObservedAtSeconds;
+        private TextureFrame _preparedTextureFrame;
+        private double _preparedFrameObservedAtSeconds;
+        private int _preparedCoordinateConventionVersion;
         private bool _shuttingDown;
         private bool _cameraSwitchPending;
         private string _pendingCameraName = string.Empty;
         private string _pendingPreferredCameraName = string.Empty;
         private double _inferenceStartedAtSeconds;
+        private double _activeInferenceFrameObservedAtSeconds;
         private double _metricsWindowStartedAtSeconds;
         private int _inferenceOutstanding;
         private int _requestsInWindow;
         private int _resultsInWindow;
+        private int _callbacksInWindow;
         private int _skippedInWindow;
         private int _cameraFramesInWindow;
+        private int _noFreshFrameWaitsInWindow;
+        private int _targetIntervalWaitsInWindow;
+        private int _readbackBusyWaitsInWindow;
+        private int _inferenceBusyWaitsInWindow;
+        private int _textureFramePoolWaitsInWindow;
+        private int _readbackFailuresInWindow;
+        private int _readbackTimeoutsInWindow;
+        private int _preparedFrameReplacementsInWindow;
         private int _resultCallbackReceived;
         private int _resultCallbackLogPublished;
         private int _totalInferenceRequests;
@@ -161,12 +191,27 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public Texture CameraTexture => _webCamTexture;
         public float CameraFramesPerSecond { get; private set; }
         public float InferenceRequestsPerSecond { get; private set; }
+        public float ResultCallbacksPerSecond { get; private set; }
         public float PoseResultsPerSecond { get; private set; }
+        public float NoFreshFrameWaitsPerSecond { get; private set; }
+        public float TargetIntervalWaitsPerSecond { get; private set; }
+        public float ReadbackBusyWaitsPerSecond { get; private set; }
+        public float InferenceBusyWaitsPerSecond { get; private set; }
+        public float TextureFramePoolWaitsPerSecond { get; private set; }
+        public float ReadbackFailuresPerSecond { get; private set; }
+        public float ReadbackTimeoutsPerSecond { get; private set; }
+        public float PreparedFrameReplacementsPerSecond { get; private set; }
+        public bool HasPreparedFrame => _preparedTextureFrame != null;
+        public bool ReadbackPending => _readbackPending;
+        public bool InferencePending => Volatile.Read(ref _inferenceOutstanding) != 0;
         public bool HasReceivedResult => Volatile.Read(ref _resultCallbackReceived) != 0;
         public int TotalInferenceRequests => Volatile.Read(ref _totalInferenceRequests);
         public int TotalResultCallbacks => Volatile.Read(ref _totalResultCallbacks);
         public int SkippedInferenceOpportunities { get; private set; }
+        public float LastGpuReadbackDurationMilliseconds { get; private set; }
+        public float LastCpuImageBuildDurationMilliseconds { get; private set; }
         public float LastInferenceDurationMilliseconds { get; private set; }
+        public float LastApproxFrameToResultMilliseconds { get; private set; }
         public double LatestPoseAgeMilliseconds
         {
             get
@@ -175,7 +220,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 {
                     return _latestObservation.receivedAtSeconds <= 0
                         ? double.PositiveInfinity
-                        : Mathf.Max(0f, (float)((NowSeconds() - _latestObservation.receivedAtSeconds) * 1000d));
+                        : Math.Max(0d, (NowSeconds() - _latestObservation.receivedAtSeconds) * 1000d);
                 }
             }
         }
@@ -216,8 +261,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 {
                     ExecutePendingCameraSwitch();
                 }
-
-                // Once a switch is requested, do not start any additional old-camera work.
                 return;
             }
 
@@ -226,50 +269,137 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
-            var freshCameraFrame = _webCamTexture.didUpdateThisFrame;
-            if (freshCameraFrame)
+            var now = NowSeconds();
+            if (_webCamTexture.didUpdateThisFrame)
             {
                 _cameraFramesInWindow++;
-                // One-bit latest-frame latch: multiple arrivals collapse to the newest
-                // WebCamTexture image. This is not a frame queue.
                 _freshCameraFramePending = true;
+                _latestFreshFrameObservedAtSeconds = now;
             }
 
             UpdateInputTransform();
 
-            var now = NowSeconds();
             var interval = 1d / Mathf.Max(1f, targetInferenceFps);
-            var busy =
-                _readbackPending ||
-                Volatile.Read(ref _inferenceOutstanding) != 0;
+            TryLaunchPreparedInference(now, interval);
+            TryStartLatestReadback();
+        }
 
-            if (!_inferenceScheduler.CanLaunch(
-                    now,
-                    interval,
-                    busy,
-                    _freshCameraFramePending))
+        private void TryLaunchPreparedInference(double now, double interval)
+        {
+            if (_preparedTextureFrame == null)
             {
-                if (busy &&
-                    _freshCameraFramePending &&
-                    _inferenceScheduler.IsIntervalElapsed(
-                        now,
-                        interval))
-                {
-                    _skippedInWindow++;
-                }
+                return;
+            }
 
+            if (_preparedCoordinateConventionVersion != _coordinateConventionVersion)
+            {
+                ReleasePreparedFrame();
+                return;
+            }
+
+            if (Volatile.Read(ref _inferenceOutstanding) != 0)
+            {
+                _inferenceBusyWaitsInWindow++;
+                _skippedInWindow++;
+                return;
+            }
+
+            if (!_inferenceScheduler.IsIntervalElapsed(now, interval))
+            {
+                _targetIntervalWaitsInWindow++;
+                _skippedInWindow++;
+                return;
+            }
+
+            var textureFrame = _preparedTextureFrame;
+            var frameObservedAtSeconds = _preparedFrameObservedAtSeconds;
+            _preparedTextureFrame = null;
+            _preparedFrameObservedAtSeconds = 0d;
+            _preparedCoordinateConventionVersion = 0;
+
+            var frameReleased = false;
+            try
+            {
+                var buildStartedAtSeconds = NowSeconds();
+                using (var image = textureFrame.BuildCPUImage())
+                {
+                    LastCpuImageBuildDurationMilliseconds = (float)((NowSeconds() - buildStartedAtSeconds) * 1000d);
+                    textureFrame.Release();
+                    frameReleased = true;
+
+                    var timestampMillisec = _clock.ElapsedMilliseconds;
+                    Interlocked.Exchange(ref _inferenceOutstanding, 1);
+                    _inferenceStartedAtSeconds = NowSeconds();
+                    _activeInferenceFrameObservedAtSeconds = frameObservedAtSeconds;
+
+                    try
+                    {
+                        _poseLandmarker.DetectAsync(image, timestampMillisec, _imageProcessingOptions);
+                        _inferenceScheduler.MarkAccepted(NowSeconds());
+                        Interlocked.Increment(ref _totalInferenceRequests);
+                        _requestsInWindow++;
+                        if (!_inferenceRequestLogPublished)
+                        {
+                            _inferenceRequestLogPublished = true;
+                            UnityEngine.Debug.Log("[PoseTrackingSpike] Live inference request accepted");
+                        }
+                    }
+                    catch (Exception exception)
+                    {
+                        Interlocked.Exchange(ref _inferenceOutstanding, 0);
+                        SetFailure(PoseProviderStatus.InferenceFailed, $"Pose inference request failed: {exception.Message}");
+                        UnityEngine.Debug.LogException(exception, this);
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                if (!frameReleased)
+                {
+                    textureFrame.Release();
+                }
+                SetFailure(PoseProviderStatus.InferenceFailed, $"Camera frame preparation failed: {exception.Message}");
+                UnityEngine.Debug.LogException(exception, this);
+            }
+        }
+
+        private void TryStartLatestReadback()
+        {
+            if (_readbackPending)
+            {
+                if (_freshCameraFramePending)
+                {
+                    _readbackBusyWaitsInWindow++;
+                }
+                return;
+            }
+
+            if (!_freshCameraFramePending)
+            {
+                _noFreshFrameWaitsInWindow++;
                 return;
             }
 
             if (!_textureFramePool.TryGetTextureFrame(out var textureFrame))
             {
+                _textureFramePoolWaitsInWindow++;
                 _skippedInWindow++;
                 return;
             }
 
+            var frameObservedAtSeconds = _latestFreshFrameObservedAtSeconds;
+            var coordinateConventionVersion = _coordinateConventionVersion;
+            var flipHorizontally = _orientation.InferenceFlipHorizontally;
+            var flipVertically = _orientation.InferenceFlipVertically;
+
             _freshCameraFramePending = false;
             _readbackPending = true;
-            StartCoroutine(CaptureAndInferAsync(textureFrame));
+            StartCoroutine(CapturePreparedFrameAsync(
+                textureFrame,
+                frameObservedAtSeconds,
+                coordinateConventionVersion,
+                flipHorizontally,
+                flipVertically));
         }
 
         private IEnumerator BootstrapAsync()
@@ -376,23 +506,24 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             UnityEngine.Debug.Log($"[PoseTrackingSpike] Webcam started: {_selectedDevice.name}, actualResolution={ActualCameraWidth}x{ActualCameraHeight}, requestedFps={requestedCameraFps}, rotation={VideoRotationAngle}, verticallyMirrored={VideoVerticallyMirrored}");
         }
 
-        private IEnumerator CaptureAndInferAsync(TextureFrame textureFrame)
+        private IEnumerator CapturePreparedFrameAsync(
+            TextureFrame textureFrame,
+            double frameObservedAtSeconds,
+            int coordinateConventionVersion,
+            bool flipHorizontally,
+            bool flipVertically)
         {
             AsyncGPUReadbackRequest request = default;
+            var readbackStartedAtSeconds = NowSeconds();
             try
             {
-                // Readback flips and ImageProcessingOptions rotation construct the canonical
-                // inference image. MediaPipe landmark outputs stay in that frame; they are not
-                // mapped back to WebCamTexture/sensor coordinates downstream.
-                request = textureFrame.ReadTextureAsync(
-                    _webCamTexture,
-                    _orientation.InferenceFlipHorizontally,
-                    _orientation.InferenceFlipVertically);
+                request = textureFrame.ReadTextureAsync(_webCamTexture, flipHorizontally, flipVertically);
             }
             catch (Exception exception)
             {
                 textureFrame.Release();
                 _readbackPending = false;
+                _readbackFailuresInWindow++;
                 SetFailure(PoseProviderStatus.InferenceFailed, $"Camera readback setup failed: {exception.Message}");
                 UnityEngine.Debug.LogException(exception, this);
                 yield break;
@@ -404,73 +535,43 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 yield return null;
             }
 
+            LastGpuReadbackDurationMilliseconds = (float)((NowSeconds() - readbackStartedAtSeconds) * 1000d);
+
             if (!request.done || request.hasError)
             {
                 textureFrame.Release();
                 _readbackPending = false;
                 _skippedInWindow++;
-                StatusMessage = request.hasError ? "Camera frame readback failed; retrying" : "Camera frame readback timed out; retrying";
+                if (request.hasError)
+                {
+                    _readbackFailuresInWindow++;
+                    StatusMessage = "Camera frame readback failed; retrying";
+                }
+                else
+                {
+                    _readbackTimeoutsInWindow++;
+                    StatusMessage = "Camera frame readback timed out; retrying";
+                }
                 yield break;
             }
 
-            if (Volatile.Read(ref _inferenceOutstanding) != 0 || _poseLandmarker == null || _shuttingDown)
+            if (_shuttingDown || coordinateConventionVersion != _coordinateConventionVersion || _poseLandmarker == null)
             {
                 textureFrame.Release();
                 _readbackPending = false;
-                _skippedInWindow++;
                 yield break;
             }
 
-            var frameReleased = false;
-            try
+            if (_preparedTextureFrame != null)
             {
-                using (var image = textureFrame.BuildCPUImage())
-                {
-                    textureFrame.Release();
-                    frameReleased = true;
-                    var timestampMillisec = _clock.ElapsedMilliseconds;
-                    Interlocked.Exchange(ref _inferenceOutstanding, 1);
-                    _inferenceStartedAtSeconds = NowSeconds();
+                _preparedTextureFrame.Release();
+                _preparedFrameReplacementsInWindow++;
+            }
 
-                    try
-                    {
-                        // DetectAsync takes ownership of the image through the input packet.
-                        // LIVE_STREAM mode invokes OnPoseLandmarkerResult off the Unity main thread.
-                        _poseLandmarker.DetectAsync(
-                            image,
-                            timestampMillisec,
-                            _imageProcessingOptions);
-                        _inferenceScheduler.MarkAccepted(
-                            NowSeconds());
-                        Interlocked.Increment(ref _totalInferenceRequests);
-                        _requestsInWindow++;
-                        if (!_inferenceRequestLogPublished)
-                        {
-                            _inferenceRequestLogPublished = true;
-                            UnityEngine.Debug.Log("[PoseTrackingSpike] Live inference request accepted");
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        Interlocked.Exchange(ref _inferenceOutstanding, 0);
-                        SetFailure(PoseProviderStatus.InferenceFailed, $"Pose inference request failed: {exception.Message}");
-                        UnityEngine.Debug.LogException(exception, this);
-                    }
-                }
-            }
-            catch (Exception exception)
-            {
-                if (!frameReleased)
-                {
-                    textureFrame.Release();
-                }
-                SetFailure(PoseProviderStatus.InferenceFailed, $"Camera frame preparation failed: {exception.Message}");
-                UnityEngine.Debug.LogException(exception, this);
-            }
-            finally
-            {
-                _readbackPending = false;
-            }
+            _preparedTextureFrame = textureFrame;
+            _preparedFrameObservedAtSeconds = frameObservedAtSeconds;
+            _preparedCoordinateConventionVersion = coordinateConventionVersion;
+            _readbackPending = false;
         }
 
         private void OnPoseLandmarkerResult(PoseLandmarkerResult result, Image _, long timestampMillisec)
@@ -482,6 +583,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
             Interlocked.Exchange(ref _resultCallbackReceived, 1);
             Interlocked.Increment(ref _totalResultCallbacks);
+            Interlocked.Increment(ref _callbacksInWindow);
 
             var receivedAtSeconds = NowSeconds();
             var hasPose = result.poseLandmarks != null && result.poseLandmarks.Count > 0 && result.poseLandmarks[0].landmarks != null;
@@ -552,6 +654,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
 
             LastInferenceDurationMilliseconds = (float)((receivedAtSeconds - _inferenceStartedAtSeconds) * 1000d);
+            LastApproxFrameToResultMilliseconds = _activeInferenceFrameObservedAtSeconds > 0d
+                ? (float)((receivedAtSeconds - _activeInferenceFrameObservedAtSeconds) * 1000d)
+                : 0f;
             Interlocked.Exchange(ref _inferenceOutstanding, 0);
             if (hasPose)
             {
@@ -574,16 +679,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         public void Retry()
         {
-            if (_bootstrapCoroutine != null ||
-                _readbackPending ||
-                Volatile.Read(ref _inferenceOutstanding) != 0 ||
-                _cameraSwitchPending)
+            if (_bootstrapCoroutine != null || _readbackPending || Volatile.Read(ref _inferenceOutstanding) != 0 || _cameraSwitchPending)
             {
                 return;
             }
-
-            RestartProvider(
-                invalidateCameraSession: false);
+            RestartProvider(invalidateCameraSession: false);
         }
 
         public bool RequestCycleCamera()
@@ -591,22 +691,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             var devices = WebCamTexture.devices;
             CameraDeviceCount = devices.Length;
             var names = GetDeviceNames(devices);
-            var currentName = !string.IsNullOrWhiteSpace(SelectedCameraName)
-                ? SelectedCameraName
-                : preferredCameraName;
-            var nextName = CameraDeviceSelection.GetNextUsableDeviceName(
-                names,
-                currentName);
-            if (string.IsNullOrWhiteSpace(nextName) ||
-                string.Equals(
-                    nextName,
-                    currentName,
-                    StringComparison.OrdinalIgnoreCase))
+            var currentName = !string.IsNullOrWhiteSpace(SelectedCameraName) ? SelectedCameraName : preferredCameraName;
+            var nextName = CameraDeviceSelection.GetNextUsableDeviceName(names, currentName);
+            if (string.IsNullOrWhiteSpace(nextName) || string.Equals(nextName, currentName, StringComparison.OrdinalIgnoreCase))
             {
                 StatusMessage = "No alternate usable color/webcam device is available";
                 return false;
             }
-
             return RequestCameraSwitch(nextName);
         }
 
@@ -615,10 +706,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             var devices = WebCamTexture.devices;
             CameraDeviceCount = devices.Length;
             var names = GetDeviceNames(devices);
-            var selectedIndex =
-                CameraDeviceSelection.SelectPreferredOrFallbackIndex(
-                    names,
-                    preferredName);
+            var selectedIndex = CameraDeviceSelection.SelectPreferredOrFallbackIndex(names, preferredName);
             if (selectedIndex < 0)
             {
                 StatusMessage = "No webcam devices are available for switching";
@@ -626,17 +714,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
 
             var targetName = names[selectedIndex];
-            var preferredIdentity =
-                string.IsNullOrWhiteSpace(preferredName)
-                    ? string.Empty
-                    : targetName;
-
-            if (!_cameraSwitchPending &&
-                Status == PoseProviderStatus.Ready &&
-                string.Equals(
-                    SelectedCameraName,
-                    targetName,
-                    StringComparison.OrdinalIgnoreCase))
+            var preferredIdentity = string.IsNullOrWhiteSpace(preferredName) ? string.Empty : targetName;
+            if (!_cameraSwitchPending && Status == PoseProviderStatus.Ready && string.Equals(SelectedCameraName, targetName, StringComparison.OrdinalIgnoreCase))
             {
                 preferredCameraName = preferredIdentity;
                 StatusMessage = $"Camera already active: {targetName}";
@@ -662,9 +741,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _cameraSwitchPending = false;
             _pendingCameraName = string.Empty;
             _pendingPreferredCameraName = string.Empty;
-
-            RestartProvider(
-                invalidateCameraSession: true);
+            RestartProvider(invalidateCameraSession: true);
             StatusMessage = $"Switching camera: {targetName}";
         }
 
@@ -672,14 +749,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         {
             CleanupRuntime();
             ClearProviderSessionState();
-
             if (invalidateCameraSession)
             {
-                // A different physical camera/framing invalidates old calibration and room origin
-                // even when its H/V/rotation convention happens to match the previous device.
                 _coordinateConventionVersion++;
             }
-
             Status = PoseProviderStatus.Starting;
             _bootstrapCoroutine = StartCoroutine(BootstrapAsync());
         }
@@ -688,42 +761,50 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         {
             _pendingObservation.Clear();
             _latestObservation.Clear();
-            Array.Clear(
-                _lastTrackedAtSeconds,
-                0,
-                _lastTrackedAtSeconds.Length);
-            Interlocked.Exchange(
-                ref _resultCallbackReceived,
-                0);
-            Interlocked.Exchange(
-                ref _resultCallbackLogPublished,
-                0);
-            Interlocked.Exchange(
-                ref _totalInferenceRequests,
-                0);
-            Interlocked.Exchange(
-                ref _totalResultCallbacks,
-                0);
-            Interlocked.Exchange(
-                ref _resultsInWindow,
-                0);
+            Array.Clear(_lastTrackedAtSeconds, 0, _lastTrackedAtSeconds.Length);
+            Interlocked.Exchange(ref _resultCallbackReceived, 0);
+            Interlocked.Exchange(ref _resultCallbackLogPublished, 0);
+            Interlocked.Exchange(ref _totalInferenceRequests, 0);
+            Interlocked.Exchange(ref _totalResultCallbacks, 0);
+            Interlocked.Exchange(ref _resultsInWindow, 0);
+            Interlocked.Exchange(ref _callbacksInWindow, 0);
             _requestsInWindow = 0;
             _cameraFramesInWindow = 0;
             _skippedInWindow = 0;
+            _noFreshFrameWaitsInWindow = 0;
+            _targetIntervalWaitsInWindow = 0;
+            _readbackBusyWaitsInWindow = 0;
+            _inferenceBusyWaitsInWindow = 0;
+            _textureFramePoolWaitsInWindow = 0;
+            _readbackFailuresInWindow = 0;
+            _readbackTimeoutsInWindow = 0;
+            _preparedFrameReplacementsInWindow = 0;
             _freshCameraFramePending = false;
+            _latestFreshFrameObservedAtSeconds = 0d;
+            _activeInferenceFrameObservedAtSeconds = 0d;
             InferenceRequestsPerSecond = 0f;
+            ResultCallbacksPerSecond = 0f;
             PoseResultsPerSecond = 0f;
             CameraFramesPerSecond = 0f;
+            NoFreshFrameWaitsPerSecond = 0f;
+            TargetIntervalWaitsPerSecond = 0f;
+            ReadbackBusyWaitsPerSecond = 0f;
+            InferenceBusyWaitsPerSecond = 0f;
+            TextureFramePoolWaitsPerSecond = 0f;
+            ReadbackFailuresPerSecond = 0f;
+            ReadbackTimeoutsPerSecond = 0f;
+            PreparedFrameReplacementsPerSecond = 0f;
+            LastGpuReadbackDurationMilliseconds = 0f;
+            LastCpuImageBuildDurationMilliseconds = 0f;
             LastInferenceDurationMilliseconds = 0f;
+            LastApproxFrameToResultMilliseconds = 0f;
             _metricsWindowStartedAtSeconds = NowSeconds();
             _inferenceRequestLogPublished = false;
         }
 
         private int SelectCameraIndex(WebCamDevice[] devices)
         {
-            return CameraDeviceSelection.SelectPreferredOrFallbackIndex(
-                GetDeviceNames(devices),
-                preferredCameraName);
+            return CameraDeviceSelection.SelectPreferredOrFallbackIndex(GetDeviceNames(devices), preferredCameraName);
         }
 
         private static string[] GetDeviceNames(WebCamDevice[] devices)
@@ -733,7 +814,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             {
                 names[i] = devices[i].name;
             }
-
             return names;
         }
 
@@ -744,28 +824,18 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
-            // These are pixel/input preparation flags only. Front-facing is camera metadata,
-            // not a semantic request to mirror the inference image. Golden Needle presents this
-            // WebCamTexture as an unmirrored physical camera view, and MediaPipe's landmark IDs
-            // are anatomical. Mirroring the inference pixels here would make those semantic IDs
-            // describe the opposite physical side. Keep only the transport/orientation correction.
-            var effectiveRotationDegrees =
-                CameraRotationPolicy.ResolveEffectiveRotationDegrees(
-                    _webCamTexture.videoRotationAngle,
-                    manualRotationOverride);
+            var effectiveRotationDegrees = CameraRotationPolicy.ResolveEffectiveRotationDegrees(
+                _webCamTexture.videoRotationAngle,
+                manualRotationOverride);
             var transformation = ImageTransformationOptions.Build(
                 shouldFlipHorizontally: false,
                 isVerticallyFlipped: _webCamTexture.videoVerticallyMirrored,
                 rotation: (RotationAngle)effectiveRotationDegrees);
 
             var nextOrientation = new CameraOrientationState(
-                // This field is the effective rotation used by both inference and Lab display.
-                // VideoRotationAngle separately exposes the driver's reported raw metadata.
                 sensorRotationDegrees: effectiveRotationDegrees,
                 sensorVerticallyMirrored: _webCamTexture.videoVerticallyMirrored,
                 frontFacing: _selectedDevice.isFrontFacing,
-                // WebCamTexture is presented from its sensor metadata as-is. Do not infer an
-                // extra display mirror merely because the selected device is front-facing.
                 sourceTextureHorizontallyMirrored: false,
                 displayMirrored: mirrorFrontFacingDisplay,
                 inferenceFlipHorizontally: transformation.flipHorizontally,
@@ -798,15 +868,41 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
 
             var requests = _requestsInWindow;
+            var callbacks = Interlocked.Exchange(ref _callbacksInWindow, 0);
             var results = Interlocked.Exchange(ref _resultsInWindow, 0);
             var cameraFrames = _cameraFramesInWindow;
             InferenceRequestsPerSecond = (float)(requests / elapsed);
+            ResultCallbacksPerSecond = (float)(callbacks / elapsed);
             PoseResultsPerSecond = (float)(results / elapsed);
             CameraFramesPerSecond = (float)(cameraFrames / elapsed);
+            NoFreshFrameWaitsPerSecond = (float)(_noFreshFrameWaitsInWindow / elapsed);
+            TargetIntervalWaitsPerSecond = (float)(_targetIntervalWaitsInWindow / elapsed);
+            ReadbackBusyWaitsPerSecond = (float)(_readbackBusyWaitsInWindow / elapsed);
+            InferenceBusyWaitsPerSecond = (float)(_inferenceBusyWaitsInWindow / elapsed);
+            TextureFramePoolWaitsPerSecond = (float)(_textureFramePoolWaitsInWindow / elapsed);
+            ReadbackFailuresPerSecond = (float)(_readbackFailuresInWindow / elapsed);
+            ReadbackTimeoutsPerSecond = (float)(_readbackTimeoutsInWindow / elapsed);
+            PreparedFrameReplacementsPerSecond = (float)(_preparedFrameReplacementsInWindow / elapsed);
             SkippedInferenceOpportunities += _skippedInWindow;
+
+            if (Status == PoseProviderStatus.Ready && !_cameraSwitchPending)
+            {
+                StatusMessage =
+                    $"Camera/Pose ready | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
+                    $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s";
+            }
+
             _requestsInWindow = 0;
             _cameraFramesInWindow = 0;
             _skippedInWindow = 0;
+            _noFreshFrameWaitsInWindow = 0;
+            _targetIntervalWaitsInWindow = 0;
+            _readbackBusyWaitsInWindow = 0;
+            _inferenceBusyWaitsInWindow = 0;
+            _textureFramePoolWaitsInWindow = 0;
+            _readbackFailuresInWindow = 0;
+            _readbackTimeoutsInWindow = 0;
+            _preparedFrameReplacementsInWindow = 0;
             _metricsWindowStartedAtSeconds = now;
         }
 
@@ -833,11 +929,23 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                    status == PoseProviderStatus.Stopped;
         }
 
+        private void ReleasePreparedFrame()
+        {
+            if (_preparedTextureFrame == null)
+            {
+                return;
+            }
+            _preparedTextureFrame.Release();
+            _preparedTextureFrame = null;
+            _preparedFrameObservedAtSeconds = 0d;
+            _preparedCoordinateConventionVersion = 0;
+        }
+
         private void CleanupRuntime()
         {
             _shuttingDown = true;
-            _readbackPending = false;
             _freshCameraFramePending = false;
+            ReleasePreparedFrame();
 
             if (_poseLandmarker != null)
             {
@@ -849,7 +957,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 {
                     UnityEngine.Debug.LogWarning($"[PoseTrackingSpike] Pose Landmarker cleanup failed: {exception.Message}");
                 }
-
                 _poseLandmarker = null;
             }
 
@@ -857,6 +964,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _textureFramePool = null;
             StopCamera();
             _inferenceScheduler.Reset();
+            _readbackPending = false;
             Interlocked.Exchange(ref _inferenceOutstanding, 0);
         }
 
@@ -866,7 +974,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             {
                 return;
             }
-
             _webCamTexture.Stop();
             Destroy(_webCamTexture);
             _webCamTexture = null;
