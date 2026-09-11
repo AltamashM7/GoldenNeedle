@@ -8,6 +8,8 @@ Starting handoff checkpoint for this task: `f895fcd4941061950723f914e7cd815dc15c
 
 Motion-responsiveness implementation checkpoint: `4fc8bb2f1e5e8e61235d7b125e743698ca84087e` — `perf: overlap latest-frame preparation with pose inference`.
 
+Body-inference implementation checkpoint: `e56bfbb1be7333c26677ab36c977010c3e843029` — `perf: add lower-resolution body pose inference path`.
+
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
 - Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**. Locomotion acceptance QA is paused until the lower-level camera-to-avatar response foundation is rechecked on USER hardware.
@@ -20,7 +22,7 @@ This file is the concise authoritative runtime snapshot. Older investigation nar
 
 The USER tested both the HP TrueVision laptop webcam and DroidCam Video over USB. Both feeds work in Golden Needle. In recorded tests, actual camera and Unity render cadence were substantially below ideal while OBS was active, inference requests/results were commonly around 3–5/s, individual DetectAsync-to-callback duration was commonly roughly 56–94 ms, and pose age could reach hundreds of milliseconds. These are USER-machine observations, not synthetic locked benchmarks.
 
-Turning Humanoid presentation smoothing OFF produced no noticeable response improvement. The one-off `QuaternionToEuler` warning and temporary upside-down Neko observation did not reproduce and are not active targets. Phase 4 orientation/retargeting remains frozen unless new reproducible evidence appears.
+Turning Humanoid presentation smoothing OFF produced no noticeable response improvement. The temporary upside-down Neko observation remained transient in the later tests. The `QuaternionToEuler` warning later became reproducible on the active URP camera-culling path and was addressed at `b64a3115401689b94cf5f86d691fc5e6c763f510` by normalizing the Lab camera Transform quaternion before enabling the Camera. That correction is implemented but must not be described as USER runtime accepted without fresh hardware evidence. Phase 4 orientation/retargeting remains frozen unless new reproducible evidence appears.
 
 ## Source-proven frame pipeline and correction
 
@@ -99,7 +101,11 @@ No canonical coordinate semantics, calibration math, signed-axis mapping, Phase 
 
 ## Bounded body-pose inference resolution experiment
 
-The provider now has a reversible body-pose-only downscale experiment. The original full-resolution `WebCamTexture` remains authoritative for `CameraTexture` and Lab presentation. When enabled, the newest full-resolution frame is scaled into one persistent, aspect-preserving inference `RenderTexture` before the existing `TextureFrame.ReadTextureAsync` path. The default target is an approximately `320`-pixel long edge, so a `640x480` source uses `320x240`; disabling the option restores the exact actual camera dimensions.
+The provider has a reversible body-pose-only downscale experiment. The original full-resolution `WebCamTexture` remains authoritative for `CameraTexture` and Lab presentation. When enabled, the newest full-resolution frame is scaled into one persistent, aspect-preserving inference `RenderTexture` before the existing `TextureFrame.ReadTextureAsync` path. The default target is a `320`-pixel long edge, so a `640x480` source uses `320x240`; disabling the option restores the exact actual camera dimensions.
+
+The normal custom `MediaPipePoseProvider` Inspector now exposes this experiment under **Body Pose Inference**. `Enable Body Inference Downscale` can be toggled during Play Mode, and `Body Inference Long Edge` uses the current USER-facing experimental range `160..640`. The long-edge value is retained but disabled/greyed while downscale is off. The normal Runtime Camera section reports the actual active `Body Input` dimensions and `scaled/native` state from runtime resources rather than inferring it from the checkbox.
+
+The normal Inspector range is intentionally narrower than `BodyInferenceResolution`'s defensive runtime safety clamp. Runtime calculation still handles malformed/legacy values safely and never upscales when the requested target is at or above the source long edge.
 
 The `TextureFramePool` matches the selected body-inference dimensions, while the existing one-readback, one-prepared-frame, one-inference latest-frame bounds and accepted orientation/flip/rotation semantics remain unchanged. F7 identifies the active body input as `scaled` or `native` alongside the existing timing and wait diagnostics.
 
@@ -107,8 +113,17 @@ This is an implementation checkpoint for USER A/B measurement, not USER acceptan
 
 ## Verification state and next action
 
-Focused deterministic tests were added/updated for the bounded scheduler policy and Lab clear-only/Game restoration behavior. The protected Phase 4, Phase 5A and fitted-preview files are outside the implementation diff.
+Focused deterministic tests cover the bounded scheduler policy, default body-inference configuration, landscape/portrait inference sizing, disabled/native sizing, no-upscale behavior, defensive clamping, and Lab clear-only/Game restoration behavior. The protected Phase 4, Phase 5A and fitted-preview files are outside this bounded correction.
 
 Unity compilation and Unity Test Runner have **not** been executed by this Web Builder environment. Do not convert source/static checks into a Unity PASS.
 
-Next USER QA: run the laptop webcam and DroidCam separately **without OBS first**, use `640x480 @ 30` and target inference 30, run `C` after camera/source selection and `K` after calibration, let F7 settle, then record camera/render FPS, req/callback/pose rates, RB/build/detect/~F->R timings, pose age and wait reasons while doing rapid arm/torso motion. Repeat with OBS only afterward to characterize demo overhead separately. Confirm the Lab no longer shows `No cameras rendering`.
+Next USER QA is an explicit same-camera native-vs-scaled A/B. Run **without OBS first**:
+1. Use the HP TrueVision laptop webcam at `640x480 @ 30` with target inference `30`.
+2. After selecting the source, run `C`; after calibration, run `K` before locomotion checks.
+3. In the normal `MediaPipePoseProvider` Inspector, turn **Enable Body Inference Downscale OFF**. Confirm Runtime Camera/F7 reports `Body Input: 640x480 native`, let F7 settle, then record camera/render FPS, req/callback/pose rates, RB/build/detect/~F->R, pose age, dominant waits, and visible response during rapid arm/torso motion.
+4. On the same camera with the same `640x480 @ 30` capture and target inference `30`, turn downscale **ON** and set **Body Inference Long Edge = 320**. Confirm `Body Input: 320x240 scaled`, let F7 settle, and repeat the identical motion/metrics check.
+5. Compare native versus scaled before changing cameras.
+6. Only after the laptop comparison, switch to DroidCam, then run `C` and `K` for the new physical source and repeat the same OFF/native versus ON/320 A/B.
+7. Repeat with OBS only afterward to characterize recording overhead separately.
+
+Confirm separately that the Lab no longer shows `No cameras rendering`. The target remains convincing low-latency character control, not a cosmetic 30-FPS number.

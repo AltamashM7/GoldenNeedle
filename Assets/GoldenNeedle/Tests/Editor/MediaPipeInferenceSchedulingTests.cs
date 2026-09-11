@@ -1,5 +1,6 @@
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
 using NUnit.Framework;
+using UnityEditor;
 using UnityEngine;
 
 namespace GoldenNeedle.Tests
@@ -62,8 +63,6 @@ namespace GoldenNeedle.Tests
         [Test]
         public void ReadbackPreparationCanOverlapActiveInference()
         {
-            // Readback admission intentionally depends only on one-readback + fresh-frame bounds.
-            // Inference occupancy is not an input, which removes the old serialized dead time.
             Assert.That(
                 LatestFramePipelinePolicy.CanStartReadback(
                     readbackPending: false,
@@ -106,6 +105,28 @@ namespace GoldenNeedle.Tests
             {
                 var provider = gameObject.AddComponent<MediaPipePoseProvider>();
                 Assert.That(provider.TargetInferenceFps, Is.EqualTo(30f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        [Test]
+        public void ProviderDefaultsBodyInferenceDownscaleToEnabledAt320()
+        {
+            var gameObject = new GameObject("MediaPipeProviderBodyInputDefaultTest");
+            try
+            {
+                var provider = gameObject.AddComponent<MediaPipePoseProvider>();
+                var serializedProvider = new SerializedObject(provider);
+
+                Assert.That(
+                    serializedProvider.FindProperty("enableBodyInferenceDownscale").boolValue,
+                    Is.True);
+                Assert.That(
+                    serializedProvider.FindProperty("bodyInferenceLongEdge").intValue,
+                    Is.EqualTo(320));
             }
             finally
             {
@@ -161,6 +182,16 @@ namespace GoldenNeedle.Tests
 
             Assert.That(dimensions.x, Is.EqualTo(641));
             Assert.That(dimensions.y, Is.EqualTo(479));
+        }
+
+        [Test]
+        public void BodyInferenceTargetAtOrAboveSourceNeverUpscales()
+        {
+            var equalTarget = BodyInferenceResolution.Calculate(640, 480, true, 640);
+            var largerTarget = BodyInferenceResolution.Calculate(640, 480, true, 1000);
+
+            Assert.That(equalTarget, Is.EqualTo(new Vector2Int(640, 480)));
+            Assert.That(largerTarget, Is.EqualTo(new Vector2Int(640, 480)));
         }
 
         [Test]

@@ -9,6 +9,9 @@ namespace GoldenNeedle.Editor
     [CustomEditor(typeof(MediaPipePoseProvider))]
     public sealed class MediaPipePoseProviderEditor : UnityEditor.Editor
     {
+        private const int BodyInferenceInspectorMinLongEdge = 160;
+        private const int BodyInferenceInspectorMaxLongEdge = 640;
+
         private SerializedProperty _preferredCameraName;
         private SerializedProperty _requestedCameraWidth;
         private SerializedProperty _requestedCameraHeight;
@@ -19,6 +22,8 @@ namespace GoldenNeedle.Editor
         private SerializedProperty _targetInferenceFps;
         private SerializedProperty _readbackTimeoutSeconds;
         private SerializedProperty _trustSettings;
+        private SerializedProperty _enableBodyInferenceDownscale;
+        private SerializedProperty _bodyInferenceLongEdge;
 
         private void OnEnable()
         {
@@ -42,6 +47,10 @@ namespace GoldenNeedle.Editor
                 serializedObject.FindProperty("readbackTimeoutSeconds");
             _trustSettings =
                 serializedObject.FindProperty("trustSettings");
+            _enableBodyInferenceDownscale =
+                serializedObject.FindProperty("enableBodyInferenceDownscale");
+            _bodyInferenceLongEdge =
+                serializedObject.FindProperty("bodyInferenceLongEdge");
         }
 
         public override void OnInspectorGUI()
@@ -138,6 +147,32 @@ namespace GoldenNeedle.Editor
                 _trustSettings,
                 true);
 
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField(
+                "Body Pose Inference",
+                EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(
+                _enableBodyInferenceDownscale,
+                new GUIContent(
+                    "Enable Body Inference Downscale",
+                    "Downscale only the MediaPipe body-pose input. The full-resolution webcam texture and Motion Engine Lab preview remain unchanged."));
+
+            _bodyInferenceLongEdge.intValue = Mathf.Clamp(
+                _bodyInferenceLongEdge.intValue,
+                BodyInferenceInspectorMinLongEdge,
+                BodyInferenceInspectorMaxLongEdge);
+            using (new EditorGUI.DisabledScope(
+                       !_enableBodyInferenceDownscale.boolValue))
+            {
+                _bodyInferenceLongEdge.intValue = EditorGUILayout.IntSlider(
+                    new GUIContent(
+                        "Body Inference Long Edge",
+                        "Target long edge for MediaPipe body-pose input only. The source aspect ratio is preserved; this does not lower the webcam/Lab preview resolution."),
+                    _bodyInferenceLongEdge.intValue,
+                    BodyInferenceInspectorMinLongEdge,
+                    BodyInferenceInspectorMaxLongEdge);
+            }
+
             serializedObject.ApplyModifiedProperties();
 
             if (deviceChanged &&
@@ -165,6 +200,9 @@ namespace GoldenNeedle.Editor
                 EditorGUILayout.LabelField(
                     "Actual",
                     $"{provider.ActualCameraWidth}x{provider.ActualCameraHeight} @ {provider.CameraFramesPerSecond:0.0} fps");
+                EditorGUILayout.LabelField(
+                    "Body Input",
+                    $"{provider.BodyInferenceWidth}x{provider.BodyInferenceHeight} {(provider.BodyInferenceUsesScaledTexture ? "scaled" : "native")}");
                 EditorGUILayout.LabelField(
                     "Rotation",
                     $"{provider.EffectiveRotationDegrees}° (reported {provider.VideoRotationAngle}°)");
