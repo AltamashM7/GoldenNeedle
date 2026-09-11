@@ -1,224 +1,144 @@
-# Orchestrator handoff
-
-## Project
-
-**Golden Needle** — SIH 2026 gamified embodied fitness.
-
-Core proposition: a webcam tracks continuous full-body movement and drives a humanoid avatar. Locomotion is a separate interpreted system.
-
-## Start here
-
-Repository: `AltamashM7/GoldenNeedle`
-
-Current branch: `engine/pose-tracking-spike`
-
-<!-- LATEST_HANDOFF_2026_09_09:START -->
-## Current authoritative handoff
-
-**Runtime implementation checkpoint:** `db9c4a175f5a1bf607ec25e182d06c76648370ff` — `fix: align rotated Lab camera preview geometry`.
-
-Its direct parent is `4033b2677a46b98af8c3201d82771300f1614140` — `feat: support external cameras and 30 fps pose target`. The branch may contain only documentation-normalization commits on top of `db9c4a17…`; when starting a new Orchestrator session, verify the current remote `engine/pose-tracking-spike` HEAD and treat `db9c4a17…` as the authoritative runtime code checkpoint unless a later runtime commit is explicitly documented.
-
-Status:
-- Phase 4: **USER ACCEPTED — PASS**.
-- Phase 5A: **NOT USER ACCEPTED / FINAL USER QA PENDING**.
-- Phase 6: **NOT STARTED**.
-- No merge to `main` without explicit USER approval.
-
-What is now implemented and source-audited:
-- Phase 5A v3 common/differential support-foot locomotion, physical scales `0.9/1.5`, cadence extension, mapped body heading, safe recenter, root X/Z only.
-- F12 Lab/Game presentation switch and Inspector-tunable third-person camera.
-- render-rate Humanoid presentation smoothing after the exact Phase 4 solve, defaults `45/s` and `0.05 s`, with genuine stabilized tracking data left untouched.
-- generic external-camera selection through Unity `WebCamDevice` names, custom Inspector device dropdown, and `V` camera cycling.
-- safe pending camera switch: no new old-camera work after request; wait for bootstrap/readback/inference idle; restart one provider; invalidate source session; existing runtime reset clears stale calibration and Phase 5A assumptions.
-- camera request default `640x480 @ 30`; portrait `480x640 @ 30` is a recommended local USER test request, subject to driver support.
-- camera orientation `Auto / 0 / 90 / 180 / 270`; same effective rotation for inference/display; front-facing metadata never automatically horizontally mirrors inference.
-- pose target default **30 FPS**, still CPU-limited in reality; one-outstanding/no-backlog scheduling plus one fresh-frame latch prevents duplicate stale-frame inference.
-- whole-frame Motion Engine Lab camera presentation via `LabCameraPresentationGeometry`: rotated portrait sources are fitted without crop, and webcam + F1/F2/F4 share one oriented content rectangle. Letterboxing/pillarboxing is expected.
-
-Audit state:
-- `db9c4a17…` is exactly one runtime commit after `4033b267…` and changed only the Lab presentation helper/presenter plus focused tests.
-- Protected provider, Phase 4 retargeting, Phase 5A locomotion, scene serialization, and F12 camera behavior were not part of that correction.
-- No code-level blocker was found in the independent Orchestrator source audit.
-- Unity compilation/Test Runner was **not** executed in the Web Builder/Orchestrator environment.
-- Real phone/UVC hardware, driver orientation metadata, actual portrait preview, and overlay alignment remain USER-machine runtime checks.
-
-Immediate next USER flow:
-1. Pull current `engine/pose-tracking-spike`.
-2. Open `PoseTrackingSpike.unity` and confirm clean Unity compilation.
-3. Connect the phone so Windows/Unity exposes it as a webcam.
-4. Select the phone in `MediaPipePoseProvider`; request `480x640 @ 30` if supported; start Orientation=Auto and use 90/180/270 only if driver metadata is wrong.
-5. In Lab view verify full head + feet, undistorted frame, and F1/F2/F4 alignment. Display Mirror should mirror webcam + overlays together without changing anatomy.
-6. After a camera change, run `C` calibration and `K` recenter.
-7. Perform final Phase 5A USER QA: planted-feet lean immunity; one-foot onset; alternating room walking; toward/away and diagonal motion; jog-in-place cadence with little physical leakage; stop behavior; direction follows heading; no obvious double count; support loss holds; K recenter no jump; F12 third-person behavior.
-8. Only after USER runtime acceptance should Phase 5A be marked PASS or Phase 6 begin.
-<!-- LATEST_HANDOFF_2026_09_09:END -->
-
-Phase 4 handoff HEAD before the correction:
-
-`4a26589ec2f90688b80fb6b1da0b849adda65d6b` — `docs: hand off phase 4 investigation state`
-
-Its runtime parent is `5e830dce7ac3de542ab159b8b90992935d9dd0b0`. The branch now contains the accepted Phase 4 source/retarget correction, modular calibration redesign, passed procedural harness, Neko Animator Humanoid asset, and the focused rollback of the failed `83239b...` HumanPose semantic-forward experiment.
-
-Accepted Motion Engine baseline:
-
-`f0c81e84d0a482c40448505f2904af93ef4aa881` — Phase 4 implementation, **USER ACCEPTED — PASS**.
-
-Phase 5 has **STARTED**. Phase 5A — Embodied Hybrid Locomotion Prototype — is implemented and **NOT USER ACCEPTED**. The long-lived engine branch remains authoritative for the core-engine train; do not merge to `main` unless the USER explicitly changes that workflow.
-
-The previous Web Orchestrator conversation was intentionally retired because the Phase 4 debugging thread became long and hypothesis-heavy. The USER explicitly wants the new Orchestrator to inspect the repository itself before deciding on a solution.
-
-## Accepted history
-
-- Phase 1 CPU pose spike: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6` — accepted PASS WITH NOTES.
-- Phase 2 canonical skeleton/debug visualization: `f5a15648607adf6034800c6a2b4d685b0e6f03ea` — accepted PASS WITH NOTES.
-- Phase 3 calibration/confidence/smoothing: `2ee4d6eb606a8b845183cc44126ecf9530d8280b` — accepted PASS WITH NOTES.
-- Phase 4 handoff-doc checkpoint: `4a26589ec2f90688b80fb6b1da0b849adda65d6b` — historical investigation checkpoint, not accepted.
-- Phase 4 final implementation: `f0c81e84d0a482c40448505f2904af93ef4aa881` — **USER ACCEPTED — PASS**.
-
-The Motion Engine intentionally remains on the long-lived `engine/pose-tracking-spike` branch through the core-engine train. Intermediate engine phases are not mechanically merged into `main`.
-
-## Product and technical rules
-
-- Unity `6000.5.0f1`, URP `17.5.0`.
-- CPU-first; no discrete GPU requirement.
-- Integrated laptop webcam baseline plus any external camera exposed to Unity as a WebCamDevice; phone use depends on OS/UVC/virtual-webcam exposure.
-- MediaPipe Pose Landmarker V1, one person, local CPU inference.
-- No face tracking, finger tracking, or segmentation in V1 unless later justified.
-- Partial-body tracking is valid; missing legs must not disable usable upper-body control.
-- MediaPipe must remain isolated behind a replaceable provider boundary.
-- Engine-owned canonical skeleton is the downstream contract.
-- Preserve avatar-authored proportions.
-- **POSE != LOCOMOTION**.
-- Motion Engine must remain independently testable/replaceable after the full game is built.
-- Retain a permanent Motion Engine Lab/debug harness.
-
-## What Phase 4 currently contains
-
-The correction keeps the accepted/upstream Motion Engine boundaries and simplifies the production retarget path:
-
-```text
-MediaPipe provider
-→ canonical pose
-→ stabilization
-→ calibration
-→ canonical positional chain vectors
-→ explicit signed canonical-to-avatar basis map
-→ avatar-world positional targets
-→ analytic two-bone IK
-→ explicit / Animator Humanoid binding
-→ procedural debug rig
-```
-
-`CanonicalRotationFrame` remains available for diagnostics/future orientation work, but the production limb mapping no longer depends on per-chain quaternion characterization or moving parent-frame quaternions. The signed source basis records handedness explicitly. Under the corrected unmirrored front-camera convention, calibration should produce a proper source basis (`R≈-X, U≈+Y, F≈-Z`, handedness +1); reflected bases remain representable for diagnostics/generic math but are not the intended frontal production baseline.
-
-The coordinate/presentation correction is retained. **2D presentation, modular calibration, procedural F3/F5 retargeting, Animator Humanoid binding/limb response, real-avatar facing, and torso yaw have all passed USER QA. Phase 4 is accepted.**
-
-## Phase 4 failure history, condensed
-
-1. Initial direct source-rotation → target-bone retargeting produced obvious orientation/inversion errors.
-2. Generic bind-axis reconciliation fixed some visible cases but not the general articulated pose.
-3. The limb path was revised to four positional chains with analytic two-bone IK.
-4. Current-parent-space/per-chain reference mapping was added after USER QA showed generated targets could be self-consistent while the actual pose still differed from F3.
-5. Coordinate/camera foundation work then found inconsistent 2D/3D/presentation behavior. Several transformations were revised.
-6. Latest pre-correction USER evidence showed F3 substantially better/upright and viewer-side-correct, and the 2D skeleton human-shaped/aligned, but the visible webcam preview still horizontally mirrored.
-7. Repository audit traced the preview issue to an extra front-facing presentation heuristic, separate from MediaPipe inference preparation.
-8. Earlier investigation treated `Right=+X, Up=+Y, Forward=-Z` as the frontal source reference and therefore as reflected. Fresh source-semantics audit corrected that premise: +X is viewer-right, while a front-facing user's anatomical Right is approximately -X. Calibration must therefore use `Forward=Cross(Right, Up)`, yielding approximately `R=-X, U=+Y, F=-Z` and handedness +1.
-9. The correction removes that production mapping in favor of explicit signed-axis vector conversion.
-10. USER QA subsequently passed the corrected upright/unmirrored 2D presentation at `d73b01b0915da56cb3815082f12b5aaea65266d4`.
-11. Calibration then blocked at the old `AwaitingTPose 0%` gate, so the USER/Orchestrator approved replacing hard T-pose recognition with modular body-reference and independent chain measurements before F5 QA resumes.
-
-The important lesson is not to continue stacking fixes from this history. Inspect the current code and establish the actual coordinate/presentation/retarget behavior from first principles.
-
-## First files/subsystems to inspect
-
-At minimum inspect the current implementations around:
-
-- `MediaPipePoseProvider`
-- `CameraOrientationState`
-- `PoseObservation`
-- `MediaPipeCanonicalPoseMapper`
-- `CanonicalCoordinateSystem`
-- `MediaPipeCanonicalPoseSource`
-- `MotionEngineRuntime`
-- `PoseTrackingSpikePresenter`
-- `CanonicalKinematicTargetBuilder`
-- canonical rotation solver/frame
-- analytic two-bone IK implementation
-- `HumanoidRigBinding`
-- `HumanoidRetargeter`
-- `ProceduralDebugHumanoidRig`
-- `ProceduralDebugRigView`
-- relevant Editor tests
-
-Trace coordinate spaces explicitly from camera pixels through inference, normalized landmarks, world landmarks, canonical positions, F3, targets, and actual rig transforms. Do not assume an H/V flip used for pixel transport is automatically a metric-world reflection.
-
-## Latest USER-visible state
-
-At the checkpoint:
-
-- Webcam/2D presentation: **USER QA PASSED**.
-- Modular calibration: **USER QA PASSED**.
-- Procedural F3/F5 retarget: **USER QA PASSED**.
-- Real Neko Animator Humanoid binding and limb responsiveness: **PASS**.
-- Real Animator Humanoid body-forward/facing orientation: **PASS** after the source-semantics/body-basis correction.
-- NekoLegends `android01.fbx` binds successfully and its limb responsiveness matches the procedural path.
-- Initial Neko test at root Y=0 exposed the orientation problem.
-- `83239b00e891f7e8273e1449a26a6030f68334df` used `HumanPose.bodyRotation` as a semantic-forward experiment; fresh USER QA showed the same relative problem, so the experiment is rejected and removed.
-- Rotating Neko root to Y=180 while that failed experiment was active merely flipped the avatar and did not solve the relative issue.
-- Root Y=0 versus Y=180 is no longer being treated as an explanatory fix: rotating the root rotates the target anatomy/reference basis/bind rotations together and preserves the relative mismatch.
-- Repository anatomy evidence supports Neko target Forward≈+Z from both torso basis and foot/toe geometry.
-- F6 runtime evidence then localized the source-side defect: during a known physical right-shoulder-toward-camera turn, semantic `LeftShoulder`/`LeftHip` became the near side. Neutral source Right was correspondingly approximately -X and source Forward approximately +Z.
-- Repository tracing found front-facing status was the sole trigger for a literal horizontal inference pixel mirror via `ImageTransformationOptions.Build(... shouldFlipHorizontally:true ...)` → `TextureFrame.ReadTextureAsync(... flipHorizontally:true ...)`.
-- The focused correction keeps that automatic inference H mirror removed while preserving vertical/rotation transport and unmirrored presentation.
-- The Orchestrator then identified the remaining basis-order error: after semantic Left/Right is fixed, anatomical Right is approximately -X for a front-facing subject, so the old `Cross(Up, Right)` still yields +Z. Calibration is corrected to `Cross(Right, Up)`, consistent with the rotation solver and frontal -Z convention.
-- Canonical mapper, signed-axis architecture, target/avatar basis, Humanoid binding, and IK remain unchanged.
-- F6 remains available for future regression diagnosis.
-- Final USER QA confirmed the Neko avatar faces correctly and follows approximately 45° left/right torso yaw in the correct direction without avatar-side compensation.
-
-The committed Lab scene now serializes the accepted Neko `android01` child and Animator Humanoid binding used for final QA. A second machine receives the runtime code, Neko assets, and Lab wiring from Git.
-
-## Tests and tooling
-
-Luna repeatedly source-compiled Phase 4 production and Editor tests successfully, but Unity Test Runner execution was frequently blocked by an already-open Editor/licensing channel. Treat Phase 4 test methods as **present**, not necessarily Unity-executed/passing.
-
-Unity MCP/Pipeline are development tooling only. Use them if they materially improve inspection, but do not make them runtime dependencies.
-
-## Repository hygiene
-
-The checkpoint includes `GoldenNeedle.slnx` and `ProjectSettings/ProjectSettings.asset` changes that had repeatedly been described as pre-existing/unintended editor state. Inspect these before any next accepted checkpoint. Do not silently bless them.
-
-## Recommended next task
-
-Phase 4 is accepted and frozen. Next USER-QA Phase 5A should first verify the correction: planted-feet torso lean/bend/twist must not translate; actual support relocation must still move laterally/depth/diagonally in the already-passed directions; jogging in place must remain physical-stationary while cadence activates; temporary support loss must hold; reduced scale feel and K recenter must be checked. Then continue heading/stop/double-counting checks.
-
-The root estimator intentionally does not consume canonical pelvis/world positions as absolute room coordinates and no longer uses torso center as room-position authority. Cadence remains lower-body-only. Locomotion changes only bound avatar-root X/Z; root Y/rotation and Phase 4 bone retargeting stay outside Phase 5A authority.
-
-Do not begin Phase 6 and do not merge until the USER explicitly approves the Phase 5 checkpoint.
+# Golden Needle — Orchestrator handoff
 
 ## Governance
 
-The USER primarily uses GitHub Desktop for Git mutations. Do not merge without explicit USER approval. Continue the core-engine train on `engine/pose-tracking-spike` unless the USER explicitly changes that workflow. Phase 4 is accepted; Phase 5 may start.
+Repository: `AltamashM7/GoldenNeedle`
 
+Working branch: `engine/pose-tracking-spike`
 
+Starting checkpoint for the responsiveness task: `f895fcd4941061950723f914e7cd815dc15c65f1`.
 
-## Phase 5A implementation snapshot
+Motion-responsiveness implementation checkpoint: `4fc8bb2f1e5e8e61235d7b125e743698ca84087e` — `perf: overlap latest-frame preparation with pose inference`.
 
-New core modules:
+Status:
+- Phase 4: **USER ACCEPTED — PASS**. Preserve behavior.
+- Phase 5A: **NOT USER ACCEPTED**. Locomotion QA is temporarily paused while camera-to-avatar response is rechecked.
+- Phase 6: **NOT STARTED**.
+- No merge to `main` without explicit USER approval.
 
-- `CameraSpaceRootTracker` — relative camera-space physical displacement from ankle/heel/toe support common mode, with differential gait evidence reducing depth trust and torso scale used only as auxiliary depth corroboration/normalization.
-- `CadenceDetector` — alternating ankle/knee lower-body rhythm, cadence rate/confidence, fast stop.
-- `BodyHeadingEstimator` — maps live source torso Forward through the accepted Phase 4 signed map into avatar/game-world heading.
-- `LocomotionFusion` — independent lateral/depth scaling, accepted Phase 4 reference-map conversion from camera X/Z to game-world X/Z, plus mapped physical-velocity suppression of cadence.
-- `EmbodiedLocomotionController` — persistent virtual origin, X/Z root application, public no-jump recenter.
-- `LocomotionPrototypeView` — runtime-only fixed grid/world-reference viewport.
+## Why the current checkpoint exists
 
-Existing F1–F6/R/C/X controls remain. **K** invokes the same public `Recenter()` action reserved for a future discrete voice command.
+Real USER tests with HP TrueVision and DroidCam Video showed working camera input but low end-to-end responsiveness. Under the supplied OBS recordings, fresh camera and Unity render cadence were often in the teens/low 20s, inference requests/results were commonly around 3–5/s, DetectAsync-to-callback itself was commonly around 56–94 ms, and pose age could reach hundreds of milliseconds. Treat those as approximate USER-machine evidence, not locked benchmark values.
 
+Presentation smoothing OFF did not noticeably improve response, so this checkpoint does not retune or remove the accepted presentation layer. Transient quaternion/upside-down observations did not reproduce; do not reopen Phase 4 orientation without new evidence.
 
-### Phase 5A first-QA correction notes
+## Source audit result
 
-- Support disagreement (including alternating jog/step cycling) is a hold condition, not a torso fallback.
-- Temporary support loss holds the last trusted physical contribution through the existing fusion behavior.
-- Prototype physical scale defaults: lateral `0.9`, depth `1.5`.
-- `PoseTrackingSpike.unity` now serializes `EmbodiedLocomotionController`; presenter runtime creation is fallback-only.
+The important bottleneck was proven in `MediaPipePoseProvider`, not guessed from FPS values. The old Update gate combined `_readbackPending || _inferenceOutstanding` into one busy condition. The next camera readback could therefore begin only after the previous MediaPipe result callback cleared inference occupancy.
+
+The actual old cycle was:
+
+```text
+fresh camera frame
+-> TextureFrame
+-> ReadTextureAsync
+-> wait for GPU readback completion
+-> BuildCPUImage
+-> DetectAsync
+-> wait for callback
+-> next Update/readback opportunity
+```
+
+The embedded Homuler implementation confirms `ReadTextureAsync` uses a blit + `AsyncGPUReadback`, completion uploads into the pooled Texture2D, and `BuildCPUImage()` wraps that prepared CPU texture for MediaPipe. The pool already supports multiple in-use frames and Golden Needle already allocates two.
+
+This unnecessary readback/inference serialization is significant when Unity itself is updating slowly: a 60–90 ms inference can be followed by another render-frame delay before the next readback even starts. That can produce much lower request throughput than inference duration alone predicts.
+
+Downstream code is not the proven source of this gap. `MediaPipeCanonicalPoseSource` copies the latest observation; `MotionEngineRuntime` evaluates latest data; `CanonicalPoseStabilizer` holds duplicate samples instead of refiltering them; `HumanoidRetargeter` solves at render rate and queues no historical pose targets.
+
+## Bounded latest-frame pipeline now
+
+The provider now allows camera preparation to overlap one active inference while keeping strict bounds:
+
+```text
+WebCamTexture.didUpdateThisFrame
+        |
+        v
+one fresh-frame latch
+        |
+        v
+<= 1 AsyncGPUReadback
+        |
+        v
+<= 1 replaceable prepared TextureFrame
+        |
+        v
+30-FPS eligibility + inference free
+        |
+        v
+<= 1 DetectAsync outstanding
+        |
+        v
+latest observation
+```
+
+A newer completed readback replaces/releases an older prepared frame. There is no list/queue of frames. An inference request is never launched while another inference is outstanding. Missed cadence slots are never caught up. The newest useful frame wins.
+
+Orientation/convention version is snapshotted for each readback. Prepared work from an obsolete coordinate convention is discarded rather than submitted. Camera switching still waits for active readback/inference, then the ordinary cleanup path releases any prepared frame before provider restart.
+
+No separate inference resolution was introduced in this checkpoint. Benchmark the source-proven scheduling fix first.
+
+## F7 diagnostics
+
+The normal F7 lines still show:
+- camera/device, actual resolution and fresh camera FPS;
+- render FPS;
+- target inference FPS;
+- accepted inference request rate and pose-bearing result rate;
+- latest pose age;
+- DetectAsync accepted -> callback duration.
+
+The F7 Status area is refreshed only on the existing rolling metrics window and adds:
+- `RB`: observed `ReadTextureAsync` request -> completion duration. Because the Homuler completion callback also loads/applies CPU texture data and Unity resumes the coroutine on its own cadence, this is intentionally an observed readback-completion duration, not falsely labelled pure GPU hardware time;
+- `build`: `BuildCPUImage` duration that the current API can separate;
+- `detect`: DetectAsync accepted -> callback duration;
+- `~F->R`: approximate Unity-observed fresh-frame -> callback latency. WebCamTexture exposes no sensor capture timestamp, so this is not a sensor-to-result measurement;
+- `cb/s`: all result callbacks, separate from pose-bearing result rate;
+- wait/check rates for no fresh frame, target interval, readback busy, inference busy and TextureFrame pool unavailable;
+- readback fail/timeout rates;
+- prepared-frame replacements/s, showing intentional stale-frame drops.
+
+There is no per-frame Console logging.
+
+## Lab `No cameras rendering` cleanup
+
+The webcam is still drawn by IMGUI and continues to use the fitted `LabCameraPresentationGeometry` from `db9c4a17…`; no crop/fill behavior was reintroduced.
+
+`ThirdPersonLabCamera` now keeps its Camera component enabled in Lab but with `cullingMask=0`, `SolidColor` clear and black background. This removes Unity's `Display 1 — No cameras rendering` placeholder without a second world render. In F12 Game View, original culling mask, clear flags and background color are restored and the same existing third-person follow behavior runs. F12 still causes `PoseTrackingSpikePresenter.OnGUI()` to return before drawing webcam/debug IMGUI.
+
+## Frozen behavior / do not reopen
+
+Preserve unless new reproducible USER evidence requires otherwise:
+- front-facing camera does not imply inference H mirror; `shouldFlipHorizontally=false`;
+- Auto/0/90/180/270 orientation and display mirror semantics;
+- `preferredCameraName`, device dropdown, `V` camera cycling and pending hot-switch;
+- physical camera switch convention/calibration invalidation; run `C` and then `K` after a switch;
+- target inference cadence 30 FPS;
+- Pose Landmarker Lite, CPU, one pose, segmentation OFF;
+- canonical coordinate semantics;
+- modular calibration;
+- signed canonical-to-avatar mapping;
+- accepted Phase 4 torso/IK/retargeting and Neko Humanoid binding;
+- presentation smoothing defaults 45/s and 0.05 s, presentation-only;
+- Phase 5A support model v3, cadence/fusion/heading, physical scales 0.9/1.5, recenter semantics;
+- root Y and root rotation exclusion;
+- fitted portrait/rotated Lab preview geometry;
+- F12 game camera follow settings.
+
+## Verification caveat
+
+Focused source/tests are present, but this builder environment did **not** run Unity compilation or Unity Test Runner. The next Orchestrator must require USER-side compile/runtime evidence before treating the checkpoint as a runtime pass.
+
+## Next USER QA
+
+Run clean tests without OBS first.
+
+For HP TrueVision, then DroidCam:
+1. Request `640x480 @ 30`; target inference 30.
+2. After source/camera selection, run `C`; after calibration, run `K` before locomotion checks.
+3. Let F7 settle.
+4. Perform rapid arm/torso changes and judge visible response.
+5. Record camera FPS, render FPS, req/callback/pose FPS, RB/build/detect/~F->R, pose age and dominant waits.
+6. Confirm Lab has no `No cameras rendering` placeholder.
+7. Optionally repeat with OBS afterward to measure recording overhead separately.
+
+The target is convincing low-latency character control, not a cosmetic 30-FPS number.
