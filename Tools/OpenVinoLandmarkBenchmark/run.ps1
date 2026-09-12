@@ -27,12 +27,12 @@ function Test-PythonCandidate {
 }
 
 function Invoke-BasePython {
-    param([string[]]$Args)
+    param([string[]]$CommandArgs)
     if ($script:BaseKind -eq "py") {
-        & py $script:BasePrefix @Args
+        & py $script:BasePrefix @CommandArgs
     }
     else {
-        & $script:BaseExe @Args
+        & $script:BaseExe @CommandArgs
     }
     if ($LASTEXITCODE -ne 0) {
         throw "Python command failed with exit code $LASTEXITCODE."
@@ -75,7 +75,7 @@ if ($Reinstall -and (Test-Path $VenvDir)) {
 
 if (-not (Test-Path $VenvPython)) {
     Write-Host "Creating isolated virtual environment at $VenvDir"
-    Invoke-BasePython @("-m", "venv", $VenvDir)
+    Invoke-BasePython -CommandArgs @("-m", "venv", $VenvDir)
 }
 
 & $VenvPython -c "import sys,struct; assert (3,10)<=sys.version_info[:2]<=(3,14); assert struct.calcsize('P')*8==64"
