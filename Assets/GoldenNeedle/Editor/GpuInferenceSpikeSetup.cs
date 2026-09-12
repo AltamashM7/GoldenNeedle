@@ -81,7 +81,7 @@ namespace GoldenNeedle.EditorTools
                     landmarkAudit);
 
                 AssetDatabase.Refresh();
-                Debug.Log(
+                UnityEngine.Debug.Log(
                     "[GpuInferenceSpike] Exact TFLite models extracted/imported without modifying the production bundle.\n" +
                     auditText + "\nDiagnostic scene: " + SceneAssetPath);
                 EditorUtility.DisplayDialog(
@@ -93,7 +93,7 @@ namespace GoldenNeedle.EditorTools
             }
             catch (Exception ex)
             {
-                Debug.LogError("[GpuInferenceSpike] Preparation failed.\n" + ex);
+                UnityEngine.Debug.LogError("[GpuInferenceSpike] Preparation failed.\n" + ex);
                 EditorUtility.DisplayDialog(
                     "GPU Inference Spike preparation failed",
                     ex.Message + "\n\nSee Console for details. No ONNX fallback was attempted.",
