@@ -270,6 +270,71 @@ namespace GoldenNeedle.Tests
                 Is.EqualTo(BodyReadbackPath.DirectFallback));
         }
 
+        [Test]
+        public void DirectReadbackCleanupWithoutTrackedRequestDoesNotWait()
+        {
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackCleanupRequiresWait(
+                    activeRequestValid: false,
+                    requestDone: false),
+                Is.False);
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackOwnershipCanClear(
+                    activeRequestValid: false,
+                    requestDone: false),
+                Is.True);
+        }
+
+        [Test]
+        public void DirectReadbackCleanupWaitsForTrackedIncompleteRequest()
+        {
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackCleanupRequiresWait(
+                    activeRequestValid: true,
+                    requestDone: false),
+                Is.True);
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackOwnershipCanClear(
+                    activeRequestValid: true,
+                    requestDone: false),
+                Is.False);
+        }
+
+        [Test]
+        public void DirectReadbackCompletedRequestCanClearWithoutBlockingWait()
+        {
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackCleanupRequiresWait(
+                    activeRequestValid: true,
+                    requestDone: true),
+                Is.False);
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackOwnershipCanClear(
+                    activeRequestValid: true,
+                    requestDone: true),
+                Is.True);
+        }
+
+        [Test]
+        public void DirectReadbackTimeoutRetainsOwnershipUntilActualCompletion()
+        {
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackOwnershipCanClear(
+                    activeRequestValid: true,
+                    requestDone: false),
+                Is.False);
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackCleanupRequiresWait(
+                    activeRequestValid: true,
+                    requestDone: false),
+                Is.True);
+            Assert.That(
+                LatestFramePipelinePolicy.DirectReadbackOwnershipCanClear(
+                    activeRequestValid: true,
+                    requestDone: true),
+                Is.True);
+        }
+
         [TestCase(false, false, 1f, 1f, 0f, 0f, DirectReadbackStage.None)]
         [TestCase(true, false, -1f, 1f, 1f, 0f, DirectReadbackStage.H)]
         [TestCase(false, true, 1f, -1f, 0f, 1f, DirectReadbackStage.V)]

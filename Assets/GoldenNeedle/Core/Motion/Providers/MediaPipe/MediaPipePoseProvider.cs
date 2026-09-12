@@ -203,6 +203,20 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 flipHorizontally ? 1f : 0f,
                 flipVertically ? 1f : 0f);
         }
+
+        public static bool DirectReadbackCleanupRequiresWait(
+            bool activeRequestValid,
+            bool requestDone)
+        {
+            return activeRequestValid && !requestDone;
+        }
+
+        public static bool DirectReadbackOwnershipCanClear(
+            bool activeRequestValid,
+            bool requestDone)
+        {
+            return !activeRequestValid || requestDone;
+        }
     }
 
     /// <summary>
@@ -364,6 +378,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private DirectReadbackStage _activeDirectReadbackStage = DirectReadbackStage.None;
         private bool _directBodyCpuReadbackSessionAvailable = true;
         private string _directBodyCpuReadbackFallbackReason = string.Empty;
+        private AsyncGPUReadbackRequest _activeDirectReadbackRequest;
+        private bool _activeDirectReadbackRequestValid;
 
         public PoseProviderStatus Status { get; private set; } = PoseProviderStatus.Starting;
         public string StatusMessage { get; private set; } = "Starting pose-tracking spike";
@@ -1002,6 +1018,25 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _directBodyCpuReadbackFallbackReason = reason;
         }
 
+        private void TrackActiveDirectReadbackRequest(AsyncGPUReadbackRequest request)
+        {
+            _activeDirectReadbackRequest = request;
+            _activeDirectReadbackRequestValid = true;
+        }
+
+        private void ClearActiveDirectReadbackRequestIfTerminal(bool requestDone)
+        {
+            if (!LatestFramePipelinePolicy.DirectReadbackOwnershipCanClear(
+                    _activeDirectReadbackRequestValid,
+                    requestDone))
+            {
+                return;
+            }
+
+            _activeDirectReadbackRequest = default;
+            _activeDirectReadbackRequestValid = false;
+        }
+
         private IEnumerator CapturePreparedFrameAsync(
             TextureFrame textureFrame,
             double frameObservedAtSeconds,
@@ -1087,6 +1122,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                             0,
                             TextureFormat.RGBA32,
                             null);
+                        TrackActiveDirectReadbackRequest(request);
                         directRequest = true;
                         _directReadbacksInWindow++;
                     }
@@ -1142,6 +1178,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 {
                     yield return null;
                 }
+            }
+
+            if (directRequest)
+            {
+                ClearActiveDirectReadbackRequestIfTerminal(request.done);
             }
 
             LastGpuReadbackDurationMilliseconds = (float)((NowSeconds() - readbackStartedAtSeconds) * 1000d);
@@ -1398,13 +1439,22 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _cameraSwitchPending = false;
             _pendingCameraName = string.Empty;
             _pendingPreferredCameraName = string.Empty;
-            RestartProvider(invalidateCameraSession: true);
-            StatusMessage = $"Switching camera: {targetName}";
+            if (RestartProvider(invalidateCameraSession: true))
+            {
+                StatusMessage = $"Switching camera: {targetName}";
+            }
         }
 
-        private void RestartProvider(bool invalidateCameraSession)
+        private bool RestartProvider(bool invalidateCameraSession)
         {
-            CleanupRuntime();
+            if (!CleanupRuntime())
+            {
+                SetFailure(
+                    PoseProviderStatus.InferenceFailed,
+                    "Provider restart blocked because an active DirectCPU readback could not be completed safely");
+                return false;
+            }
+
             ClearProviderSessionState();
             if (invalidateCameraSession)
             {
@@ -1412,6 +1462,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
             Status = PoseProviderStatus.Starting;
             _bootstrapCoroutine = StartCoroutine(BootstrapAsync());
+            return true;
         }
 
         private void ClearProviderSessionState()
@@ -1632,10 +1683,53 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _preparedFramePublishedFrameCount = -1;
         }
 
-        private void CleanupRuntime()
+        private bool EnsureActiveDirectReadbackCompletedBeforeTeardown()
+        {
+            if (!_activeDirectReadbackRequestValid)
+            {
+                return true;
+            }
+
+            try
+            {
+                var request = _activeDirectReadbackRequest;
+                var requestDone = request.done;
+                if (LatestFramePipelinePolicy.DirectReadbackCleanupRequiresWait(
+                        activeRequestValid: true,
+                        requestDone: requestDone))
+                {
+                    UnityEngine.Debug.Log(
+                        "[PoseTrackingSpike] Waiting for active DirectCPU readback before body resource teardown");
+                    request.WaitForCompletion();
+                    requestDone = request.done;
+                }
+
+                if (!LatestFramePipelinePolicy.DirectReadbackOwnershipCanClear(
+                        activeRequestValid: true,
+                        requestDone: requestDone))
+                {
+                    UnityEngine.Debug.LogError(
+                        "[PoseTrackingSpike] DirectCPU teardown guard could not prove readback completion; body readback resources will be retained");
+                    return false;
+                }
+
+                _activeDirectReadbackRequest = default;
+                _activeDirectReadbackRequestValid = false;
+                return true;
+            }
+            catch (Exception exception)
+            {
+                UnityEngine.Debug.LogError(
+                    $"[PoseTrackingSpike] DirectCPU teardown wait failed ({exception.GetType().Name}); body readback resources will be retained");
+                return false;
+            }
+        }
+
+        private bool CleanupRuntime()
         {
             _shuttingDown = true;
             _freshCameraFramePending = false;
+            var directReadbackTeardownSafe = EnsureActiveDirectReadbackCompletedBeforeTeardown();
             ReleasePreparedFrame();
 
             if (_poseLandmarker != null)
@@ -1651,17 +1745,26 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 _poseLandmarker = null;
             }
 
-            _textureFramePool?.Dispose();
-            _textureFramePool = null;
-            ReleaseBodyInferenceRenderTexture();
-            _bodyInferenceWidth = 0;
-            _bodyInferenceHeight = 0;
-            _configuredCameraWidth = 0;
-            _configuredCameraHeight = 0;
+            if (directReadbackTeardownSafe)
+            {
+                _textureFramePool?.Dispose();
+                _textureFramePool = null;
+                ReleaseBodyInferenceRenderTexture();
+                _bodyInferenceWidth = 0;
+                _bodyInferenceHeight = 0;
+                _configuredCameraWidth = 0;
+                _configuredCameraHeight = 0;
+                _readbackPending = false;
+            }
+            else
+            {
+                StatusMessage = "Cleanup retained DirectCPU body resources because GPU readback completion was not confirmed";
+            }
+
             StopCamera();
             _inferenceScheduler.Reset();
-            _readbackPending = false;
             Interlocked.Exchange(ref _inferenceOutstanding, 0);
+            return directReadbackTeardownSafe;
         }
 
         private void ReleaseBodyInferenceRenderTexture()
