@@ -6,263 +6,242 @@ Repository: `AltamashM7/GoldenNeedle`
 
 Working branch: `engine/pose-tracking-spike`
 
-Starting checkpoint for the immediate-launch experiment: `92cc144be975611cd5a3c26c94441eb36c860e0e` — `fix: expose and validate body inference controls`.
-
-Relevant prior checkpoints:
-- `4fc8bb2f1e5e8e61235d7b125e743698ca84087e` — overlap latest-frame preparation with pose inference;
-- `b64a3115401689b94cf5f86d691fc5e6c763f510` — Lab camera normalization / clear-only camera correction;
-- `e56bfbb1be7333c26677ab36c977010c3e843029` — lower-resolution body-pose inference path;
-- `92cc144be975611cd5a3c26c94441eb36c860e0e` — expose/validate body-inference controls.
+Starting checkpoint for the current task: `87b68999cf73f6dee09cace6c8ef264697158de4` — `perf: launch prepared pose inference without extra update delay`.
 
 Status:
-- Phase 4: **USER ACCEPTED — PASS**. Preserve behavior.
-- b64a311 camera corrective checkpoint: **USER-runtime accepted** for its four targeted checks.
+- Phase 4: **USER ACCEPTED — PASS**.
+- `b64a311...` Lab-camera quaternion/clear-only-camera correction: **USER-runtime accepted**.
+- Immediate Launch After Readback: **USER-runtime accepted**; keep ON.
+- Direct Body CPU Readback: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 - No merge to `main` without explicit USER approval.
 
-## Accepted b64a311 camera correction
+## Frozen architecture
 
-The temporary upside-down Neko observation remained transient, but the `QuaternionToEuler` warning later became reproducible on the active URP camera-culling path. `b64a311...` normalized the controlled Lab Camera quaternion before enabling the Camera while preserving clear-only Lab rendering and F12 behavior.
-
-The USER subsequently runtime-verified all four targeted checks:
-1. `QuaternionToEuler` warning stayed gone;
-2. `No cameras rendering` stayed gone;
-3. Lab webcam/overlays remained correct;
-4. F12 Game -> Lab switching worked without restarting the warning.
-
-Treat that specific correction as USER-runtime accepted. Do not confuse it with responsiveness acceptance or Phase 5A acceptance.
-
-## Bounded latest-frame pipeline
-
-Golden Needle keeps these hard bounds:
-
-```text
-<= 1 active AsyncGPUReadback
-<= 1 replaceable prepared TextureFrame
-<= 1 outstanding MediaPipe DetectAsync
-```
-
-Readback may overlap active inference. Newer completed readbacks replace/release older prepared work. There is no camera-frame history, inference backlog, catch-up loop, delayed pose replay, or interpolation buffer. The newest useful frame wins.
-
-The full-resolution `WebCamTexture` remains authoritative for `CameraTexture`, Lab display, and future high-detail hand/finger work.
-
-## Body-pose inference downscale state
-
-The current body-pose-only default is `320x240` from a `640x480` source. The normal `MediaPipePoseProvider` Inspector exposes the downscale toggle and a `160..640` long-edge slider. Runtime Camera/F7 report actual active body-input dimensions and `scaled/native` state.
-
-Latest USER laptop A/B, approximately:
-
-### Native 640x480 body input
-- Capture ~29.7 FPS
-- Render ~33.0 FPS
-- Inference req ~10.85/s
-- Pose results ~10.85/s
-- RB ~63.3 ms
-- Detect ~58.7 ms
-- ~F->R ~144.9 ms
-- RB-busy ~19.5/s
-
-### Scaled 320x240 body input
-- Capture ~29.8 FPS
-- Render ~34.3 FPS
-- Inference req ~11.85/s
-- Pose results ~11.75/s
-- RB ~58.3 ms
-- Detect ~55.2 ms
-- ~F->R ~137.5 ms
-- RB-busy ~21.2/s
-
-Conclusion: keep `320x240` for current body-pose responsiveness work. The gain is modest but positive; do not pursue `160x120` in the current experiment.
-
-## Source-proven remaining structural delay
-
-At the `92cc144...` baseline, `MediaPipePoseProvider.Update()` performs:
-
-```text
-UpdateMetrics
--> camera-switch priority
--> EnsureBodyInferenceResources
--> observe didUpdateThisFrame
--> UpdateInputTransform
--> TryLaunchPreparedInference
--> TryStartLatestReadback
-```
-
-`TryStartLatestReadback()` starts `CapturePreparedFrameAsync(...)`. After the readback completes, that coroutine validates success/convention/shutdown, replaces any older prepared frame, publishes `_preparedTextureFrame` plus its observation/convention metadata, clears `_readbackPending`, and returns.
-
-Before this experiment, the newly prepared frame is not launched from that continuation. Even when inference is already free and the target interval has elapsed, the frame waits for a later ordinary `Update()` call to `TryLaunchPreparedInference(...)`.
-
-That prepared-publication -> later-Update -> DetectAsync boundary is the exact hypothesis under test.
-
-## Immediate inference launch experiment
-
-The experiment is **IMPLEMENTED / NOT USER ACCEPTED**.
-
-A serialized normal-Inspector option is added:
-
-`Immediate Launch After Readback`
-
-Default: ON.
-
-Tooltip meaning: attempt body-pose inference immediately when readback finishes; if unsafe/ineligible, leave the frame prepared for the normal Update path; create no extra queue or concurrent inference.
-
-On successful readback completion, ordering is:
-
-```text
-validate readback / source convention
--> replace older prepared slot if needed
--> publish prepared frame metadata
--> record prepared publication time + main-thread frame count
--> clear _readbackPending
--> side-effect-free immediate-launch eligibility probe
--> if eligible, reuse the same prepared-frame inference launch authority
--> otherwise return with prepared frame intact
-```
-
-The ordinary Update launch remains the fallback and retains its existing wait-counter behavior.
-
-## Immediate-launch guards
-
-Immediate launch requires all of:
-- experiment enabled;
-- provider status still `Ready`;
-- not shutting down;
-- no camera switch pending;
-- Pose Landmarker available;
-- prepared frame present;
-- prepared coordinate-convention version equals current convention;
-- body-inference resources match the current serialized downscale/long-edge intent and actual camera dimensions;
-- no inference outstanding;
-- target inference interval elapsed.
-
-The fast-path probe never waits/spins and does not increment the ordinary Update wait counters.
-
-### Camera-switch priority
-
-`_cameraSwitchPending` is a mandatory blocker. A readback that completes after a switch request may publish/retain its prepared frame, but the continuation cannot start another old-camera inference. The next authoritative camera-switch handling path waits for active stages to become idle and cleanup releases the prepared work.
-
-### Live body-input configuration changes
-
-If the USER changes `Enable Body Inference Downscale` or `Body Inference Long Edge` while readback is in flight, the existing configured-resource snapshot no longer matches current serialized intent. The continuation therefore cannot fast-launch that frame. It leaves the frame prepared; ordinary Update/`EnsureBodyInferenceResources()` owns stale prepared-frame release and resource rebuild after active work drains.
-
-No body-resource rebuild is performed inside the readback continuation.
-
-### Coordinate convention
-
-Existing convention snapshot behavior remains. Readback work whose captured convention no longer matches current provider convention is discarded before publication. The immediate path also requires the published prepared convention to remain current.
-
-## Single inference-launch authority / ownership
-
-The old prepared-frame launch method was factored so Update and readback-continuation origins reuse the same actual launch implementation for:
-- coordinate-version validation;
-- busy/interval gating;
-- consuming the prepared slot;
-- `BuildCPUImage()`;
-- `TextureFrame.Release()`;
-- `_inferenceOutstanding` transition;
-- timestamps;
-- `DetectAsync`;
-- accepted-request scheduler state;
-- request metrics;
-- failure handling.
-
-TextureFrame ownership remains single-owner. At any instant a frame is in exactly one state: active readback, the one prepared slot, BuildCPUImage/inference handoff, or pool after `Release()`.
-
-## Experiment instrumentation / F7
-
-Existing metrics remain: RB, build, detect, ~F->R, req/s, res/s, cb/s, pose age, wait rates, readback failures/timeouts, and replacement rate.
-
-New low-overhead diagnostics:
-- last prepared -> accepted inference launch delay;
-- main-thread frame-count delta from prepared publication to accepted launch;
-- last accepted launch origin (`Update`, `RB`, or none yet);
-- accepted immediate launches per second.
-
-F7 Status adds a compact line such as:
-
-```text
-Prep->launch: 1.2 ms Δf=0 origin=RB fast=11.4/s
-```
-
-With the experiment OFF, accepted launches should originate from `Update` and `fast` should remain `0.0/s`.
-
-`RB` keeps its previous definition: observed `ReadTextureAsync` request -> completion, including Unity callback/upload/scheduling effects. It is not labelled pure GPU time. This experiment optimizes only the delay after that timer ends, so unchanged RB is expected and is not failure.
-
-## Frozen behavior
-
-Do not reopen without new evidence:
-- canonical coordinate semantics;
-- modular calibration;
-- signed canonical-to-avatar mapping;
-- Phase 4 Humanoid torso/IK/retargeting and Neko binding;
-- Phase 5A support model, cadence, heading, fusion, recenter and physical scales `0.9 / 1.5`;
-- root Y / root rotation exclusion;
-- render-rate presentation smoothing;
-- `preferredCameraName`, camera dropdown, `V` switching and safe pending switch;
+Do not redesign without new reproducible USER evidence:
+- at most one active readback;
+- at most one replaceable prepared `TextureFrame`;
+- at most one outstanding MediaPipe inference;
+- newest useful frame wins;
+- no camera-frame history, inference backlog, delayed replay or catch-up loop;
+- full-resolution `CameraTexture` / Lab preview;
+- body pose at the current `320x240` experiment for a `640x480` source;
+- 640x480 camera request default and target inference 30 FPS;
+- Pose Landmarker Lite, CPU delegate, one pose, segmentation OFF;
+- camera switching and physical-source convention invalidation;
 - Auto/0/90/180/270 orientation;
-- display mirror presentation-only semantics;
-- front-facing metadata does not imply H inference mirror (`shouldFlipHorizontally=false`);
-- fitted Lab webcam/F1/F2/F4 geometry;
+- display mirror presentation-only;
+- no automatic front-facing inference H mirror;
+- canonical mapping and modular calibration;
+- accepted Phase 4 Humanoid retarget/IK and Neko binding;
+- presentation smoothing;
+- Phase 5A support/cadence/fusion/heading/recenter behavior;
 - F12 Lab/Game behavior;
-- clear-only Lab Camera and b64a311 quaternion normalization;
-- full-resolution `CameraTexture`;
-- camera request default `640x480 @ 30`;
-- target inference default `30 FPS`;
-- Pose Landmarker Lite, CPU, one pose, segmentation OFF.
+- fitted Lab webcam/overlay geometry.
 
-The Homuler/MediaPipe package source is not modified by this experiment.
+No hand/finger tracking is part of this checkpoint.
 
-## Verification caveat
+## Accepted USER evidence before this task
 
-Focused deterministic policy tests are present for:
-- immediate launch allowed with all conditions valid;
-- blocked by camera-switch pending;
-- blocked by outstanding inference;
-- blocked by target interval;
-- blocked by body-resource configuration mismatch;
-- blocked by coordinate-convention mismatch;
-- experiment OFF while ordinary Update launch policy remains available.
+The `b64a3115401689b94cf5f86d691fc5e6c763f510` camera corrective checkpoint received USER runtime QA and all four targeted checks passed:
+1. `QuaternionToEuler` warning stayed gone.
+2. Unity's `No cameras rendering` placeholder stayed gone.
+3. Lab webcam/overlays remained correct.
+4. F12 Game -> Lab switching worked and did not restart the warning.
 
-Existing scheduler and body-resolution tests remain.
+The lower-resolution body-pose experiment remains at `320x240`. USER laptop A/B was approximately:
+- native 640x480: RB `63.3 ms`, `~F->R 144.9 ms`, results `10.85/s`;
+- scaled 320x240: RB `58.3 ms`, `~F->R 137.5 ms`, results `11.75/s`.
 
-This Web Builder environment did **not** run Unity compilation or Unity Test Runner. USER-side compile/runtime evidence is required before treating the experiment as a runtime pass.
+Conclusion: keep `320x240`; modest benefit; do not chase `160x120` yet.
 
-## Next USER QA — isolate only immediate scheduling
+The immediate-launch experiment at `87b68999...` is now USER-runtime accepted. Both runs used `320x240` body input:
 
-Use HP TrueVision first.
+**Immediate Launch OFF**
+- capture ~29.9 FPS;
+- render ~33.1 FPS;
+- requests/results ~11.0/s;
+- RB ~60.4 ms;
+- detect ~61.8 ms;
+- prepared->launch ~25.7 ms;
+- `~F->R` ~150.4 ms;
+- frame delta generally 1;
+- origin Update;
+- fast ~0/s.
 
-Fixed for both runs:
-- Camera request: `640x480 @ 30`;
-- Target inference: `30`;
-- Body inference downscale: ON;
-- Body long edge: `320` (`320x240 scaled` actual body input expected);
-- run `C`, then `K`, before comparing motion;
-- same recording method and similar rapid arm/torso motion.
+**Immediate Launch ON**
+- capture ~29.5 FPS;
+- render ~33.5 FPS;
+- requests/results ~11.7/s;
+- RB ~56.7 ms;
+- detect ~56.7 ms;
+- prepared->launch ~0.4 ms;
+- `~F->R` ~117.7 ms;
+- frame delta generally 0;
+- origin RB;
+- fast ~10–12/s.
 
-### Run A — baseline
-`Immediate Launch After Readback = OFF`
+Conclusion: **keep Immediate Launch After Readback ON**. It removed approximately one Unity render-frame scheduling boundary. Do not reopen this scheduling point without new evidence.
 
-### Run B — candidate
-`Immediate Launch After Readback = ON`
+The current dominant lower-level timings are now roughly RB `55–60 ms`, detect `55–60 ms`, and `~F->R 115–120 ms`.
 
-Record:
-- Capture FPS
-- Render FPS
-- req/s
-- res/s
-- cb/s
-- RB
-- build
-- detect
-- Prep->launch
-- ~F->R
-- pose age
-- wait rates
-- replacement rate
-- fast-launch rate/origin
-- subjective responsiveness
+## Source audit for the direct readback experiment
 
-Do **not** compare native-vs-scaled again for this experiment.
+Embedded plugin version remains MediaPipeUnityPlugin 0.16.3. Homuler package source is intentionally untouched.
 
-A strong result is a prepared->launch delay reduction by roughly one render-frame boundary on eligible launches and a material ~F->R improvement without throughput, ownership, camera-switch, body-config, orientation, or stability regressions. RB itself does not need to fall.
+`TextureFrame.ReadTextureAsync` currently performs a general-purpose path:
+1. allocate/get a temporary RenderTexture;
+2. `Graphics.Blit` the source into that temporary texture, including optional H/V flips;
+3. request an async GPU readback;
+4. callback obtains `GetData<byte>()`;
+5. callback calls `Texture2D.LoadRawTextureData(...)`;
+6. callback calls `Texture2D.Apply()`;
+7. callback revokes Homuler's cached native texture pointer and releases the temporary RT.
+
+This work is performed even after Golden Needle has already downscaled the full-resolution webcam into its persistent, matching body inference RenderTexture.
+
+Homuler exposes `TextureFrame.GetRawTextureData<byte>()`. `TextureFrame.BuildCPUImage()` constructs `new Mediapipe.Image(imageFormat, Texture2D)`. The installed `Mediapipe.Image(ImageFormat, Texture2D)` constructor in turn passes `texture.GetRawTextureData<byte>()` to the CPU image constructor. Therefore the current Golden Needle body-pose handoff consumes the Texture2D's CPU raw-data buffer.
+
+The current prepared-frame owner in `MediaPipePoseProvider` calls `BuildCPUImage()` only; there is no Golden Needle `BuildGPUImage` consumer between readback completion and frame release. This supports a narrow no-`Apply` experiment without changing Homuler's general-purpose implementation.
+
+Unity project version is `6000.5.0f1`. Unity 6 exposes the required overload:
+
+```csharp
+AsyncGPUReadback.RequestIntoNativeArray(
+    ref NativeArray<T> output,
+    Texture src,
+    int mipIndex,
+    TextureFormat dstFormat,
+    Action<AsyncGPUReadbackRequest> callback)
+```
+
+The candidate uses `TextureFormat.RGBA32` explicitly. Capability is checked using `SystemInfo.supportsAsyncGPUReadback` and `SystemInfo.IsFormatSupported(..., GraphicsFormatUsage.ReadPixels)` before selecting DirectCPU.
+
+## Direct Body CPU Readback implementation
+
+The serialized control is **Direct Body CPU Readback** and defaults **OFF**. This preserves the accepted Homuler + immediate-launch path as the default until USER QA accepts the candidate.
+
+When eligible, the Golden Needle-owned candidate is:
+
+```text
+full-resolution WebCamTexture
+-> existing Graphics.Blit into persistent 320x240 body RT
+-> pooled RGBA32 TextureFrame
+-> TextureFrame.GetRawTextureData<byte>()
+-> AsyncGPUReadback.RequestIntoNativeArray(..., TextureFormat.RGBA32, null)
+-> same coroutine request.done observation
+-> NO LoadRawTextureData copy
+-> NO Texture2D.Apply
+-> publish same TextureFrame
+-> accepted immediate-launch path
+-> existing BuildCPUImage
+-> DetectAsync
+```
+
+No separate persistent NativeArray is allocated. The returned NativeArray is a view into the pooled TextureFrame's Texture2D CPU memory and is never disposed manually.
+
+### Strict path selection
+
+DirectCPU requires:
+- toggle ON;
+- provider Ready / ordinary capture state;
+- active persistent downscaled body RenderTexture;
+- source RT width/height exactly matching `TextureFrame.width/height`;
+- body resources matching current serialized intent;
+- inference H flip false;
+- inference V flip false;
+- pooled frame format exactly RGBA32 and raw byte length matching width*height*4;
+- async GPU readback support;
+- source and RGBA32-compatible formats reporting `ReadPixels` capability;
+- DirectCPU not previously marked unavailable for this provider session.
+
+The policy exposes three runtime states:
+- `Homuler`: direct experiment OFF;
+- `DirectCPU`: direct request actually selected;
+- `DirectFallback`: direct requested but current conditions/session require Homuler.
+
+No custom flip shader is implemented. Rotation remains in the existing `ImageProcessingOptions` path. If backend row/origin behavior causes inversion/mirroring, treat that as experiment failure rather than changing canonical semantics.
+
+### Lifetime / failure behavior
+
+One-readback ownership remains authoritative. While RequestIntoNativeArray is pending:
+- the TextureFrame stays owned by the readback;
+- it is not released;
+- it is not handed to BuildCPUImage;
+- its raw NativeArray is not disposed;
+- body resources / frame pool cannot rebuild because `_readbackPending` remains true;
+- camera switching waits for the active readback through the existing pending-switch gate.
+
+On successful completion the same prepared-frame publication and accepted immediate-launch code runs.
+
+If direct submission throws or the request completes with an error, the frame is safely released and DirectCPU is marked unavailable for the current provider session. Future frames automatically use Homuler. If a direct request exceeds the configured timeout, it is marked failed/fallback immediately but the TextureFrame remains held until the outstanding GPU request actually completes before release, so Unity never writes into recycled/disposed Texture2D memory. No second readback is launched for that source frame.
+
+The serialized toggle is not rewritten when session fallback occurs. A new provider session may try DirectCPU again if the USER still has the toggle enabled.
+
+## Diagnostics
+
+RB timing remains fair across both paths: it starts before the existing full-res -> body-RT blit and ends when Golden Needle observes request completion. It is not labelled pure GPU time.
+
+F7/Status retains:
+- capture/render/req/res/cb rates;
+- RB/build/detect/~F->R;
+- pose age;
+- prepared->launch delay/frame delta/origin/fast rate;
+- noFresh/int/RB/inf/pool waits;
+- readback failures/timeouts;
+- prepared replacements.
+
+It now adds a compact readback line with:
+- active readback path (`Homuler`, `DirectCPU`, `DirectFallback`);
+- DirectCPU submissions/s;
+- DirectCPU failures/s;
+- fallback reason when applicable.
+
+The normal custom Inspector exposes the Direct Body CPU Readback toggle and current runtime readback path/fallback reason. No Debug Inspector and no per-frame Console logging is required.
+
+## Verification boundary
+
+Focused deterministic Editor tests cover readback-path policy:
+- direct OFF -> Homuler;
+- no downscaled body RT -> fallback;
+- H flip -> fallback;
+- V flip -> fallback;
+- dimension mismatch -> fallback;
+- unsupported format -> fallback;
+- all conditions valid -> DirectCPU;
+- session unavailable -> fallback;
+- serialized default -> OFF.
+
+Existing immediate-launch, scheduler and body-resolution tests remain.
+
+Unity compile/Test Runner/runtime status must be stated by the Builder report. Do not convert static source inspection into a Unity PASS.
+
+## Next USER A/B
+
+Use **HP TrueVision** and isolate only readback strategy:
+
+Common settings for both runs:
+- camera request `640x480 @ 30`;
+- target inference `30`;
+- body downscale ON;
+- body long edge `320` (`320x240` expected);
+- Immediate Launch After Readback ON;
+- run `C`, then `K`.
+
+**Run A — accepted baseline**
+- Direct Body CPU Readback OFF;
+- confirm F7 readback path = `Homuler`.
+
+**Run B — candidate**
+- Direct Body CPU Readback ON;
+- confirm F7 readback path = `DirectCPU`.
+- If F7 says `DirectFallback`, do not treat it as a candidate benchmark; record the fallback reason instead.
+
+Use the same OBS sequence for both: enter Play Mode, settle/C/K, start OBS, wait 5–10 seconds, perform similar arm/torso motion, stop OBS while Play Mode remains running.
+
+Record capture FPS, render FPS, req/s, res/s, cb/s, RB, build, detect, Prep->launch, `~F->R`, pose age, wait rates, replacement rate, DirectCPU rate, direct failures, active path and subjective responsiveness. Also verify webcam/Lab image, F1/F2/F4 alignment, no H/V inversion, stable body tracking and no Console errors.
+
+The current accepted baseline is approximately capture `29.5 FPS`, render `33.5 FPS`, results `11.7/s`, RB `56.7 ms`, detect `56.7 ms`, Prep->launch `0.4 ms`, `~F->R 117.7 ms`.
+
+Direct Body CPU Readback remains **IMPLEMENTED / NOT USER ACCEPTED** until this A/B is completed.

@@ -25,6 +25,7 @@ namespace GoldenNeedle.Editor
         private SerializedProperty _enableBodyInferenceDownscale;
         private SerializedProperty _bodyInferenceLongEdge;
         private SerializedProperty _enableImmediateInferenceLaunchAfterReadback;
+        private SerializedProperty _enableDirectBodyCpuReadback;
 
         private void OnEnable()
         {
@@ -54,6 +55,8 @@ namespace GoldenNeedle.Editor
                 serializedObject.FindProperty("bodyInferenceLongEdge");
             _enableImmediateInferenceLaunchAfterReadback =
                 serializedObject.FindProperty("enableImmediateInferenceLaunchAfterReadback");
+            _enableDirectBodyCpuReadback =
+                serializedObject.FindProperty("enableDirectBodyCpuReadback");
         }
 
         public override void OnInspectorGUI()
@@ -181,6 +184,11 @@ namespace GoldenNeedle.Editor
                 new GUIContent(
                     "Immediate Launch After Readback",
                     "Attempts body-pose inference immediately when readback finishes. If unsafe or ineligible, the frame remains prepared for the normal Update path; no extra queue or concurrent inference is created."));
+            EditorGUILayout.PropertyField(
+                _enableDirectBodyCpuReadback,
+                new GUIContent(
+                    "Direct Body CPU Readback",
+                    "Experimental body-pose-only path. When eligible it writes GPU readback directly into the pooled TextureFrame CPU buffer, bypassing Homuler staging/copy/Apply. It remains CPU pose inference, automatically falls back to the existing Homuler path when ineligible, and never changes CameraTexture or Lab display."));
 
             serializedObject.ApplyModifiedProperties();
 
@@ -215,6 +223,15 @@ namespace GoldenNeedle.Editor
                 EditorGUILayout.LabelField(
                     "Immediate Launch",
                     provider.ImmediateInferenceLaunchAfterReadbackEnabled ? "On" : "Off");
+                EditorGUILayout.LabelField(
+                    "Readback Path",
+                    provider.ActiveBodyReadbackPathLabel);
+                if (!string.IsNullOrEmpty(provider.DirectBodyCpuReadbackFallbackReason))
+                {
+                    EditorGUILayout.LabelField(
+                        "Direct Fallback",
+                        provider.DirectBodyCpuReadbackFallbackReason);
+                }
                 EditorGUILayout.LabelField(
                     "Rotation",
                     $"{provider.EffectiveRotationDegrees}° (reported {provider.VideoRotationAngle}°)");

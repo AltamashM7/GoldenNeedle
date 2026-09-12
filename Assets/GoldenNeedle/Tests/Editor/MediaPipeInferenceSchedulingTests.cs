@@ -160,6 +160,70 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
+        public void DirectReadbackExperimentOffUsesHomuler()
+        {
+            Assert.That(
+                SelectReadbackPath(experimentEnabled: false),
+                Is.EqualTo(BodyReadbackPath.Homuler));
+        }
+
+        [Test]
+        public void DirectReadbackWithoutDownscaledBodyTextureUsesFallback()
+        {
+            Assert.That(
+                SelectReadbackPath(hasDownscaledBodyRenderTexture: false),
+                Is.EqualTo(BodyReadbackPath.DirectFallback));
+        }
+
+        [Test]
+        public void DirectReadbackHorizontalFlipUsesFallback()
+        {
+            Assert.That(
+                SelectReadbackPath(flipHorizontally: true),
+                Is.EqualTo(BodyReadbackPath.DirectFallback));
+        }
+
+        [Test]
+        public void DirectReadbackVerticalFlipUsesFallback()
+        {
+            Assert.That(
+                SelectReadbackPath(flipVertically: true),
+                Is.EqualTo(BodyReadbackPath.DirectFallback));
+        }
+
+        [Test]
+        public void DirectReadbackDimensionMismatchUsesFallback()
+        {
+            Assert.That(
+                SelectReadbackPath(sourceDimensionsMatchTextureFrame: false),
+                Is.EqualTo(BodyReadbackPath.DirectFallback));
+        }
+
+        [Test]
+        public void DirectReadbackUnsupportedFormatUsesFallback()
+        {
+            Assert.That(
+                SelectReadbackPath(formatSupported: false),
+                Is.EqualTo(BodyReadbackPath.DirectFallback));
+        }
+
+        [Test]
+        public void DirectReadbackAllConditionsValidUsesDirectCpu()
+        {
+            Assert.That(
+                SelectReadbackPath(),
+                Is.EqualTo(BodyReadbackPath.DirectCPU));
+        }
+
+        [Test]
+        public void DirectReadbackSessionUnavailableUsesFallback()
+        {
+            Assert.That(
+                SelectReadbackPath(sessionAvailable: false),
+                Is.EqualTo(BodyReadbackPath.DirectFallback));
+        }
+
+        [Test]
         public void ProviderDefaultInferenceTargetIsThirtyFps()
         {
             var gameObject = new GameObject("MediaPipeProviderDefaultTest");
@@ -192,6 +256,9 @@ namespace GoldenNeedle.Tests
                 Assert.That(
                     serializedProvider.FindProperty("enableImmediateInferenceLaunchAfterReadback").boolValue,
                     Is.True);
+                Assert.That(
+                    serializedProvider.FindProperty("enableDirectBodyCpuReadback").boolValue,
+                    Is.False);
             }
             finally
             {
@@ -305,6 +372,29 @@ namespace GoldenNeedle.Tests
                 bodyResourcesCurrent,
                 inferenceOutstanding,
                 intervalElapsed);
+        }
+
+        private static BodyReadbackPath SelectReadbackPath(
+            bool experimentEnabled = true,
+            bool providerReady = true,
+            bool hasDownscaledBodyRenderTexture = true,
+            bool sourceDimensionsMatchTextureFrame = true,
+            bool bodyResourcesCurrent = true,
+            bool flipHorizontally = false,
+            bool flipVertically = false,
+            bool formatSupported = true,
+            bool sessionAvailable = true)
+        {
+            return LatestFramePipelinePolicy.SelectBodyReadbackPath(
+                experimentEnabled,
+                providerReady,
+                hasDownscaledBodyRenderTexture,
+                sourceDimensionsMatchTextureFrame,
+                bodyResourcesCurrent,
+                flipHorizontally,
+                flipVertically,
+                formatSupported,
+                sessionAvailable);
         }
     }
 }
