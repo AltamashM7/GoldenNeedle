@@ -43,6 +43,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         DirectFallback,
     }
 
+    public enum DirectReadbackStage
+    {
+        None,
+        H,
+        V,
+        HV,
+    }
+
     /// <summary>
     /// Main-thread request cadence helper. Busy frames never advance timing state, so once the
     /// previous inference finishes, the next prepared frame may launch immediately if the minimum
@@ -142,6 +150,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             bool bodyResourcesCurrent,
             bool flipHorizontally,
             bool flipVertically,
+            bool flipStagingAvailable,
             bool formatSupported,
             bool sessionAvailable)
         {
@@ -150,16 +159,49 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return BodyReadbackPath.Homuler;
             }
 
+            var flipRequired = flipHorizontally || flipVertically;
             return providerReady &&
                 hasDownscaledBodyRenderTexture &&
                 sourceDimensionsMatchTextureFrame &&
                 bodyResourcesCurrent &&
-                !flipHorizontally &&
-                !flipVertically &&
+                (!flipRequired || flipStagingAvailable) &&
                 formatSupported &&
                 sessionAvailable
                     ? BodyReadbackPath.DirectCPU
                     : BodyReadbackPath.DirectFallback;
+        }
+
+        public static DirectReadbackStage GetDirectReadbackStage(
+            bool flipHorizontally,
+            bool flipVertically)
+        {
+            if (flipHorizontally && flipVertically)
+            {
+                return DirectReadbackStage.HV;
+            }
+            if (flipHorizontally)
+            {
+                return DirectReadbackStage.H;
+            }
+            if (flipVertically)
+            {
+                return DirectReadbackStage.V;
+            }
+            return DirectReadbackStage.None;
+        }
+
+        public static void GetDirectReadbackFlipTransform(
+            bool flipHorizontally,
+            bool flipVertically,
+            out Vector2 scale,
+            out Vector2 offset)
+        {
+            scale = new Vector2(
+                flipHorizontally ? -1f : 1f,
+                flipVertically ? -1f : 1f);
+            offset = new Vector2(
+                flipHorizontally ? 1f : 0f,
+                flipVertically ? 1f : 0f);
         }
     }
 
@@ -253,7 +295,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField] private int bodyInferenceLongEdge = 320;
         [Tooltip("Attempt body-pose inference immediately when a readback finishes. If unsafe or ineligible, the frame remains prepared for the normal Update path; no extra queue or concurrent inference is created.")]
         [SerializeField] private bool enableImmediateInferenceLaunchAfterReadback = true;
-        [Tooltip("Experimental body-pose-only path. When eligible it writes GPU readback directly into the pooled TextureFrame CPU buffer, bypassing Homuler staging/copy/Apply. It remains CPU pose inference, falls back to Homuler when ineligible, and never changes CameraTexture or Lab display.")]
+        [Tooltip("Experimental body-pose-only path. When eligible it writes GPU readback directly into the pooled TextureFrame CPU buffer, bypassing Homuler staging/copy/Apply. Flipped inputs use one persistent Golden Needle staging RT with Homuler-equivalent scale/offset before the direct readback. It remains CPU pose inference and never changes CameraTexture or Lab display.")]
         [SerializeField] private bool enableDirectBodyCpuReadback = false;
 
         private readonly object _observationGate = new object();
@@ -267,6 +309,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private WebCamDevice _selectedDevice;
         private TextureFramePool _textureFramePool;
         private RenderTexture _bodyInferenceRenderTexture;
+        private RenderTexture _directBodyReadbackStagingRenderTexture;
         private int _bodyInferenceWidth;
         private int _bodyInferenceHeight;
         private int _configuredCameraWidth;
@@ -318,6 +361,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private int _coordinateConventionVersion;
         private PreparedInferenceLaunchOrigin _lastAcceptedLaunchOrigin;
         private BodyReadbackPath _activeBodyReadbackPath = BodyReadbackPath.Homuler;
+        private DirectReadbackStage _activeDirectReadbackStage = DirectReadbackStage.None;
         private bool _directBodyCpuReadbackSessionAvailable = true;
         private string _directBodyCpuReadbackFallbackReason = string.Empty;
 
@@ -358,6 +402,15 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 : _activeBodyReadbackPath == BodyReadbackPath.DirectFallback
                     ? "DirectFallback"
                     : "Homuler";
+        public DirectReadbackStage ActiveDirectReadbackStage => _activeDirectReadbackStage;
+        public string ActiveDirectReadbackStageLabel =>
+            _activeDirectReadbackStage == DirectReadbackStage.H
+                ? "H"
+                : _activeDirectReadbackStage == DirectReadbackStage.V
+                    ? "V"
+                    : _activeDirectReadbackStage == DirectReadbackStage.HV
+                        ? "HV"
+                        : "None";
         public string DirectBodyCpuReadbackFallbackReason => _directBodyCpuReadbackFallbackReason;
         public float CameraFramesPerSecond { get; private set; }
         public float InferenceRequestsPerSecond { get; private set; }
@@ -794,21 +847,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
             if (_bodyInferenceWidth != ActualCameraWidth || _bodyInferenceHeight != ActualCameraHeight)
             {
-                _bodyInferenceRenderTexture = new RenderTexture(
-                    _bodyInferenceWidth,
-                    _bodyInferenceHeight,
-                    0,
-                    RenderTextureFormat.ARGB32,
-                    RenderTextureReadWrite.Default)
-                {
-                    name = "GoldenNeedle Body Pose Inference",
-                    filterMode = FilterMode.Bilinear,
-                    wrapMode = TextureWrapMode.Clamp,
-                    useMipMap = false,
-                    autoGenerateMips = false,
-                    antiAliasing = 1
-                };
-                _bodyInferenceRenderTexture.Create();
+                _bodyInferenceRenderTexture = CreateBodyInferenceRenderTexture(
+                    "GoldenNeedle Body Pose Inference");
+                _directBodyReadbackStagingRenderTexture = CreateBodyInferenceRenderTexture(
+                    "GoldenNeedle Direct CPU Readback Staging");
             }
 
             _textureFramePool = new TextureFramePool(
@@ -820,6 +862,35 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _configuredCameraHeight = ActualCameraHeight;
             _configuredBodyInferenceDownscale = enableBodyInferenceDownscale;
             _configuredBodyInferenceLongEdge = BodyInferenceResolution.ClampLongEdge(bodyInferenceLongEdge);
+            _activeDirectReadbackStage = DirectReadbackStage.None;
+        }
+
+        private RenderTexture CreateBodyInferenceRenderTexture(string textureName)
+        {
+            var renderTexture = new RenderTexture(
+                _bodyInferenceWidth,
+                _bodyInferenceHeight,
+                0,
+                RenderTextureFormat.ARGB32,
+                RenderTextureReadWrite.Default)
+            {
+                name = textureName,
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp,
+                useMipMap = false,
+                autoGenerateMips = false,
+                antiAliasing = 1
+            };
+            renderTexture.Create();
+            return renderTexture;
+        }
+
+        private bool DirectReadbackStagingMatchesBodyInput()
+        {
+            return _directBodyReadbackStagingRenderTexture != null &&
+                _directBodyReadbackStagingRenderTexture.IsCreated() &&
+                _directBodyReadbackStagingRenderTexture.width == _bodyInferenceWidth &&
+                _directBodyReadbackStagingRenderTexture.height == _bodyInferenceHeight;
         }
 
         private BodyReadbackPath SelectBodyReadbackPath(
@@ -841,12 +912,18 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 _textureFramePool != null;
             var hasDownscaledBodyRenderTexture =
                 _bodyInferenceRenderTexture != null &&
+                _bodyInferenceRenderTexture.IsCreated() &&
                 BodyInferenceUsesScaledTexture;
             var sourceDimensionsMatchTextureFrame =
                 hasDownscaledBodyRenderTexture &&
                 _bodyInferenceRenderTexture.width == textureFrame.width &&
                 _bodyInferenceRenderTexture.height == textureFrame.height;
             var bodyResourcesCurrent = BodyInferenceResourcesMatchCurrentIntent();
+            var flipRequired = flipHorizontally || flipVertically;
+            var flipStagingAvailable = !flipRequired || DirectReadbackStagingMatchesBodyInput();
+            var readbackSource = flipRequired
+                ? (Texture)_directBodyReadbackStagingRenderTexture
+                : _bodyInferenceRenderTexture;
             var expectedGraphicsFormat =
                 UnityEngine.Experimental.Rendering.GraphicsFormatUtility.GetGraphicsFormat(
                     TextureFormat.RGBA32,
@@ -855,8 +932,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 SystemInfo.supportsAsyncGPUReadback &&
                 textureFrame.format == TextureFormat.RGBA32 &&
                 hasDownscaledBodyRenderTexture &&
+                readbackSource != null &&
                 SystemInfo.IsFormatSupported(
-                    _bodyInferenceRenderTexture.graphicsFormat,
+                    readbackSource.graphicsFormat,
                     UnityEngine.Experimental.Rendering.GraphicsFormatUsage.ReadPixels) &&
                 SystemInfo.IsFormatSupported(
                     expectedGraphicsFormat,
@@ -870,6 +948,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 bodyResourcesCurrent,
                 flipHorizontally,
                 flipVertically,
+                flipStagingAvailable,
                 formatSupported,
                 _directBodyCpuReadbackSessionAvailable);
             if (selected != BodyReadbackPath.DirectFallback)
@@ -899,9 +978,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             {
                 fallbackReason = "body resources changed";
             }
-            else if (flipHorizontally || flipVertically)
+            else if (flipRequired && !flipStagingAvailable)
             {
-                fallbackReason = "inference flip required";
+                fallbackReason = "direct flip staging unavailable";
             }
             else if (!formatSupported)
             {
@@ -919,6 +998,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         {
             _directBodyCpuReadbackSessionAvailable = false;
             _activeBodyReadbackPath = BodyReadbackPath.DirectFallback;
+            _activeDirectReadbackStage = DirectReadbackStage.None;
             _directBodyCpuReadbackFallbackReason = reason;
         }
 
@@ -948,18 +1028,51 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     flipVertically,
                     out var fallbackReason);
                 _activeBodyReadbackPath = selectedReadbackPath;
+                _activeDirectReadbackStage = DirectReadbackStage.None;
                 _directBodyCpuReadbackFallbackReason =
                     selectedReadbackPath == BodyReadbackPath.DirectFallback
                         ? fallbackReason
                         : string.Empty;
 
+                Texture directReadbackSource = readbackSource;
                 if (selectedReadbackPath == BodyReadbackPath.DirectCPU)
+                {
+                    var stage = LatestFramePipelinePolicy.GetDirectReadbackStage(
+                        flipHorizontally,
+                        flipVertically);
+                    if (stage != DirectReadbackStage.None)
+                    {
+                        if (!DirectReadbackStagingMatchesBodyInput())
+                        {
+                            _activeBodyReadbackPath = BodyReadbackPath.DirectFallback;
+                            _directBodyCpuReadbackFallbackReason = "direct flip staging unavailable";
+                        }
+                        else
+                        {
+                            LatestFramePipelinePolicy.GetDirectReadbackFlipTransform(
+                                flipHorizontally,
+                                flipVertically,
+                                out var scale,
+                                out var offset);
+                            Graphics.Blit(
+                                _bodyInferenceRenderTexture,
+                                _directBodyReadbackStagingRenderTexture,
+                                scale,
+                                offset);
+                            directReadbackSource = _directBodyReadbackStagingRenderTexture;
+                            _activeDirectReadbackStage = stage;
+                        }
+                    }
+                }
+
+                if (_activeBodyReadbackPath == BodyReadbackPath.DirectCPU)
                 {
                     var rawData = textureFrame.GetRawTextureData<byte>();
                     var expectedByteCount = (long)textureFrame.width * textureFrame.height * 4L;
                     if (rawData.Length != expectedByteCount)
                     {
                         _activeBodyReadbackPath = BodyReadbackPath.DirectFallback;
+                        _activeDirectReadbackStage = DirectReadbackStage.None;
                         _directBodyCpuReadbackFallbackReason = "RGBA32 raw buffer size mismatch";
                         request = textureFrame.ReadTextureAsync(
                             readbackSource,
@@ -970,7 +1083,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     {
                         request = AsyncGPUReadback.RequestIntoNativeArray(
                             ref rawData,
-                            readbackSource,
+                            directReadbackSource,
                             0,
                             TextureFormat.RGBA32,
                             null);
@@ -1332,6 +1445,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _preparedFramePublishedAtSeconds = 0d;
             _preparedFramePublishedFrameCount = -1;
             _activeBodyReadbackPath = BodyReadbackPath.Homuler;
+            _activeDirectReadbackStage = DirectReadbackStage.None;
             _directBodyCpuReadbackSessionAvailable = true;
             _directBodyCpuReadbackFallbackReason = string.Empty;
             InferenceRequestsPerSecond = 0f;
@@ -1453,10 +1567,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     !string.IsNullOrEmpty(_directBodyCpuReadbackFallbackReason)
                         ? $" ({_directBodyCpuReadbackFallbackReason})"
                         : string.Empty;
+                var readbackPathSummary =
+                    _activeBodyReadbackPath == BodyReadbackPath.DirectCPU
+                        ? $"DirectCPU stage={ActiveDirectReadbackStageLabel}"
+                        : ActiveBodyReadbackPathLabel;
                 StatusMessage =
                     $"Camera/Pose ready | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
                     $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
-                    $"Readback: {ActiveBodyReadbackPathLabel} direct={DirectReadbacksPerSecond:0.0}/s fail={DirectReadbackFailuresPerSecond:0.0}/s{fallbackSuffix}\n" +
+                    $"Readback: {readbackPathSummary} H={(FlipInputHorizontally ? 1 : 0)} V={(FlipInputVertically ? 1 : 0)} direct={DirectReadbacksPerSecond:0.0}/s fail={DirectReadbackFailuresPerSecond:0.0}/s{fallbackSuffix}\n" +
                     $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s";
             }
 
@@ -1548,18 +1666,24 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private void ReleaseBodyInferenceRenderTexture()
         {
-            if (_bodyInferenceRenderTexture == null)
+            ReleaseRenderTexture(ref _directBodyReadbackStagingRenderTexture);
+            ReleaseRenderTexture(ref _bodyInferenceRenderTexture);
+        }
+
+        private void ReleaseRenderTexture(ref RenderTexture renderTexture)
+        {
+            if (renderTexture == null)
             {
                 return;
             }
 
-            if (_bodyInferenceRenderTexture.IsCreated())
+            if (renderTexture.IsCreated())
             {
-                _bodyInferenceRenderTexture.Release();
+                renderTexture.Release();
             }
 
-            Destroy(_bodyInferenceRenderTexture);
-            _bodyInferenceRenderTexture = null;
+            Destroy(renderTexture);
+            renderTexture = null;
         }
 
         private void StopCamera()

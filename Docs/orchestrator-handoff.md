@@ -6,7 +6,7 @@ Repository: `AltamashM7/GoldenNeedle`
 
 Working branch: `engine/pose-tracking-spike`
 
-Starting checkpoint for the current task: `87b68999cf73f6dee09cace6c8ef264697158de4` — `perf: launch prepared pose inference without extra update delay`.
+Starting checkpoint for the DirectCPU flip-staging follow-up: `00cbb1b6024dea293443b2c4a505d86ca5c1ade4` — `perf: add direct cpu body readback experiment`.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
@@ -26,8 +26,8 @@ Do not redesign without new reproducible USER evidence:
 - newest useful frame wins;
 - no camera-frame history, inference backlog, delayed replay or catch-up loop;
 - full-resolution `CameraTexture` / Lab preview;
-- body pose at the current `320x240` experiment for a `640x480` source;
-- 640x480 camera request default and target inference 30 FPS;
+- body pose at `320x240` for the current `640x480` QA path;
+- camera request default `640x480 @ 30`, target inference `30`;
 - Pose Landmarker Lite, CPU delegate, one pose, segmentation OFF;
 - camera switching and physical-source convention invalidation;
 - Auto/0/90/180/270 orientation;
@@ -40,9 +40,9 @@ Do not redesign without new reproducible USER evidence:
 - F12 Lab/Game behavior;
 - fitted Lab webcam/overlay geometry.
 
-No hand/finger tracking is part of this checkpoint.
+No hand/finger tracking is part of this checkpoint. Do not lower the body input further and do not change completion scheduling in this follow-up.
 
-## Accepted USER evidence before this task
+## Accepted USER evidence before this follow-up
 
 The `b64a3115401689b94cf5f86d691fc5e6c763f510` camera corrective checkpoint received USER runtime QA and all four targeted checks passed:
 1. `QuaternionToEuler` warning stayed gone.
@@ -50,13 +50,13 @@ The `b64a3115401689b94cf5f86d691fc5e6c763f510` camera corrective checkpoint rece
 3. Lab webcam/overlays remained correct.
 4. F12 Game -> Lab switching worked and did not restart the warning.
 
-The lower-resolution body-pose experiment remains at `320x240`. USER laptop A/B was approximately:
+The body-pose downscale decision remains `320x240` for a `640x480` source. USER laptop A/B was approximately:
 - native 640x480: RB `63.3 ms`, `~F->R 144.9 ms`, results `10.85/s`;
 - scaled 320x240: RB `58.3 ms`, `~F->R 137.5 ms`, results `11.75/s`.
 
-Conclusion: keep `320x240`; modest benefit; do not chase `160x120` yet.
+Conclusion: keep `320x240`; do not chase `160x120` yet.
 
-The immediate-launch experiment at `87b68999...` is now USER-runtime accepted. Both runs used `320x240` body input:
+The immediate-launch experiment at `87b68999...` is USER-runtime accepted. Both runs used `320x240` body input:
 
 **Immediate Launch OFF**
 - capture ~29.9 FPS;
@@ -82,146 +82,175 @@ The immediate-launch experiment at `87b68999...` is now USER-runtime accepted. B
 - origin RB;
 - fast ~10–12/s.
 
-Conclusion: **keep Immediate Launch After Readback ON**. It removed approximately one Unity render-frame scheduling boundary. Do not reopen this scheduling point without new evidence.
+Conclusion: **keep Immediate Launch After Readback ON**. Do not reopen the prepared-frame -> DetectAsync scheduling boundary without new evidence.
 
-The current dominant lower-level timings are now roughly RB `55–60 ms`, detect `55–60 ms`, and `~F->R 115–120 ms`.
+## USER evidence from `00cbb1`
 
-## Source audit for the direct readback experiment
-
-Embedded plugin version remains MediaPipeUnityPlugin 0.16.3. Homuler package source is intentionally untouched.
-
-`TextureFrame.ReadTextureAsync` currently performs a general-purpose path:
-1. allocate/get a temporary RenderTexture;
-2. `Graphics.Blit` the source into that temporary texture, including optional H/V flips;
-3. request an async GPU readback;
-4. callback obtains `GetData<byte>()`;
-5. callback calls `Texture2D.LoadRawTextureData(...)`;
-6. callback calls `Texture2D.Apply()`;
-7. callback revokes Homuler's cached native texture pointer and releases the temporary RT.
-
-This work is performed even after Golden Needle has already downscaled the full-resolution webcam into its persistent, matching body inference RenderTexture.
-
-Homuler exposes `TextureFrame.GetRawTextureData<byte>()`. `TextureFrame.BuildCPUImage()` constructs `new Mediapipe.Image(imageFormat, Texture2D)`. The installed `Mediapipe.Image(ImageFormat, Texture2D)` constructor in turn passes `texture.GetRawTextureData<byte>()` to the CPU image constructor. Therefore the current Golden Needle body-pose handoff consumes the Texture2D's CPU raw-data buffer.
-
-The current prepared-frame owner in `MediaPipePoseProvider` calls `BuildCPUImage()` only; there is no Golden Needle `BuildGPUImage` consumer between readback completion and frame release. This supports a narrow no-`Apply` experiment without changing Homuler's general-purpose implementation.
-
-Unity project version is `6000.5.0f1`. Unity 6 exposes the required overload:
-
-```csharp
-AsyncGPUReadback.RequestIntoNativeArray(
-    ref NativeArray<T> output,
-    Texture src,
-    int mipIndex,
-    TextureFormat dstFormat,
-    Action<AsyncGPUReadbackRequest> callback)
-```
-
-The candidate uses `TextureFormat.RGBA32` explicitly. Capability is checked using `SystemInfo.supportsAsyncGPUReadback` and `SystemInfo.IsFormatSupported(..., GraphicsFormatUsage.ReadPixels)` before selecting DirectCPU.
-
-## Direct Body CPU Readback implementation
-
-The serialized control is **Direct Body CPU Readback** and defaults **OFF**. This preserves the accepted Homuler + immediate-launch path as the default until USER QA accepts the candidate.
-
-When eligible, the Golden Needle-owned candidate is:
+The USER pulled `00cbb1`, enabled Direct Body CPU Readback on HP TrueVision, entered Play Mode, and F7 reported:
 
 ```text
-full-resolution WebCamTexture
--> existing Graphics.Blit into persistent 320x240 body RT
--> pooled RGBA32 TextureFrame
--> TextureFrame.GetRawTextureData<byte>()
--> AsyncGPUReadback.RequestIntoNativeArray(..., TextureFormat.RGBA32, null)
--> same coroutine request.done observation
--> NO LoadRawTextureData copy
--> NO Texture2D.Apply
--> publish same TextureFrame
--> accepted immediate-launch path
--> existing BuildCPUImage
+Readback: DirectFallback direct=0.0/s fail=0.0/s (inference flip required)
+```
+
+This is important:
+- the provider did **not** attempt DirectCPU;
+- `direct=0.0/s` confirms no direct request was submitted;
+- `fail=0.0/s` confirms there was no DirectCPU runtime failure;
+- the fallback guard intentionally rejected the current H and/or V inference-flipped camera convention;
+- the accepted Homuler path continued running.
+
+Therefore `00cbb1` produced **no DirectCPU performance result**. Do not benchmark or describe that fallback run as the candidate. The guard worked as designed.
+
+## Source / ownership facts retained from `00cbb1`
+
+Embedded plugin remains MediaPipeUnityPlugin 0.16.3. Homuler package source is untouched.
+
+Homuler `TextureFrame.ReadTextureAsync` remains the accepted general-purpose fallback:
+1. temporary staging RenderTexture;
+2. `Graphics.Blit` with optional H/V scale+offset flip;
+3. `AsyncGPUReadback`;
+4. callback `GetData<byte>()`;
+5. `Texture2D.LoadRawTextureData(...)`;
+6. `Texture2D.Apply()`;
+7. temp RT release / native pointer bookkeeping.
+
+The DirectCPU experiment continues to use the pooled `TextureFrame`'s `GetRawTextureData<byte>()` NativeArray view as the readback destination and never disposes that NativeArray manually. The frame stays owned by the active readback until request completion, is published only after completion, then enters the existing `BuildCPUImage` -> accepted immediate-launch -> `DetectAsync` path. No second writer/readback is created for the same frame.
+
+## Flip-staging follow-up implementation
+
+The no-flip DirectCPU path is unchanged:
+
+```text
+WebCamTexture
+-> persistent 320x240 body RT
+-> AsyncGPUReadback.RequestIntoNativeArray directly into pooled TextureFrame CPU buffer
+-> no LoadRawTextureData
+-> no Texture2D.Apply
+-> prepared frame
+-> accepted immediate launch
+-> BuildCPUImage
 -> DetectAsync
 ```
 
-No separate persistent NativeArray is allocated. The returned NativeArray is a view into the pooled TextureFrame's Texture2D CPU memory and is never disposed manually.
+For inputs requiring an inference H and/or V flip, Golden Needle now owns one additional **persistent** staging RenderTexture with the same width/height and basic texture settings as the active scaled body RT:
 
-### Strict path selection
+```text
+WebCamTexture
+-> persistent body RT
+-> Graphics.Blit(bodyRT, persistent direct staging RT, scale, offset)
+-> AsyncGPUReadback.RequestIntoNativeArray from direct staging RT
+-> pooled TextureFrame CPU buffer
+-> no LoadRawTextureData
+-> no Texture2D.Apply
+-> same prepared/immediate-launch/BuildCPUImage/DetectAsync path
+```
+
+This deliberately does **not** combine camera downscale and flip into one new blit. The established camera -> body RT downscale remains the first stage so the experiment changes only readback strategy.
+
+The staging transform mirrors Homuler exactly:
+
+```text
+None: scale=( 1, 1), offset=(0,0)
+H:    scale=(-1, 1), offset=(1,0)
+V:    scale=( 1,-1), offset=(0,1)
+HV:   scale=(-1,-1), offset=(1,1)
+```
+
+Quarter-turn rotation remains exclusively in `ImageProcessingOptions`. No canonical, camera, display or anatomical semantics were changed.
+
+## DirectCPU selection after the follow-up
 
 DirectCPU requires:
 - toggle ON;
-- provider Ready / ordinary capture state;
-- active persistent downscaled body RenderTexture;
-- source RT width/height exactly matching `TextureFrame.width/height`;
+- provider Ready / normal capture session alive;
+- persistent scaled body RT active and created;
+- body RT dimensions matching the pooled `TextureFrame`;
 - body resources matching current serialized intent;
-- inference H flip false;
-- inference V flip false;
-- pooled frame format exactly RGBA32 and raw byte length matching width*height*4;
+- if H/V flip is required, persistent direct staging RT created and matching body-input dimensions;
+- TextureFrame format `RGBA32` and correct raw byte count;
 - async GPU readback support;
-- source and RGBA32-compatible formats reporting `ReadPixels` capability;
-- DirectCPU not previously marked unavailable for this provider session.
+- chosen direct source / RGBA32-compatible formats supporting `ReadPixels`;
+- current provider session still allowing DirectCPU.
 
-The policy exposes three runtime states:
-- `Homuler`: direct experiment OFF;
-- `DirectCPU`: direct request actually selected;
-- `DirectFallback`: direct requested but current conditions/session require Homuler.
+H/V flip is **no longer itself a rejection reason**. If a flip is required but staging is missing/invalid, selection becomes `DirectFallback` with reason `direct flip staging unavailable`, and the existing Homuler `ReadTextureAsync(readbackSource, flipH, flipV)` path remains authoritative.
 
-No custom flip shader is implemented. Rotation remains in the existing `ImageProcessingOptions` path. If backend row/origin behavior causes inversion/mirroring, treat that as experiment failure rather than changing canonical semantics.
+DirectCPU request exceptions/errors/timeouts retain the `00cbb1` behavior: mark direct unavailable for the current provider session, preserve the serialized toggle, and use Homuler on subsequent frames. A timed-out direct request continues holding its TextureFrame/raw memory until Unity reports completion before that frame is released.
 
-### Lifetime / failure behavior
+## Persistent resource lifecycle
 
-One-readback ownership remains authoritative. While RequestIntoNativeArray is pending:
-- the TextureFrame stays owned by the readback;
-- it is not released;
-- it is not handed to BuildCPUImage;
-- its raw NativeArray is not disposed;
-- body resources / frame pool cannot rebuild because `_readbackPending` remains true;
-- camera switching waits for the active readback through the existing pending-switch gate.
+The direct staging RT is created deterministically whenever scaled body-inference resources are created, even if DirectCPU is currently OFF. It performs no blit when unused.
 
-On successful completion the same prepared-frame publication and accepted immediate-launch code runs.
+It is released together with the body RT when body-inference resources are rebuilt or the provider session is cleaned up. Ordinary live resource rebuild waits until active readback/inference drains; camera switching already waits on the same readback/inference gates. The staging RT therefore follows the same resource lifetime authority as the body RT and TextureFramePool.
 
-If direct submission throws or the request completes with an error, the frame is safely released and DirectCPU is marked unavailable for the current provider session. Future frames automatically use Homuler. If a direct request exceeds the configured timeout, it is marked failed/fallback immediately but the TextureFrame remains held until the outstanding GPU request actually completes before release, so Unity never writes into recycled/disposed Texture2D memory. No second readback is launched for that source frame.
-
-The serialized toggle is not rewritten when session fallback occurs. A new provider session may try DirectCPU again if the USER still has the toggle enabled.
+Play-stop/OnDestroy behavior remains subject to USER runtime smoke testing because this Web Builder cannot run Unity. No completion-scheduling redesign was added for this follow-up.
 
 ## Diagnostics
 
-RB timing remains fair across both paths: it starts before the existing full-res -> body-RT blit and ends when Golden Needle observes request completion. It is not labelled pure GPU time.
+RB timing boundaries remain comparable across baseline and candidate: start before the existing webcam -> body RT blit, end when Golden Needle observes request completion.
 
-F7/Status retains:
-- capture/render/req/res/cb rates;
-- RB/build/detect/~F->R;
-- pose age;
-- prepared->launch delay/frame delta/origin/fast rate;
-- noFresh/int/RB/inf/pool waits;
-- readback failures/timeouts;
-- prepared replacements.
+For flipped DirectCPU, RB includes:
+- webcam -> body RT blit;
+- body RT -> persistent direct staging RT flip blit;
+- direct GPU readback;
+- coroutine completion observation.
 
-It now adds a compact readback line with:
-- active readback path (`Homuler`, `DirectCPU`, `DirectFallback`);
-- DirectCPU submissions/s;
-- DirectCPU failures/s;
-- fallback reason when applicable.
+Baseline Homuler RB still includes:
+- webcam -> body RT blit;
+- Homuler temp staging acquisition;
+- Homuler flip blit;
+- readback;
+- callback `GetData`;
+- `LoadRawTextureData`;
+- `Texture2D.Apply`;
+- temp release;
+- coroutine completion observation.
 
-The normal custom Inspector exposes the Direct Body CPU Readback toggle and current runtime readback path/fallback reason. No Debug Inspector and no per-frame Console logging is required.
+F7/Status retains capture/render/req/res/cb rates, RB/build/detect/~F->R, pose age, prepared->launch delay/frame delta/origin/fast rate, noFresh/int/RB/inf/pool waits, readback failures/timeouts and prepared replacements.
 
-## Verification boundary
+It now exposes the actual candidate state compactly:
 
-Focused deterministic Editor tests cover readback-path policy:
-- direct OFF -> Homuler;
-- no downscaled body RT -> fallback;
-- H flip -> fallback;
-- V flip -> fallback;
-- dimension mismatch -> fallback;
-- unsupported format -> fallback;
-- all conditions valid -> DirectCPU;
-- session unavailable -> fallback;
-- serialized default -> OFF.
+```text
+Readback: DirectCPU stage=None|H|V|HV H=0/1 V=0/1 direct=X.X/s fail=Y.Y/s
+```
+
+or, when candidate selection is not valid:
+
+```text
+Readback: DirectFallback H=0/1 V=0/1 ... (reason)
+```
+
+The normal custom Inspector also shows runtime readback path/stage plus explicit inference flip state. There is no per-frame Console spam.
+
+## Focused deterministic tests
+
+Required path-policy coverage now includes:
+- experiment OFF -> Homuler;
+- valid no-flip -> DirectCPU without staging requirement;
+- valid H flip + staging available -> DirectCPU;
+- valid V flip + staging available -> DirectCPU;
+- valid HV flip + staging available -> DirectCPU;
+- flip required + staging unavailable -> DirectFallback;
+- dimension mismatch -> DirectFallback;
+- body-resource mismatch -> DirectFallback;
+- format unsupported -> DirectFallback;
+- session unavailable -> DirectFallback;
+- serialized Direct Body CPU Readback default -> OFF.
+
+Pure transform coverage asserts:
+- None -> scale `(1,1)`, offset `(0,0)`;
+- H -> scale `(-1,1)`, offset `(1,0)`;
+- V -> scale `(1,-1)`, offset `(0,1)`;
+- HV -> scale `(-1,-1)`, offset `(1,1)`.
 
 Existing immediate-launch, scheduler and body-resolution tests remain.
 
-Unity compile/Test Runner/runtime status must be stated by the Builder report. Do not convert static source inspection into a Unity PASS.
+Unity compilation/Test Runner/runtime status must be stated explicitly by the Builder report. Static source review must not be converted into a Unity PASS.
 
 ## Next USER A/B
 
-Use **HP TrueVision** and isolate only readback strategy:
+Use **HP TrueVision** and isolate only readback strategy.
 
-Common settings for both runs:
+Common settings:
 - camera request `640x480 @ 30`;
 - target inference `30`;
 - body downscale ON;
@@ -231,17 +260,28 @@ Common settings for both runs:
 
 **Run A — accepted baseline**
 - Direct Body CPU Readback OFF;
-- confirm F7 readback path = `Homuler`.
+- confirm F7 says `Readback: Homuler`.
 
 **Run B — candidate**
-- Direct Body CPU Readback ON;
-- confirm F7 readback path = `DirectCPU`.
-- If F7 says `DirectFallback`, do not treat it as a candidate benchmark; record the fallback reason instead.
+- change only Direct Body CPU Readback to ON;
+- confirm F7 says `Readback: DirectCPU stage=H`, `V`, `HV` or `None`;
+- record displayed `H=0/1 V=0/1`.
+- if F7 still says `DirectFallback`, **do not benchmark**; record the exact fallback reason and flip state.
 
-Use the same OBS sequence for both: enter Play Mode, settle/C/K, start OBS, wait 5–10 seconds, perform similar arm/torso motion, stop OBS while Play Mode remains running.
+Use the same OBS flow: Play Mode -> settle/C/K -> start OBS -> wait 5–10 seconds -> comparable arm/torso motion -> stop OBS while Play Mode remains running.
 
-Record capture FPS, render FPS, req/s, res/s, cb/s, RB, build, detect, Prep->launch, `~F->R`, pose age, wait rates, replacement rate, DirectCPU rate, direct failures, active path and subjective responsiveness. Also verify webcam/Lab image, F1/F2/F4 alignment, no H/V inversion, stable body tracking and no Console errors.
+Record capture FPS, render FPS, req/s, res/s, cb/s, RB, build, detect, Prep->launch, `~F->R`, pose age, wait rates, replacement rate, DirectCPU rate, direct failures, stage mode and subjective responsiveness.
 
-The current accepted baseline is approximately capture `29.5 FPS`, render `33.5 FPS`, results `11.7/s`, RB `56.7 ms`, detect `56.7 ms`, Prep->launch `0.4 ms`, `~F->R 117.7 ms`.
+Also verify:
+- F1/F2/F4 alignment;
+- upright skeleton/avatar;
+- no new mirror inversion;
+- full-resolution Lab preview unchanged;
+- Console clean;
+- live Direct toggle safe;
+- Play stop/restart safe;
+- camera switch safe.
 
-Direct Body CPU Readback remains **IMPLEMENTED / NOT USER ACCEPTED** until this A/B is completed.
+Accepted baseline remains approximately: RB `56.7 ms`, detect `56.7 ms`, Prep->launch `0.4 ms`, `~F->R 117.7 ms`, results `11.7/s`.
+
+DirectCPU passes only if the actual runtime path is `DirectCPU`, orientation is correct, RB and `~F->R` reproducibly improve without meaningful result-rate regression, and there are no direct errors/timeouts or resource-lifetime regressions. DirectCPU remains **IMPLEMENTED / NOT USER ACCEPTED** until that real candidate run exists.

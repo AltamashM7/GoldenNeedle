@@ -176,18 +176,57 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void DirectReadbackHorizontalFlipUsesFallback()
+        public void DirectReadbackNoFlipUsesDirectCpuWithoutStaging()
         {
             Assert.That(
-                SelectReadbackPath(flipHorizontally: true),
-                Is.EqualTo(BodyReadbackPath.DirectFallback));
+                SelectReadbackPath(
+                    flipHorizontally: false,
+                    flipVertically: false,
+                    flipStagingAvailable: false),
+                Is.EqualTo(BodyReadbackPath.DirectCPU));
         }
 
         [Test]
-        public void DirectReadbackVerticalFlipUsesFallback()
+        public void DirectReadbackHorizontalFlipUsesDirectCpuWhenStagingAvailable()
         {
             Assert.That(
-                SelectReadbackPath(flipVertically: true),
+                SelectReadbackPath(
+                    flipHorizontally: true,
+                    flipVertically: false,
+                    flipStagingAvailable: true),
+                Is.EqualTo(BodyReadbackPath.DirectCPU));
+        }
+
+        [Test]
+        public void DirectReadbackVerticalFlipUsesDirectCpuWhenStagingAvailable()
+        {
+            Assert.That(
+                SelectReadbackPath(
+                    flipHorizontally: false,
+                    flipVertically: true,
+                    flipStagingAvailable: true),
+                Is.EqualTo(BodyReadbackPath.DirectCPU));
+        }
+
+        [Test]
+        public void DirectReadbackHorizontalAndVerticalFlipUsesDirectCpuWhenStagingAvailable()
+        {
+            Assert.That(
+                SelectReadbackPath(
+                    flipHorizontally: true,
+                    flipVertically: true,
+                    flipStagingAvailable: true),
+                Is.EqualTo(BodyReadbackPath.DirectCPU));
+        }
+
+        [Test]
+        public void DirectReadbackFlipRequiredWithoutStagingUsesFallback()
+        {
+            Assert.That(
+                SelectReadbackPath(
+                    flipHorizontally: false,
+                    flipVertically: true,
+                    flipStagingAvailable: false),
                 Is.EqualTo(BodyReadbackPath.DirectFallback));
         }
 
@@ -196,6 +235,14 @@ namespace GoldenNeedle.Tests
         {
             Assert.That(
                 SelectReadbackPath(sourceDimensionsMatchTextureFrame: false),
+                Is.EqualTo(BodyReadbackPath.DirectFallback));
+        }
+
+        [Test]
+        public void DirectReadbackBodyResourceMismatchUsesFallback()
+        {
+            Assert.That(
+                SelectReadbackPath(bodyResourcesCurrent: false),
                 Is.EqualTo(BodyReadbackPath.DirectFallback));
         }
 
@@ -221,6 +268,34 @@ namespace GoldenNeedle.Tests
             Assert.That(
                 SelectReadbackPath(sessionAvailable: false),
                 Is.EqualTo(BodyReadbackPath.DirectFallback));
+        }
+
+        [TestCase(false, false, 1f, 1f, 0f, 0f, DirectReadbackStage.None)]
+        [TestCase(true, false, -1f, 1f, 1f, 0f, DirectReadbackStage.H)]
+        [TestCase(false, true, 1f, -1f, 0f, 1f, DirectReadbackStage.V)]
+        [TestCase(true, true, -1f, -1f, 1f, 1f, DirectReadbackStage.HV)]
+        public void DirectReadbackFlipTransformMatchesHomulerConvention(
+            bool flipHorizontally,
+            bool flipVertically,
+            float scaleX,
+            float scaleY,
+            float offsetX,
+            float offsetY,
+            DirectReadbackStage expectedStage)
+        {
+            LatestFramePipelinePolicy.GetDirectReadbackFlipTransform(
+                flipHorizontally,
+                flipVertically,
+                out var scale,
+                out var offset);
+
+            Assert.That(scale, Is.EqualTo(new Vector2(scaleX, scaleY)));
+            Assert.That(offset, Is.EqualTo(new Vector2(offsetX, offsetY)));
+            Assert.That(
+                LatestFramePipelinePolicy.GetDirectReadbackStage(
+                    flipHorizontally,
+                    flipVertically),
+                Is.EqualTo(expectedStage));
         }
 
         [Test]
@@ -382,6 +457,7 @@ namespace GoldenNeedle.Tests
             bool bodyResourcesCurrent = true,
             bool flipHorizontally = false,
             bool flipVertically = false,
+            bool flipStagingAvailable = true,
             bool formatSupported = true,
             bool sessionAvailable = true)
         {
@@ -393,6 +469,7 @@ namespace GoldenNeedle.Tests
                 bodyResourcesCurrent,
                 flipHorizontally,
                 flipVertically,
+                flipStagingAvailable,
                 formatSupported,
                 sessionAvailable);
         }

@@ -188,7 +188,7 @@ namespace GoldenNeedle.Editor
                 _enableDirectBodyCpuReadback,
                 new GUIContent(
                     "Direct Body CPU Readback",
-                    "Experimental body-pose-only path. When eligible it writes GPU readback directly into the pooled TextureFrame CPU buffer, bypassing Homuler staging/copy/Apply. It remains CPU pose inference, automatically falls back to the existing Homuler path when ineligible, and never changes CameraTexture or Lab display."));
+                    "Experimental body-pose-only path. Eligible H/V-flipped inputs use one persistent Golden Needle staging RenderTexture with the same scale/offset convention as Homuler, then read GPU data directly into the pooled TextureFrame CPU buffer without LoadRawTextureData/Apply. CPU pose inference, CameraTexture and Lab display semantics remain unchanged."));
 
             serializedObject.ApplyModifiedProperties();
 
@@ -225,7 +225,12 @@ namespace GoldenNeedle.Editor
                     provider.ImmediateInferenceLaunchAfterReadbackEnabled ? "On" : "Off");
                 EditorGUILayout.LabelField(
                     "Readback Path",
-                    provider.ActiveBodyReadbackPathLabel);
+                    provider.ActiveBodyReadbackPath == BodyReadbackPath.DirectCPU
+                        ? $"DirectCPU stage={provider.ActiveDirectReadbackStageLabel}"
+                        : provider.ActiveBodyReadbackPathLabel);
+                EditorGUILayout.LabelField(
+                    "Inference Flip",
+                    $"H={(provider.FlipInputHorizontally ? 1 : 0)} V={(provider.FlipInputVertically ? 1 : 0)}");
                 if (!string.IsNullOrEmpty(provider.DirectBodyCpuReadbackFallbackReason))
                 {
                     EditorGUILayout.LabelField(
