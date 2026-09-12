@@ -511,6 +511,12 @@ namespace GoldenNeedle.Tests
             Assert.That(sample.CallbackExitToPollMilliseconds, Is.EqualTo(19d));
             Assert.That(sample.PollToPublishMilliseconds, Is.EqualTo(1d));
             Assert.That(sample.SubmitCallMilliseconds, Is.EqualTo(3d));
+
+            var window = new DirectReadbackTimingWindow(2);
+            window.Add(sample);
+            Assert.That(
+                window.GetMedianMilliseconds(DirectReadbackTimingMetric.SubmitCall),
+                Is.EqualTo(3d));
         }
 
         [Test]

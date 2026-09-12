@@ -57,6 +57,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         CallbackEnterToPoll,
         CallbackExitToPoll,
         PollToPublish,
+        SubmitCall,
     }
 
     public readonly struct DirectReadbackTimingSample
@@ -223,6 +224,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     DirectReadbackTimingMetric.CallbackEnterToPoll => _samples[i].CallbackEnterToPollMilliseconds,
                     DirectReadbackTimingMetric.CallbackExitToPoll => _samples[i].CallbackExitToPollMilliseconds,
                     DirectReadbackTimingMetric.PollToPublish => _samples[i].PollToPublishMilliseconds,
+                    DirectReadbackTimingMetric.SubmitCall => _samples[i].SubmitCallMilliseconds,
                     _ => double.NaN,
                 };
             }
@@ -642,6 +644,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _directReadbackTimingWindow.GetMedianMilliseconds(DirectReadbackTimingMetric.PollToPublish);
         public double DirectReadbackTimingPollToPublishP95Milliseconds =>
             _directReadbackTimingWindow.GetP95Milliseconds(DirectReadbackTimingMetric.PollToPublish);
+        public double DirectReadbackTimingSubmitCallMedianMilliseconds =>
+            _directReadbackTimingWindow.GetMedianMilliseconds(DirectReadbackTimingMetric.SubmitCall);
+        public double DirectReadbackTimingSubmitCallP95Milliseconds =>
+            _directReadbackTimingWindow.GetP95Milliseconds(DirectReadbackTimingMetric.SubmitCall);
         public bool HasPreparedFrame => _preparedTextureFrame != null;
         public bool ReadbackPending => _readbackPending;
         public bool InferencePending => Volatile.Read(ref _inferenceOutstanding) != 0;
