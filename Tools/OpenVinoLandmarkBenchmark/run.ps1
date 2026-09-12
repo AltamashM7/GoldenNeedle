@@ -85,7 +85,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $NeedInstall = $Reinstall
 if (-not $NeedInstall) {
-    & $VenvPython -c "import importlib.metadata as m; raise SystemExit(0 if m.version('openvino') == '2026.3.0' else 1)" 2>$null
+    & $VenvPython -c "import importlib.metadata as m; v=next((d.version for d in m.distributions() if (d.metadata.get('Name') or '').lower() == 'openvino'), ''); raise SystemExit(0 if v == '2026.3.0' else 1)"
     $NeedInstall = $LASTEXITCODE -ne 0
 }
 
