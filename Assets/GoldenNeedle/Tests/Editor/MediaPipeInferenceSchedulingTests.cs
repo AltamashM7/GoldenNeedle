@@ -631,6 +631,200 @@ namespace GoldenNeedle.Tests
             Assert.That(window.ExcludedSampleCount, Is.EqualTo(1));
         }
 
+        [Test]
+        public void InferenceContinuationTimingSampleAcceptsMatchingSessionAndSerial()
+        {
+            Assert.That(
+                InferenceContinuationTimingMath.TryCreateSample(
+                    expectedSessionId: 3,
+                    completedSessionId: 3,
+                    expectedSerial: 7,
+                    completedSerial: 7,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 105,
+                    callbackEntryTicks: 125,
+                    completionTicks: 130,
+                    nextAcceptedLaunchTicks: 160,
+                    preparedWaitingAtResult: true,
+                    nextLaunchOrigin: PreparedInferenceLaunchOrigin.ReadbackContinuation,
+                    out var sample,
+                    frequency: 1000),
+                Is.True);
+            Assert.That(sample.Serial, Is.EqualTo(7));
+            Assert.That(sample.SessionId, Is.EqualTo(3));
+            Assert.That(sample.SubmitCallMilliseconds, Is.EqualTo(5d));
+            Assert.That(sample.RequestToResultMilliseconds, Is.EqualTo(20d));
+            Assert.That(sample.ResultToNextLaunchMilliseconds, Is.EqualTo(30d));
+            Assert.That(sample.PreparedWaitingAtResult, Is.True);
+            Assert.That(sample.NextLaunchOrigin, Is.EqualTo(PreparedInferenceLaunchOrigin.ReadbackContinuation));
+        }
+
+        [Test]
+        public void InferenceContinuationTimingSampleRejectsSessionMismatch()
+        {
+            Assert.That(
+                InferenceContinuationTimingMath.TryCreateSample(
+                    expectedSessionId: 3,
+                    completedSessionId: 2,
+                    expectedSerial: 7,
+                    completedSerial: 7,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 105,
+                    callbackEntryTicks: 125,
+                    completionTicks: 130,
+                    nextAcceptedLaunchTicks: 160,
+                    preparedWaitingAtResult: false,
+                    nextLaunchOrigin: PreparedInferenceLaunchOrigin.Update,
+                    out _,
+                    frequency: 1000),
+                Is.False);
+        }
+
+        [Test]
+        public void InferenceContinuationTimingSampleRejectsSerialMismatch()
+        {
+            Assert.That(
+                InferenceContinuationTimingMath.TryCreateSample(
+                    expectedSessionId: 3,
+                    completedSessionId: 3,
+                    expectedSerial: 7,
+                    completedSerial: 6,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 105,
+                    callbackEntryTicks: 125,
+                    completionTicks: 130,
+                    nextAcceptedLaunchTicks: 160,
+                    preparedWaitingAtResult: false,
+                    nextLaunchOrigin: PreparedInferenceLaunchOrigin.Update,
+                    out _,
+                    frequency: 1000),
+                Is.False);
+        }
+
+        [Test]
+        public void InferenceContinuationTimingSampleRejectsNonMonotonicTimestamps()
+        {
+            Assert.That(
+                InferenceContinuationTimingMath.TryCreateSample(
+                    expectedSessionId: 3,
+                    completedSessionId: 3,
+                    expectedSerial: 7,
+                    completedSerial: 7,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 105,
+                    callbackEntryTicks: 104,
+                    completionTicks: 130,
+                    nextAcceptedLaunchTicks: 160,
+                    preparedWaitingAtResult: false,
+                    nextLaunchOrigin: PreparedInferenceLaunchOrigin.Update,
+                    out _,
+                    frequency: 1000),
+                Is.False);
+        }
+
+        [Test]
+        public void InferenceContinuationTimingWindowClassifiesPreparedSamplesAndOrigins()
+        {
+            var window = new InferenceContinuationTimingWindow(8);
+            window.Add(ContinuationSample(10d, prepared: true, PreparedInferenceLaunchOrigin.Update));
+            window.Add(ContinuationSample(20d, prepared: false, PreparedInferenceLaunchOrigin.ReadbackContinuation));
+            window.Add(ContinuationSample(30d, prepared: true, PreparedInferenceLaunchOrigin.ReadbackContinuation));
+
+            Assert.That(window.ValidSampleCount, Is.EqualTo(3));
+            Assert.That(window.PreparedWaitingSampleCount, Is.EqualTo(2));
+            Assert.That(window.PreparedWaitingRate, Is.EqualTo(2d / 3d));
+            Assert.That(
+                window.GetOriginSampleCount(PreparedInferenceLaunchOrigin.Update),
+                Is.EqualTo(1));
+            Assert.That(
+                window.GetOriginSampleCount(PreparedInferenceLaunchOrigin.ReadbackContinuation),
+                Is.EqualTo(2));
+            Assert.That(
+                window.GetOriginSampleCount(PreparedInferenceLaunchOrigin.ReadbackContinuation, preparedOnly: true),
+                Is.EqualTo(1));
+        }
+
+        [Test]
+        public void InferenceContinuationTimingWindowCalculatesPreparedOnlyMedianAndP95()
+        {
+            var window = new InferenceContinuationTimingWindow(8);
+            window.Add(ContinuationSample(10d, prepared: true, PreparedInferenceLaunchOrigin.Update));
+            window.Add(ContinuationSample(30d, prepared: true, PreparedInferenceLaunchOrigin.Update));
+            window.Add(ContinuationSample(20d, prepared: true, PreparedInferenceLaunchOrigin.Update));
+            window.Add(ContinuationSample(100d, prepared: false, PreparedInferenceLaunchOrigin.Update));
+
+            Assert.That(
+                window.GetMedianMilliseconds(
+                    InferenceContinuationTimingMetric.ResultToNextLaunch,
+                    preparedOnly: true),
+                Is.EqualTo(20d));
+            Assert.That(
+                window.GetP95Milliseconds(
+                    InferenceContinuationTimingMetric.ResultToNextLaunch,
+                    preparedOnly: true),
+                Is.EqualTo(30d));
+        }
+
+        [Test]
+        public void InferenceContinuationTimingWindowRollsOverWithoutGrowing()
+        {
+            var window = new InferenceContinuationTimingWindow(2);
+            window.Add(ContinuationSample(10d, prepared: true, PreparedInferenceLaunchOrigin.Update));
+            window.Add(ContinuationSample(30d, prepared: true, PreparedInferenceLaunchOrigin.Update));
+            window.Add(ContinuationSample(20d, prepared: true, PreparedInferenceLaunchOrigin.Update));
+
+            Assert.That(window.ValidSampleCount, Is.EqualTo(2));
+            Assert.That(
+                window.GetMedianMilliseconds(InferenceContinuationTimingMetric.ResultToNextLaunch),
+                Is.EqualTo(25d));
+        }
+
+        [Test]
+        public void InferenceContinuationTimingWindowResetDropsSamplesAndMissingState()
+        {
+            var window = new InferenceContinuationTimingWindow(2);
+            window.Add(ContinuationSample(10d, prepared: true, PreparedInferenceLaunchOrigin.Update));
+            window.RecordMissingSample();
+
+            window.Reset();
+
+            Assert.That(window.ValidSampleCount, Is.EqualTo(0));
+            Assert.That(window.MissingSampleCount, Is.EqualTo(0));
+            Assert.That(
+                window.GetMedianMilliseconds(InferenceContinuationTimingMetric.ResultToNextLaunch),
+                Is.NaN);
+        }
+
+        [Test]
+        public void InferenceContinuationTimingIncompleteSampleIsMissingNotZeroLatency()
+        {
+            Assert.That(
+                InferenceContinuationTimingMath.TryCreateSample(
+                    expectedSessionId: 3,
+                    completedSessionId: 3,
+                    expectedSerial: 7,
+                    completedSerial: 7,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 105,
+                    callbackEntryTicks: 125,
+                    completionTicks: 130,
+                    nextAcceptedLaunchTicks: 0,
+                    preparedWaitingAtResult: true,
+                    nextLaunchOrigin: PreparedInferenceLaunchOrigin.Update,
+                    out var sample,
+                    frequency: 1000),
+                Is.False);
+            Assert.That(sample.ResultToNextLaunchMilliseconds, Is.EqualTo(0d));
+
+            var window = new InferenceContinuationTimingWindow(2);
+            window.RecordMissingSample();
+            Assert.That(window.ValidSampleCount, Is.EqualTo(0));
+            Assert.That(window.MissingSampleCount, Is.EqualTo(1));
+            Assert.That(
+                window.GetP95Milliseconds(InferenceContinuationTimingMetric.ResultToNextLaunch),
+                Is.NaN);
+        }
+
         private static DirectReadbackTimingSample TimingSample(double callbackToPollMilliseconds)
         {
             return new DirectReadbackTimingSample(
@@ -641,6 +835,21 @@ namespace GoldenNeedle.Tests
                 pollToPublishMilliseconds: 1d,
                 submitCallMilliseconds: 1d,
                 isError: false);
+        }
+
+        private static InferenceContinuationTimingSample ContinuationSample(
+            double resultToNextLaunchMilliseconds,
+            bool prepared,
+            PreparedInferenceLaunchOrigin origin)
+        {
+            return new InferenceContinuationTimingSample(
+                serial: 1,
+                sessionId: 1,
+                submitCallMilliseconds: 2d,
+                requestToResultMilliseconds: 3d,
+                resultToNextLaunchMilliseconds: resultToNextLaunchMilliseconds,
+                preparedWaitingAtResult: prepared,
+                nextLaunchOrigin: origin);
         }
 
         private static bool ImmediateLaunchAllowed(

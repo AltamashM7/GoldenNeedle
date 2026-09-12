@@ -6,13 +6,15 @@ Repository: `AltamashM7/GoldenNeedle`
 
 Working branch: `engine/pose-tracking-spike`
 
-Starting checkpoint for the DirectCPU callback-timing instrumentation checkpoint: `6a9351c808b251f9726444008806dd0d9471166a` — `fix: guard direct readback lifetime during teardown`.
+Starting checkpoint for the inference-completion → next-launch timing instrumentation checkpoint: `90ceab892c7fae0647e085f586716f10101be077` — `perf: expose direct readback submit timing`.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
 - `b64a311...` Lab-camera quaternion/clear-only-camera correction: **USER-runtime accepted**.
 - Immediate Launch After Readback: **USER-runtime accepted**; keep ON.
-- Direct Body CPU Readback flip staging + teardown guard: **USER-runtime PASS** as a modest beneficial optimization; callback-vs-coroutine timing instrumentation is **IMPLEMENTED / AWAITING USER MEASUREMENT**.
+- Direct Body CPU Readback flip staging + teardown guard: **USER-runtime PASS** as a modest beneficial optimization; callback→poll timing was USER-measured at approximately `0.6–0.9 ms` median, `1.3–1.6 ms` p95, with poll→publish approximately `0 ms`.
+- Callback-driven readback scheduling optimization: **CLOSED / REJECTED**; the callback remains diagnostic-only and does not launch inference.
+- Inference-completion → next-launch timing instrumentation: **IMPLEMENTED / AWAITING USER MEASUREMENT**.
 - Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 - No merge to `main` without explicit USER approval.
@@ -236,7 +238,7 @@ The USER observed the expected Play-stop safety diagnostic:
 
 No resource error or hang was reported from that event.
 
-## Callback-vs-coroutine timing instrumentation checkpoint
+## Callback-vs-coroutine timing result
 
 DirectCPU `RequestIntoNativeArray` now has a minimal diagnostic callback. It records only monotonic
 callback-enter/exit timestamps and a monotonically increasing request serial using thread-safe
@@ -247,9 +249,41 @@ F7 exposes a rolling fixed-window sample count plus submit->callback, callback->
 poll->publish median/p95 values. Missing or unmatched callbacks are not represented as zero-latency
 samples, and error/timeout/non-published requests are excluded from the normal latency window.
 
-This checkpoint is **IMPLEMENTED / AWAITING USER MEASUREMENT**. It is not evidence for callback-driven
-scheduling optimization. Do not publish frames, release `TextureFrame`, launch inference or alter
-teardown from the callback.
+USER measurement found callback→poll approximately `0.6–0.9 ms` median, `1.3–1.6 ms` p95, and
+poll→publish approximately `0 ms`. This does not justify callback-driven scheduling, so that
+optimization line is **CLOSED / REJECTED**. Do not publish frames, release `TextureFrame`, launch
+inference or alter teardown from the callback.
+
+## Inference-completion → next-launch timing instrumentation checkpoint
+
+The current diagnostic-only checkpoint records `I0` at `DetectAsync` call start, `I1` after a
+successful accepted submission, `I2` at result callback entry, `I3` immediately around the existing
+`Interlocked.Exchange(ref _inferenceOutstanding, 0)`, and `I4` at the next accepted `DetectAsync`
+call start. Monotonically increasing inference serials, a provider-session id, and the callback's
+request timestamp reject mismatched or cross-restart samples.
+
+The primary aggregate is prepared-waiting `I4-I3`, result completion → next accepted launch. The
+uncertain callback thread reads only an atomic prepared-slot indicator at `I2/I3`; it does not read
+the Unity-owned prepared frame, call Unity APIs, log per frame, publish/release frames, or launch
+inference. A fixed 64-entry rolling window exposes submit, request→callback, all result→next-launch,
+prepared-only result→next-launch median/p95, prepared-waiting count/rate, and Update/Readback origin
+counts. Failed, missing, unmatched, cross-session, and incomplete samples are excluded rather than
+zero-filled.
+
+F7 adds:
+
+`Inf next: n=... prep=.../... (...%) cb→next=.../...ms U/RB=.../... missing=...`
+
+Existing RB/build/detect/~F→R and results/callback metrics remain visible. No callback-driven launch
+or other runtime scheduling change is part of this checkpoint.
+
+## MediaPipe CPU inference audit conclusion
+
+The current stack exposes no supported public CPU-thread or XNNPACK tuning knob. The Windows GPU
+delegate is not suitable for production use here. Lite remains the fastest official compatible model
+for the current 33/world-landmark contract; fixed internal detector/landmark tensors limit gains
+from lowering source resolution, and LIVE_STREAM remains appropriate. Confidence thresholds remain
+unchanged.
 
 ## Diagnostics
 
@@ -258,13 +292,13 @@ Existing F7/Status remains unchanged for its prior metrics: capture/render/req/r
 One exceptional cleanup log may appear if teardown actually has to wait for a DirectCPU request. There is no per-frame Console spam.
 
 The Unity CLI EditMode validation attempt for this checkpoint did not reach compilation or the Test
-Runner. Unity exited before reporting results because the `Unity-LicenseClient-user` mutex was already
-held and the project was already open in another Unity instance. This is an environment/license/mutex
+Runner. Unity exited before reporting results because another Unity instance already had this project
+open (`Multiple Unity instances cannot open the same project`). This is an Editor-instance/mutex
 limitation, not a test result; no Unity PASS is claimed.
 
 ## Focused deterministic tests
 
-Existing scheduler, immediate-launch, body-resolution, DirectCPU path-selection and flip-transform tests remain. Focused pure timing-helper tests now cover serial matching, missing callbacks, tick conversion, median/p95, ring rollover and error exclusion.
+Existing scheduler, immediate-launch, body-resolution, DirectCPU path-selection and flip-transform tests remain. Focused pure timing-helper tests now cover serial/session matching, missing callbacks, tick conversion, median/p95, ring rollover, error exclusion, prepared-only filtering, origin counts, reset, and incomplete continuation samples without zero-fill.
 
 Additional pure teardown-policy tests cover:
 - no active DirectCPU request -> cleanup does not require wait;
@@ -276,7 +310,7 @@ No brittle graphics-device-dependent automated test was added solely to call a r
 
 Unity compile/Test Runner/runtime status must be stated explicitly by the Builder report; static inspection is not a Unity PASS.
 
-## Next USER validation after this safety checkpoint
+## Next USER validation after this instrumentation checkpoint
 
 Do **not** start with the performance A/B. First run a teardown smoke on HP TrueVision.
 
@@ -291,14 +325,31 @@ Common settings:
 
 Confirm F7 actually says `Readback: DirectCPU stage=None|H|V|HV`, not fallback. Then repeatedly stop and restart Play Mode at arbitrary moments while DirectCPU is active. Also test one live Direct toggle and one safe camera switch. Verify no NativeArray/AsyncGPUReadback/Texture destruction errors, no crash/hang, and normal orientation/alignment remains intact.
 
-The safety smoke and A/B are complete and USER-runtime PASS. The remaining USER validation is callback timing only. With the same HP TrueVision settings, enable Direct Body CPU Readback, settle with `C` then `K`, and confirm F7 shows `Readback: DirectCPU stage=None|H|V|HV` plus:
+The safety smoke and A/B are complete and USER-runtime PASS, and the earlier callback timing result is
+synchronized above. The remaining USER validation is the structural inference-completion → next-launch
+timing only. Use HP TrueVision with camera request `640x480 @ 30`, target inference `30`, body
+downscale ON, long edge `320`, Immediate Launch After Readback ON, Direct Body CPU Readback ON, then
+`C` and `K`. In Play Mode, settle with `C`/`K`, start OBS, wait `5–10 seconds`, make ordinary
+arm/torso motion for approximately `45–60 seconds`, then stop OBS while Play Mode remains running.
+This is not an A/B test.
+
+Confirm F7 shows `Readback: DirectCPU stage=None|H|V|HV`, not fallback, plus:
 
 `Direct cb: n=... submit→cb=... cb→poll=... poll→pub=...`
 
-Run representative arm/torso motion for 45–60 seconds with OBS and record the callback timing medians/p95s, sample counts, missing/excluded samples, cadence and subjective responsiveness. Treat `cb→poll` as primary: `>=12–15 ms` median warrants investigation, `25–30 ms` is strong evidence of a polling gap, `<=2–3 ms` argues against changing scheduling, and `3–12 ms` is modest/inconclusive. This remains a diagnostic measurement, not a formal latency benchmark; do not implement callback-driven scheduling from this checkpoint alone.
+`Inf next: n=... prep=.../... (...%) cb→next=.../...ms U/RB=.../... missing=...`
+
+Record valid `n`, prepared-waiting count/rate, prepared-only cb→next median/p95, Update/RB split,
+RB, Detect, ~F→R, results/s, DirectCPU failures, and missing samples. Interpret only prepared-waiting
+cb→next as decisive: approximately `>=20 ms` median warrants investigation, `25–35 ms` is strong
+evidence of an almost full render-frame delay, `<=3–5 ms` is near the structural floor, and `5–15 ms`
+is modest/inconclusive. If prepared frames are rarely waiting, the opportunity is low. This remains a
+diagnostic measurement, not a formal latency benchmark; do not implement callback-driven scheduling.
 
 Accepted A/B evidence remains approximately RB `56.7 ms`, detect `56.7 ms`, Prep->launch `0.4 ms`, `~F->R 117.7 ms`, results `11.7/s`.
 
-DirectCPU is **USER-runtime PASS** as a modest beneficial optimization. Callback-vs-coroutine timing
-instrumentation is **IMPLEMENTED / AWAITING USER MEASUREMENT**. Phase 5A remains **IMPLEMENTED / NOT
-USER ACCEPTED**, Phase 6 is **NOT STARTED**, and there is no merge to `main`.
+DirectCPU is **USER-runtime PASS** as a modest beneficial optimization. Its callback→poll timing is
+**USER-measured** as above and callback-driven scheduling is **CLOSED / REJECTED**. Inference-
+completion → next-launch timing instrumentation is **IMPLEMENTED / AWAITING USER MEASUREMENT**.
+Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED**, Phase 6 is **NOT STARTED**, and there is no
+merge to `main`.

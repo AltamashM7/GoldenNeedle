@@ -1,16 +1,18 @@
 # Current state
 
-## Authoritative checkpoint — DirectCPU callback timing instrumentation
+## Authoritative checkpoint — inference-completion → next-launch timing instrumentation
 
 Working branch: `engine/pose-tracking-spike`.
 
-Starting checkpoint for this task: `6a9351c808b251f9726444008806dd0d9471166a` — `fix: guard direct readback lifetime during teardown`.
+Starting checkpoint for this task: `90ceab892c7fae0647e085f586716f10101be077` — `perf: expose direct readback submit timing`.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
 - `b64a3115401689b94cf5f86d691fc5e6c763f510` Lab-camera quaternion / clear-only camera correction: **USER-runtime accepted**.
 - Immediate Launch After Readback at `87b68999cf73f6dee09cace6c8ef264697158de4`: **USER-runtime accepted** and kept ON.
-- Direct Body CPU Readback flip staging + teardown guard: **USER-runtime PASS** as a modest beneficial optimization; callback-vs-coroutine timing instrumentation is **IMPLEMENTED / AWAITING USER MEASUREMENT**.
+- Direct Body CPU Readback flip staging + teardown guard: **USER-runtime PASS** as a modest beneficial optimization; callback→poll timing was USER-measured at approximately `0.6–0.9 ms` median, `1.3–1.6 ms` p95, with poll→publish approximately `0 ms`.
+- Callback-driven readback scheduling optimization: **CLOSED / REJECTED**; the callback remains diagnostic-only and does not launch inference.
+- Inference-completion → next-launch timing instrumentation: **IMPLEMENTED / AWAITING USER MEASUREMENT**.
 - Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 - Do not merge to `main` without explicit USER approval.
@@ -204,10 +206,42 @@ The USER observed the expected Play-stop safety diagnostic:
 
 No resource error or hang was reported from that event.
 
-This checkpoint adds callback-vs-coroutine timing instrumentation only. It does not change runtime
-scheduling, request ownership, publication, inference launch, or teardown behavior. It remains
-**IMPLEMENTED / AWAITING USER MEASUREMENT** and is not evidence for a callback scheduling
-optimization until USER F7 measurements are recorded.
+The earlier callback-vs-coroutine timing result is now synchronized: callback→poll was approximately
+`0.6–0.9 ms` median, `1.3–1.6 ms` p95, and poll→publish was approximately `0 ms`. The USER result
+does not justify callback-driven scheduling, so that optimization line is closed/rejected.
+
+This checkpoint adds inference-completion → next-accepted-launch instrumentation only. It does not
+change runtime scheduling, request ownership, publication, inference launch, or teardown behavior.
+It remains **IMPLEMENTED / AWAITING USER MEASUREMENT** until the USER records the new F7 values.
+
+## Inference-completion → next-launch instrumentation
+
+The provider now records `I0` at the `DetectAsync` call start, `I1` after a successful accepted
+submission, `I2` at `OnPoseLandmarkerResult` callback entry, `I3` immediately around the existing
+`Interlocked.Exchange(ref _inferenceOutstanding, 0)`, and `I4` at the next accepted `DetectAsync`
+call start. A monotonically increasing diagnostic serial, provider-session id, and callback request
+timestamp prevent requests from being mismatched across callbacks or restarts.
+
+The primary metric is `I4-I3`, result completion → next accepted launch. The callback reads only an
+atomic prepared-slot indicator at `I2/I3`; it never dereferences `_preparedTextureFrame`, touches
+Unity objects, logs per frame, publishes/releases frames, or launches inference. Samples are kept in
+a fixed 64-entry rolling window. F7 reports valid samples, prepared-waiting count/rate, prepared-only
+and origin-aware result→next-launch timing, and Update/Readback next-launch counts. Missing,
+unmatched, failed, cross-session, and incomplete samples are excluded rather than zero-filled.
+
+The new compact F7 line is:
+
+`Inf next: n=... prep=.../... (...%) cb→next=.../...ms U/RB=.../... missing=...`
+
+The existing RB/build/detect/~F→R and results/callback metrics remain in F7.
+
+## MediaPipe CPU inference audit
+
+The CPU audit found no supported public CPU-thread or XNNPACK tuning knob for the current stack.
+The Windows GPU delegate is not suitable for production use here. Lite remains the fastest official
+compatible model preserving the current 33-landmark/world-landmark contract; fixed internal detector
+and landmark tensors limit expected neural-compute gains from lowering source resolution, and
+LIVE_STREAM remains appropriate. Confidence thresholds were not changed for speed.
 
 ## Readback observability
 
@@ -249,21 +283,42 @@ Focused deterministic tests retain scheduler/immediate-launch, body-resolution, 
 - monotonic tick-to-millisecond conversion;
 - odd/even median, nearest-rank p95 and fixed-ring rollover;
 - error-sample exclusion from the normal timing window.
+- inference completion→next-launch serial/session matching and monotonic tick conversion;
+- prepared-waiting classification, prepared-only median/p95, Update/Readback origin counts, reset;
+- incomplete continuation samples remain missing rather than becoming zero-latency samples.
 
 The Unity CLI EditMode attempt for this checkpoint did not reach compilation or the Test Runner:
-Unity exited before producing a verdict because `Unity-LicenseClient-user` was already held and the
-project was already open in another Unity instance. This is an environment/license/mutex limitation,
-not a test result; no Unity PASS is claimed here.
+Unity exited before producing a verdict because another Unity instance already had this project open
+(`Multiple Unity instances cannot open the same project`). This is an Editor-instance/mutex
+limitation, not a test result; no Unity PASS is claimed here.
 
-The DirectCPU safety smoke and representative A/B are complete and USER-runtime PASS. The remaining USER measurement is callback timing only. Use HP TrueVision with camera request `640x480 @ 30`, target inference `30`, body downscale ON, long edge `320`, Immediate Launch After Readback ON, Direct Body CPU Readback ON, then `C` and `K`. Confirm F7 shows `Readback: DirectCPU stage=None|H|V|HV`, not fallback, and its compact line is present:
+The DirectCPU safety smoke and representative A/B are complete and USER-runtime PASS. The earlier
+callback timing result is also synchronized above; no callback-driven scheduling change is authorized.
+The remaining USER measurement is the structural inference-completion → next-launch timing only.
+Use HP TrueVision with camera request `640x480 @ 30`, target inference `30`, body downscale ON, long
+edge `320`, Immediate Launch After Readback ON, Direct Body CPU Readback ON, then `C` and `K`.
+In Play Mode, settle with `C`/`K`, start OBS, wait `5–10 seconds`, make ordinary arm/torso motion
+for approximately `45–60 seconds`, then stop OBS while Play Mode remains running. This is not an
+A/B test.
+
+Confirm F7 shows `Readback: DirectCPU stage=None|H|V|HV`, not fallback, and its compact lines include:
 
 `Direct cb: n=... submit→cb=... cb→poll=... poll→pub=...`
 
-Run the same settings for 45–60 seconds with OBS while the USER makes representative arm/torso motion. Record the F7 median/p95 values and note any missing/excluded samples, render/capture cadence and subjective responsiveness. This is a timing diagnostic, not a formal latency benchmark and does not authorize callback-driven scheduling.
+`Inf next: n=... prep=.../... (...%) cb→next=.../...ms U/RB=.../... missing=...`
 
-Interpret `cb→poll` as the primary result: approximately `>=12–15 ms` median warrants investigation, `25–30 ms` is strong evidence of a coroutine-polling gap, `<=2–3 ms` argues against replacing the scheduler, and `3–12 ms` is modest/inconclusive. Do not run an A/B again unless a later brief explicitly requests it.
+Record the valid `n`, prepared-waiting count/rate, prepared-only cb→next median/p95, Update/RB split,
+RB, Detect, ~F→R, results/s, DirectCPU failures, and missing samples. This is a timing diagnostic,
+not a formal latency benchmark.
+
+Interpret only prepared-waiting cb→next as decisive: approximately `>=20 ms` median warrants
+investigation, `25–35 ms` is strong evidence of an almost full render-frame delay, `<=3–5 ms` is
+near the structural floor, and `5–15 ms` is modest/inconclusive. If prepared frames are rarely
+waiting, the opportunity is low even when occasional delays are large. Do not implement
+callback-driven launch from this measurement.
 
 DirectCPU is **USER-runtime PASS** as a modest beneficial optimization and remains the preferred
-body-pose readback path for now. Callback-vs-coroutine timing instrumentation is **IMPLEMENTED /
-AWAITING USER MEASUREMENT**. Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED** and Phase 6 is
+body-pose readback path for now. Its callback→poll result is **USER-measured** as above, and
+callback-driven scheduling is **CLOSED / REJECTED**. Inference-completion → next-launch timing
+instrumentation is **IMPLEMENTED / AWAITING USER MEASUREMENT**. Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED** and Phase 6 is
 **NOT STARTED**.

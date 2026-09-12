@@ -231,6 +231,213 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         }
     }
 
+    public enum InferenceContinuationTimingMetric
+    {
+        SubmitCall,
+        RequestToResult,
+        ResultToNextLaunch,
+    }
+
+    public readonly struct InferenceContinuationTimingSample
+    {
+        public InferenceContinuationTimingSample(
+            long serial,
+            int sessionId,
+            double submitCallMilliseconds,
+            double requestToResultMilliseconds,
+            double resultToNextLaunchMilliseconds,
+            bool preparedWaitingAtResult,
+            PreparedInferenceLaunchOrigin nextLaunchOrigin)
+        {
+            Serial = serial;
+            SessionId = sessionId;
+            SubmitCallMilliseconds = submitCallMilliseconds;
+            RequestToResultMilliseconds = requestToResultMilliseconds;
+            ResultToNextLaunchMilliseconds = resultToNextLaunchMilliseconds;
+            PreparedWaitingAtResult = preparedWaitingAtResult;
+            NextLaunchOrigin = nextLaunchOrigin;
+        }
+
+        public long Serial { get; }
+        public int SessionId { get; }
+        public double SubmitCallMilliseconds { get; }
+        public double RequestToResultMilliseconds { get; }
+        public double ResultToNextLaunchMilliseconds { get; }
+        public bool PreparedWaitingAtResult { get; }
+        public PreparedInferenceLaunchOrigin NextLaunchOrigin { get; }
+    }
+
+    public static class InferenceContinuationTimingMath
+    {
+        public static bool TryCreateSample(
+            int expectedSessionId,
+            int completedSessionId,
+            long expectedSerial,
+            long completedSerial,
+            long submitStartTicks,
+            long submitReturnTicks,
+            long callbackEntryTicks,
+            long completionTicks,
+            long nextAcceptedLaunchTicks,
+            bool preparedWaitingAtResult,
+            PreparedInferenceLaunchOrigin nextLaunchOrigin,
+            out InferenceContinuationTimingSample sample,
+            long frequency = 0)
+        {
+            sample = default;
+            if (expectedSessionId <= 0 || completedSessionId != expectedSessionId ||
+                expectedSerial <= 0 || completedSerial != expectedSerial ||
+                submitStartTicks <= 0 || submitReturnTicks < submitStartTicks ||
+                callbackEntryTicks < submitReturnTicks || completionTicks < callbackEntryTicks ||
+                nextAcceptedLaunchTicks <= completionTicks ||
+                (nextLaunchOrigin != PreparedInferenceLaunchOrigin.Update &&
+                 nextLaunchOrigin != PreparedInferenceLaunchOrigin.ReadbackContinuation))
+            {
+                return false;
+            }
+
+            frequency = frequency > 0 ? frequency : Stopwatch.Frequency;
+            if (frequency <= 0)
+            {
+                return false;
+            }
+
+            sample = new InferenceContinuationTimingSample(
+                completedSerial,
+                completedSessionId,
+                TicksToMilliseconds(submitReturnTicks - submitStartTicks, frequency),
+                TicksToMilliseconds(callbackEntryTicks - submitReturnTicks, frequency),
+                TicksToMilliseconds(nextAcceptedLaunchTicks - completionTicks, frequency),
+                preparedWaitingAtResult,
+                nextLaunchOrigin);
+            return true;
+        }
+
+        public static double TicksToMilliseconds(long ticks, long frequency)
+        {
+            return frequency <= 0 ? double.NaN : ticks * 1000d / frequency;
+        }
+    }
+
+    public sealed class InferenceContinuationTimingWindow
+    {
+        private readonly InferenceContinuationTimingSample[] _samples;
+        private readonly double[] _scratch;
+        private int _nextIndex;
+        private int _count;
+
+        public InferenceContinuationTimingWindow(int capacity = 64)
+        {
+            capacity = Math.Max(1, capacity);
+            _samples = new InferenceContinuationTimingSample[capacity];
+            _scratch = new double[capacity];
+        }
+
+        public int Capacity => _samples.Length;
+        public int ValidSampleCount => _count;
+        public int MissingSampleCount { get; private set; }
+        public int PreparedWaitingSampleCount
+        {
+            get
+            {
+                var count = 0;
+                for (var i = 0; i < _count; i++)
+                {
+                    if (_samples[i].PreparedWaitingAtResult)
+                    {
+                        count++;
+                    }
+                }
+                return count;
+            }
+        }
+
+        public double PreparedWaitingRate => _count == 0
+            ? double.NaN
+            : PreparedWaitingSampleCount / (double)_count;
+
+        public void Reset()
+        {
+            _nextIndex = 0;
+            _count = 0;
+            MissingSampleCount = 0;
+        }
+
+        public void RecordMissingSample()
+        {
+            MissingSampleCount++;
+        }
+
+        public void Add(in InferenceContinuationTimingSample sample)
+        {
+            _samples[_nextIndex] = sample;
+            _nextIndex = (_nextIndex + 1) % _samples.Length;
+            _count = Math.Min(_count + 1, _samples.Length);
+        }
+
+        public int GetOriginSampleCount(PreparedInferenceLaunchOrigin origin, bool preparedOnly = false)
+        {
+            var count = 0;
+            for (var i = 0; i < _count; i++)
+            {
+                if (_samples[i].NextLaunchOrigin == origin && (!preparedOnly || _samples[i].PreparedWaitingAtResult))
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
+
+        public double GetMedianMilliseconds(InferenceContinuationTimingMetric metric, bool preparedOnly = false)
+        {
+            var count = CopyMetric(metric, preparedOnly);
+            if (count == 0)
+            {
+                return double.NaN;
+            }
+
+            Array.Sort(_scratch, 0, count);
+            var middle = count / 2;
+            return count % 2 == 0
+                ? (_scratch[middle - 1] + _scratch[middle]) * 0.5d
+                : _scratch[middle];
+        }
+
+        public double GetP95Milliseconds(InferenceContinuationTimingMetric metric, bool preparedOnly = false)
+        {
+            var count = CopyMetric(metric, preparedOnly);
+            if (count == 0)
+            {
+                return double.NaN;
+            }
+
+            Array.Sort(_scratch, 0, count);
+            var index = Math.Min(count - 1, Math.Max(0, (int)Math.Ceiling(count * 0.95d) - 1));
+            return _scratch[index];
+        }
+
+        private int CopyMetric(InferenceContinuationTimingMetric metric, bool preparedOnly)
+        {
+            var count = 0;
+            for (var i = 0; i < _count; i++)
+            {
+                if (preparedOnly && !_samples[i].PreparedWaitingAtResult)
+                {
+                    continue;
+                }
+
+                _scratch[count++] = metric switch
+                {
+                    InferenceContinuationTimingMetric.SubmitCall => _samples[i].SubmitCallMilliseconds,
+                    InferenceContinuationTimingMetric.RequestToResult => _samples[i].RequestToResultMilliseconds,
+                    InferenceContinuationTimingMetric.ResultToNextLaunch => _samples[i].ResultToNextLaunchMilliseconds,
+                    _ => double.NaN,
+                };
+            }
+            return count;
+        }
+    }
+
     /// <summary>
     /// Main-thread request cadence helper. Busy frames never advance timing state, so once the
     /// previous inference finishes, the next prepared frame may launch immediately if the minimum
@@ -496,6 +703,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private readonly double[] _lastTrackedAtSeconds = new double[PoseObservation.LandmarkCount];
         private readonly Stopwatch _clock = Stopwatch.StartNew();
         private readonly InferenceLaunchScheduler _inferenceScheduler = new InferenceLaunchScheduler();
+        private readonly InferenceContinuationTimingWindow _inferenceContinuationTimingWindow =
+            new InferenceContinuationTimingWindow(64);
 
         private PoseObservation _pendingObservation;
         private PoseObservation _latestObservation;
@@ -520,6 +729,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private int _preparedCoordinateConventionVersion;
         private double _preparedFramePublishedAtSeconds;
         private int _preparedFramePublishedFrameCount = -1;
+        private int _preparedTextureFrameDiagnosticOccupied;
         private bool _shuttingDown;
         private bool _cameraSwitchPending;
         private string _pendingCameraName = string.Empty;
@@ -566,6 +776,24 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private long _directReadbackCallbackExitTicks;
         private readonly DirectReadbackTimingWindow _directReadbackTimingWindow =
             new DirectReadbackTimingWindow(64);
+        private int _inferenceDiagnosticSessionId = 1;
+        private long _nextInferenceDiagnosticSerial;
+        private long _activeInferenceDiagnosticSerial;
+        private int _activeInferenceDiagnosticSessionId;
+        private long _activeInferenceDiagnosticTimestampMilliseconds;
+        private long _activeInferenceDiagnosticSubmitStartTicks;
+        private long _activeInferenceDiagnosticSubmitReturnTicks;
+        private int _activeInferenceDiagnosticAccepted;
+        private long _completedInferenceDiagnosticSerial;
+        private int _completedInferenceDiagnosticSessionId;
+        private long _completedInferenceDiagnosticSubmitStartTicks;
+        private long _completedInferenceDiagnosticSubmitReturnTicks;
+        private long _completedInferenceDiagnosticCallbackEntryTicks;
+        private long _completedInferenceDiagnosticCompletionTicks;
+        private int _completedInferenceDiagnosticPreparedWaiting;
+        private int _hasCompletedInferenceDiagnostic;
+        private long _lastRecordedInferenceDiagnosticSerial;
+        private int _inferenceDiagnosticMissingSamples;
 
         public PoseProviderStatus Status { get; private set; } = PoseProviderStatus.Starting;
         public string StatusMessage { get; private set; } = "Starting pose-tracking spike";
@@ -648,6 +876,37 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _directReadbackTimingWindow.GetMedianMilliseconds(DirectReadbackTimingMetric.SubmitCall);
         public double DirectReadbackTimingSubmitCallP95Milliseconds =>
             _directReadbackTimingWindow.GetP95Milliseconds(DirectReadbackTimingMetric.SubmitCall);
+        public int InferenceContinuationTimingSampleCount => _inferenceContinuationTimingWindow.ValidSampleCount;
+        public int InferenceContinuationTimingMissingSampleCount =>
+            _inferenceContinuationTimingWindow.MissingSampleCount + Volatile.Read(ref _inferenceDiagnosticMissingSamples);
+        public int InferenceContinuationTimingPreparedWaitingSampleCount =>
+            _inferenceContinuationTimingWindow.PreparedWaitingSampleCount;
+        public double InferenceContinuationTimingPreparedWaitingRate =>
+            _inferenceContinuationTimingWindow.PreparedWaitingRate;
+        public int InferenceContinuationTimingUpdateLaunchCount =>
+            _inferenceContinuationTimingWindow.GetOriginSampleCount(PreparedInferenceLaunchOrigin.Update);
+        public int InferenceContinuationTimingReadbackLaunchCount =>
+            _inferenceContinuationTimingWindow.GetOriginSampleCount(PreparedInferenceLaunchOrigin.ReadbackContinuation);
+        public double InferenceContinuationTimingSubmitCallMedianMilliseconds =>
+            _inferenceContinuationTimingWindow.GetMedianMilliseconds(InferenceContinuationTimingMetric.SubmitCall);
+        public double InferenceContinuationTimingSubmitCallP95Milliseconds =>
+            _inferenceContinuationTimingWindow.GetP95Milliseconds(InferenceContinuationTimingMetric.SubmitCall);
+        public double InferenceContinuationTimingRequestToResultMedianMilliseconds =>
+            _inferenceContinuationTimingWindow.GetMedianMilliseconds(InferenceContinuationTimingMetric.RequestToResult);
+        public double InferenceContinuationTimingRequestToResultP95Milliseconds =>
+            _inferenceContinuationTimingWindow.GetP95Milliseconds(InferenceContinuationTimingMetric.RequestToResult);
+        public double InferenceContinuationTimingResultToNextLaunchMedianMilliseconds =>
+            _inferenceContinuationTimingWindow.GetMedianMilliseconds(InferenceContinuationTimingMetric.ResultToNextLaunch);
+        public double InferenceContinuationTimingResultToNextLaunchP95Milliseconds =>
+            _inferenceContinuationTimingWindow.GetP95Milliseconds(InferenceContinuationTimingMetric.ResultToNextLaunch);
+        public double InferenceContinuationTimingPreparedResultToNextLaunchMedianMilliseconds =>
+            _inferenceContinuationTimingWindow.GetMedianMilliseconds(
+                InferenceContinuationTimingMetric.ResultToNextLaunch,
+                preparedOnly: true);
+        public double InferenceContinuationTimingPreparedResultToNextLaunchP95Milliseconds =>
+            _inferenceContinuationTimingWindow.GetP95Milliseconds(
+                InferenceContinuationTimingMetric.ResultToNextLaunch,
+                preparedOnly: true);
         public bool HasPreparedFrame => _preparedTextureFrame != null;
         public bool ReadbackPending => _readbackPending;
         public bool InferencePending => Volatile.Read(ref _inferenceOutstanding) != 0;
@@ -796,6 +1055,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             var framePublishedAtSeconds = _preparedFramePublishedAtSeconds;
             var framePublishedFrameCount = _preparedFramePublishedFrameCount;
             _preparedTextureFrame = null;
+            Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 0);
             _preparedFrameObservedAtSeconds = 0d;
             _preparedCoordinateConventionVersion = 0;
             _preparedFramePublishedAtSeconds = 0d;
@@ -816,9 +1076,33 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     _inferenceStartedAtSeconds = NowSeconds();
                     _activeInferenceFrameObservedAtSeconds = frameObservedAtSeconds;
 
+                    // Capture the prior completion before replacing the active request token. The
+                    // following call-start tick is I4 for that completion and I0 for this request.
+                    var priorCompletion = CapturePendingInferenceCompletion();
+                    var diagnosticSessionId = Volatile.Read(ref _inferenceDiagnosticSessionId);
+                    var diagnosticSerial = Interlocked.Increment(ref _nextInferenceDiagnosticSerial);
+                    var diagnosticSubmitStartTicks = Stopwatch.GetTimestamp();
+                    Interlocked.Exchange(ref _activeInferenceDiagnosticSessionId, diagnosticSessionId);
+                    Interlocked.Exchange(ref _activeInferenceDiagnosticSerial, diagnosticSerial);
+                    Interlocked.Exchange(ref _activeInferenceDiagnosticTimestampMilliseconds, timestampMillisec);
+                    Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitStartTicks, diagnosticSubmitStartTicks);
+                    Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitReturnTicks, 0L);
+                    Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
+
                     try
                     {
                         _poseLandmarker.DetectAsync(image, timestampMillisec, _imageProcessingOptions);
+                        var diagnosticSubmitReturnTicks = Stopwatch.GetTimestamp();
+                        Interlocked.Exchange(
+                            ref _activeInferenceDiagnosticSubmitReturnTicks,
+                            diagnosticSubmitReturnTicks);
+                        Volatile.Write(ref _activeInferenceDiagnosticAccepted, 1);
+                        RecordInferenceContinuationSample(
+                            priorCompletion,
+                            diagnosticSessionId,
+                            diagnosticSubmitStartTicks,
+                            origin);
+
                         var acceptedAtSeconds = NowSeconds();
                         _inferenceScheduler.MarkAccepted(acceptedAtSeconds);
                         LastPreparedToInferenceLaunchMilliseconds = framePublishedAtSeconds > 0d
@@ -842,6 +1126,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     }
                     catch (Exception exception)
                     {
+                        Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
                         Interlocked.Exchange(ref _inferenceOutstanding, 0);
                         SetFailure(PoseProviderStatus.InferenceFailed, $"Pose inference request failed: {exception.Message}");
                         UnityEngine.Debug.LogException(exception, this);
@@ -1523,6 +1808,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
 
             _preparedTextureFrame = textureFrame;
+            Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 1);
             _preparedFrameObservedAtSeconds = frameObservedAtSeconds;
             _preparedCoordinateConventionVersion = coordinateConventionVersion;
             _preparedFramePublishedAtSeconds = NowSeconds();
@@ -1575,6 +1861,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             {
                 return;
             }
+
+            // I2: callback entry. Keep this diagnostic-only and safe for an uncertain callback thread.
+            var callbackEntryTicks = Stopwatch.GetTimestamp();
+            var preparedWaitingAtCallbackEntry = Volatile.Read(ref _preparedTextureFrameDiagnosticOccupied) != 0;
 
             Interlocked.Exchange(ref _resultCallbackReceived, 1);
             Interlocked.Increment(ref _totalResultCallbacks);
@@ -1652,6 +1942,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             LastApproxFrameToResultMilliseconds = _activeInferenceFrameObservedAtSeconds > 0d
                 ? (float)((receivedAtSeconds - _activeInferenceFrameObservedAtSeconds) * 1000d)
                 : 0f;
+            // I3: timestamp immediately adjacent to the existing outstanding-clear operation.
+            var completionTicks = Stopwatch.GetTimestamp();
+            var preparedWaitingAtCompletion = Volatile.Read(ref _preparedTextureFrameDiagnosticOccupied) != 0;
+            PublishInferenceCompletionDiagnostic(
+                callbackEntryTicks,
+                completionTicks,
+                preparedWaitingAtCallbackEntry || preparedWaitingAtCompletion,
+                timestampMillisec);
             Interlocked.Exchange(ref _inferenceOutstanding, 0);
             if (hasPose)
             {
@@ -1764,6 +2062,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private void ClearProviderSessionState()
         {
+            Interlocked.Increment(ref _inferenceDiagnosticSessionId);
+            ResetInferenceContinuationDiagnostics();
             _pendingObservation.Clear();
             _latestObservation.Clear();
             Array.Clear(_lastTrackedAtSeconds, 0, _lastTrackedAtSeconds.Length);
@@ -1796,6 +2096,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _activeInferenceFrameObservedAtSeconds = 0d;
             _preparedFramePublishedAtSeconds = 0d;
             _preparedFramePublishedFrameCount = -1;
+            Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 0);
             _activeBodyReadbackPath = BodyReadbackPath.Homuler;
             _activeDirectReadbackStage = DirectReadbackStage.None;
             _directBodyCpuReadbackSessionAvailable = true;
@@ -1929,11 +2230,19 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                       $"cb→poll={FormatTimingPair(DirectReadbackTimingCallbackToPollMedianMilliseconds, DirectReadbackTimingCallbackToPollP95Milliseconds)}ms " +
                       $"poll→pub={FormatTimingPair(DirectReadbackTimingPollToPublishMedianMilliseconds, DirectReadbackTimingPollToPublishP95Milliseconds)}ms"
                     : string.Empty;
+                var inferenceContinuationTimingSummary =
+                    $"\nInf next: n={InferenceContinuationTimingSampleCount} " +
+                    $"prep={InferenceContinuationTimingPreparedWaitingSampleCount}/{InferenceContinuationTimingSampleCount} " +
+                    $"({FormatTimingRate(InferenceContinuationTimingPreparedWaitingRate)}) " +
+                    $"cb→next={FormatTimingPair(InferenceContinuationTimingPreparedResultToNextLaunchMedianMilliseconds, InferenceContinuationTimingPreparedResultToNextLaunchP95Milliseconds)}ms " +
+                    $"U/RB={InferenceContinuationTimingUpdateLaunchCount}/{InferenceContinuationTimingReadbackLaunchCount} " +
+                    $"missing={InferenceContinuationTimingMissingSampleCount}";
                 StatusMessage =
                     $"Camera/Pose ready | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
                     $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
                     $"Readback: {readbackPathSummary} H={(FlipInputHorizontally ? 1 : 0)} V={(FlipInputVertically ? 1 : 0)} direct={DirectReadbacksPerSecond:0.0}/s fail={DirectReadbackFailuresPerSecond:0.0}/s{fallbackSuffix}\n" +
                     $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s" +
+                    inferenceContinuationTimingSummary +
                     directTimingSummary;
             }
 
@@ -1961,6 +2270,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 : $"{medianMilliseconds:0.0}/{p95Milliseconds:0.0}";
         }
 
+        private static string FormatTimingRate(double rate)
+        {
+            return double.IsNaN(rate) ? "-" : $"{rate:0%}";
+        }
+
         private bool WasRecentlyTracked(int index, double nowSeconds)
         {
             var lastTrackedAt = _lastTrackedAtSeconds[index];
@@ -1984,8 +2298,160 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                    status == PoseProviderStatus.Stopped;
         }
 
+        private readonly struct InferenceDiagnosticCompletion
+        {
+            public InferenceDiagnosticCompletion(
+                long serial,
+                int sessionId,
+                long submitStartTicks,
+                long submitReturnTicks,
+                long callbackEntryTicks,
+                long completionTicks,
+                bool preparedWaitingAtResult)
+            {
+                Serial = serial;
+                SessionId = sessionId;
+                SubmitStartTicks = submitStartTicks;
+                SubmitReturnTicks = submitReturnTicks;
+                CallbackEntryTicks = callbackEntryTicks;
+                CompletionTicks = completionTicks;
+                PreparedWaitingAtResult = preparedWaitingAtResult;
+            }
+
+            public long Serial { get; }
+            public int SessionId { get; }
+            public long SubmitStartTicks { get; }
+            public long SubmitReturnTicks { get; }
+            public long CallbackEntryTicks { get; }
+            public long CompletionTicks { get; }
+            public bool PreparedWaitingAtResult { get; }
+            public bool IsAvailable => Serial > 0;
+        }
+
+        private void ResetInferenceContinuationDiagnostics()
+        {
+            _inferenceContinuationTimingWindow.Reset();
+            Volatile.Write(ref _hasCompletedInferenceDiagnostic, 0);
+            Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
+            Interlocked.Exchange(ref _activeInferenceDiagnosticSerial, 0L);
+            Interlocked.Exchange(ref _activeInferenceDiagnosticSessionId, 0);
+            Interlocked.Exchange(ref _activeInferenceDiagnosticTimestampMilliseconds, 0L);
+            Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitStartTicks, 0L);
+            Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitReturnTicks, 0L);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticSerial, 0L);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticSessionId, 0);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticSubmitStartTicks, 0L);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticSubmitReturnTicks, 0L);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticCallbackEntryTicks, 0L);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticCompletionTicks, 0L);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticPreparedWaiting, 0);
+            _lastRecordedInferenceDiagnosticSerial = 0L;
+            Interlocked.Exchange(ref _inferenceDiagnosticMissingSamples, 0);
+        }
+
+        private InferenceDiagnosticCompletion CapturePendingInferenceCompletion()
+        {
+            if (Volatile.Read(ref _hasCompletedInferenceDiagnostic) == 0)
+            {
+                return default;
+            }
+
+            var currentSessionId = Volatile.Read(ref _inferenceDiagnosticSessionId);
+            var sessionId = Interlocked.CompareExchange(ref _completedInferenceDiagnosticSessionId, 0, 0);
+            var serial = Interlocked.Read(ref _completedInferenceDiagnosticSerial);
+            if (serial <= 0 || sessionId != currentSessionId || serial == _lastRecordedInferenceDiagnosticSerial)
+            {
+                return default;
+            }
+
+            return new InferenceDiagnosticCompletion(
+                serial,
+                sessionId,
+                Interlocked.Read(ref _completedInferenceDiagnosticSubmitStartTicks),
+                Interlocked.Read(ref _completedInferenceDiagnosticSubmitReturnTicks),
+                Interlocked.Read(ref _completedInferenceDiagnosticCallbackEntryTicks),
+                Interlocked.Read(ref _completedInferenceDiagnosticCompletionTicks),
+                Volatile.Read(ref _completedInferenceDiagnosticPreparedWaiting) != 0);
+        }
+
+        private void PublishInferenceCompletionDiagnostic(
+            long callbackEntryTicks,
+            long completionTicks,
+            bool preparedWaitingAtResult,
+            long callbackTimestampMilliseconds)
+        {
+            var currentSessionId = Volatile.Read(ref _inferenceDiagnosticSessionId);
+            var sessionId = Interlocked.CompareExchange(ref _activeInferenceDiagnosticSessionId, 0, 0);
+            var serial = Interlocked.Read(ref _activeInferenceDiagnosticSerial);
+            var activeTimestampMilliseconds = Interlocked.Read(ref _activeInferenceDiagnosticTimestampMilliseconds);
+            if (Volatile.Read(ref _activeInferenceDiagnosticAccepted) == 0 ||
+                serial <= 0 || sessionId != currentSessionId ||
+                callbackTimestampMilliseconds != activeTimestampMilliseconds)
+            {
+                Interlocked.Increment(ref _inferenceDiagnosticMissingSamples);
+                return;
+            }
+
+            if (Volatile.Read(ref _hasCompletedInferenceDiagnostic) != 0 &&
+                Interlocked.Read(ref _completedInferenceDiagnosticSerial) == serial)
+            {
+                Interlocked.Increment(ref _inferenceDiagnosticMissingSamples);
+                return;
+            }
+
+            Interlocked.Exchange(ref _completedInferenceDiagnosticSerial, serial);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticSessionId, sessionId);
+            Interlocked.Exchange(
+                ref _completedInferenceDiagnosticSubmitStartTicks,
+                Interlocked.Read(ref _activeInferenceDiagnosticSubmitStartTicks));
+            Interlocked.Exchange(
+                ref _completedInferenceDiagnosticSubmitReturnTicks,
+                Interlocked.Read(ref _activeInferenceDiagnosticSubmitReturnTicks));
+            Interlocked.Exchange(ref _completedInferenceDiagnosticCallbackEntryTicks, callbackEntryTicks);
+            Interlocked.Exchange(ref _completedInferenceDiagnosticCompletionTicks, completionTicks);
+            Volatile.Write(ref _completedInferenceDiagnosticPreparedWaiting, preparedWaitingAtResult ? 1 : 0);
+            Volatile.Write(ref _hasCompletedInferenceDiagnostic, 1);
+        }
+
+        private void RecordInferenceContinuationSample(
+            InferenceDiagnosticCompletion completion,
+            int nextLaunchSessionId,
+            long nextAcceptedLaunchTicks,
+            PreparedInferenceLaunchOrigin nextLaunchOrigin)
+        {
+            if (!completion.IsAvailable || completion.Serial == _lastRecordedInferenceDiagnosticSerial)
+            {
+                return;
+            }
+
+            var recorded = InferenceContinuationTimingMath.TryCreateSample(
+                nextLaunchSessionId,
+                completion.SessionId,
+                completion.Serial,
+                completion.Serial,
+                completion.SubmitStartTicks,
+                completion.SubmitReturnTicks,
+                completion.CallbackEntryTicks,
+                completion.CompletionTicks,
+                nextAcceptedLaunchTicks,
+                completion.PreparedWaitingAtResult,
+                nextLaunchOrigin,
+                out var sample);
+            if (recorded)
+            {
+                _inferenceContinuationTimingWindow.Add(sample);
+            }
+            else
+            {
+                _inferenceContinuationTimingWindow.RecordMissingSample();
+            }
+
+            _lastRecordedInferenceDiagnosticSerial = completion.Serial;
+        }
+
         private void ReleasePreparedFrame()
         {
+            Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 0);
             if (_preparedTextureFrame == null)
             {
                 return;
