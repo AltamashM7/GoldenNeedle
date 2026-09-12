@@ -51,6 +51,184 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         HV,
     }
 
+    public enum DirectReadbackTimingMetric
+    {
+        SubmitToCallback,
+        CallbackEnterToPoll,
+        CallbackExitToPoll,
+        PollToPublish,
+    }
+
+    public readonly struct DirectReadbackTimingSample
+    {
+        public DirectReadbackTimingSample(
+            long serial,
+            double submitToCallbackMilliseconds,
+            double callbackEnterToPollMilliseconds,
+            double callbackExitToPollMilliseconds,
+            double pollToPublishMilliseconds,
+            double submitCallMilliseconds,
+            bool isError)
+        {
+            Serial = serial;
+            SubmitToCallbackMilliseconds = submitToCallbackMilliseconds;
+            CallbackEnterToPollMilliseconds = callbackEnterToPollMilliseconds;
+            CallbackExitToPollMilliseconds = callbackExitToPollMilliseconds;
+            PollToPublishMilliseconds = pollToPublishMilliseconds;
+            SubmitCallMilliseconds = submitCallMilliseconds;
+            IsError = isError;
+        }
+
+        public long Serial { get; }
+        public double SubmitToCallbackMilliseconds { get; }
+        public double CallbackEnterToPollMilliseconds { get; }
+        public double CallbackExitToPollMilliseconds { get; }
+        public double PollToPublishMilliseconds { get; }
+        public double SubmitCallMilliseconds { get; }
+        public bool IsError { get; }
+    }
+
+    public static class DirectReadbackTimingMath
+    {
+        public static double TicksToMilliseconds(long ticks, long frequency)
+        {
+            return frequency <= 0 ? double.NaN : ticks * 1000d / frequency;
+        }
+
+        public static bool TryCreateSample(
+            long expectedSerial,
+            long callbackSerial,
+            long submitStartTicks,
+            long submitReturnTicks,
+            long callbackEnterTicks,
+            long callbackExitTicks,
+            long coroutineObserveTicks,
+            long publishTicks,
+            bool isError,
+            out DirectReadbackTimingSample sample,
+            long frequency = 0)
+        {
+            sample = default;
+            if (expectedSerial <= 0 || callbackSerial != expectedSerial ||
+                submitStartTicks <= 0 || submitReturnTicks < submitStartTicks ||
+                callbackEnterTicks < submitStartTicks || callbackExitTicks < callbackEnterTicks ||
+                coroutineObserveTicks <= 0 || publishTicks < coroutineObserveTicks)
+            {
+                return false;
+            }
+
+            frequency = frequency > 0 ? frequency : Stopwatch.Frequency;
+            if (frequency <= 0)
+            {
+                return false;
+            }
+
+            sample = new DirectReadbackTimingSample(
+                expectedSerial,
+                TicksToMilliseconds(callbackEnterTicks - submitStartTicks, frequency),
+                TicksToMilliseconds(coroutineObserveTicks - callbackEnterTicks, frequency),
+                TicksToMilliseconds(coroutineObserveTicks - callbackExitTicks, frequency),
+                TicksToMilliseconds(publishTicks - coroutineObserveTicks, frequency),
+                TicksToMilliseconds(submitReturnTicks - submitStartTicks, frequency),
+                isError);
+            return true;
+        }
+    }
+
+    public sealed class DirectReadbackTimingWindow
+    {
+        private readonly DirectReadbackTimingSample[] _samples;
+        private readonly double[] _scratch;
+        private int _nextIndex;
+        private int _count;
+
+        public DirectReadbackTimingWindow(int capacity = 64)
+        {
+            capacity = Math.Max(1, capacity);
+            _samples = new DirectReadbackTimingSample[capacity];
+            _scratch = new double[capacity];
+        }
+
+        public int Capacity => _samples.Length;
+        public int ValidSampleCount => _count;
+        public int MissingSampleCount { get; private set; }
+        public int ExcludedSampleCount { get; private set; }
+
+        public void Reset()
+        {
+            _nextIndex = 0;
+            _count = 0;
+            MissingSampleCount = 0;
+            ExcludedSampleCount = 0;
+        }
+
+        public void RecordMissingSample()
+        {
+            MissingSampleCount++;
+        }
+
+        public void RecordExcludedSample()
+        {
+            ExcludedSampleCount++;
+        }
+
+        public void Add(in DirectReadbackTimingSample sample)
+        {
+            if (sample.IsError)
+            {
+                RecordExcludedSample();
+                return;
+            }
+
+            _samples[_nextIndex] = sample;
+            _nextIndex = (_nextIndex + 1) % _samples.Length;
+            _count = Math.Min(_count + 1, _samples.Length);
+        }
+
+        public double GetMedianMilliseconds(DirectReadbackTimingMetric metric)
+        {
+            if (_count == 0)
+            {
+                return double.NaN;
+            }
+
+            CopyMetric(metric);
+            Array.Sort(_scratch, 0, _count);
+            var middle = _count / 2;
+            return _count % 2 == 0
+                ? (_scratch[middle - 1] + _scratch[middle]) * 0.5d
+                : _scratch[middle];
+        }
+
+        public double GetP95Milliseconds(DirectReadbackTimingMetric metric)
+        {
+            if (_count == 0)
+            {
+                return double.NaN;
+            }
+
+            CopyMetric(metric);
+            Array.Sort(_scratch, 0, _count);
+            var index = Math.Min(_count - 1, Math.Max(0, (int)Math.Ceiling(_count * 0.95d) - 1));
+            return _scratch[index];
+        }
+
+        private void CopyMetric(DirectReadbackTimingMetric metric)
+        {
+            for (var i = 0; i < _count; i++)
+            {
+                _scratch[i] = metric switch
+                {
+                    DirectReadbackTimingMetric.SubmitToCallback => _samples[i].SubmitToCallbackMilliseconds,
+                    DirectReadbackTimingMetric.CallbackEnterToPoll => _samples[i].CallbackEnterToPollMilliseconds,
+                    DirectReadbackTimingMetric.CallbackExitToPoll => _samples[i].CallbackExitToPollMilliseconds,
+                    DirectReadbackTimingMetric.PollToPublish => _samples[i].PollToPublishMilliseconds,
+                    _ => double.NaN,
+                };
+            }
+        }
+    }
+
     /// <summary>
     /// Main-thread request cadence helper. Busy frames never advance timing state, so once the
     /// previous inference finishes, the next prepared frame may launch immediately if the minimum
@@ -380,6 +558,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private string _directBodyCpuReadbackFallbackReason = string.Empty;
         private AsyncGPUReadbackRequest _activeDirectReadbackRequest;
         private bool _activeDirectReadbackRequestValid;
+        private long _directReadbackDiagnosticSerial;
+        private long _directReadbackCallbackSerial;
+        private long _directReadbackCallbackEnterTicks;
+        private long _directReadbackCallbackExitTicks;
+        private readonly DirectReadbackTimingWindow _directReadbackTimingWindow =
+            new DirectReadbackTimingWindow(64);
 
         public PoseProviderStatus Status { get; private set; } = PoseProviderStatus.Starting;
         public string StatusMessage { get; private set; } = "Starting pose-tracking spike";
@@ -443,6 +627,21 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public float ImmediateLaunchesPerSecond { get; private set; }
         public float DirectReadbacksPerSecond { get; private set; }
         public float DirectReadbackFailuresPerSecond { get; private set; }
+        public int DirectReadbackTimingSampleCount => _directReadbackTimingWindow.ValidSampleCount;
+        public int DirectReadbackTimingMissingSampleCount => _directReadbackTimingWindow.MissingSampleCount;
+        public int DirectReadbackTimingExcludedSampleCount => _directReadbackTimingWindow.ExcludedSampleCount;
+        public double DirectReadbackTimingCallbackToPollMedianMilliseconds =>
+            _directReadbackTimingWindow.GetMedianMilliseconds(DirectReadbackTimingMetric.CallbackExitToPoll);
+        public double DirectReadbackTimingCallbackToPollP95Milliseconds =>
+            _directReadbackTimingWindow.GetP95Milliseconds(DirectReadbackTimingMetric.CallbackExitToPoll);
+        public double DirectReadbackTimingSubmitToCallbackMedianMilliseconds =>
+            _directReadbackTimingWindow.GetMedianMilliseconds(DirectReadbackTimingMetric.SubmitToCallback);
+        public double DirectReadbackTimingSubmitToCallbackP95Milliseconds =>
+            _directReadbackTimingWindow.GetP95Milliseconds(DirectReadbackTimingMetric.SubmitToCallback);
+        public double DirectReadbackTimingPollToPublishMedianMilliseconds =>
+            _directReadbackTimingWindow.GetMedianMilliseconds(DirectReadbackTimingMetric.PollToPublish);
+        public double DirectReadbackTimingPollToPublishP95Milliseconds =>
+            _directReadbackTimingWindow.GetP95Milliseconds(DirectReadbackTimingMetric.PollToPublish);
         public bool HasPreparedFrame => _preparedTextureFrame != null;
         public bool ReadbackPending => _readbackPending;
         public bool InferencePending => Volatile.Read(ref _inferenceOutstanding) != 0;
@@ -1018,6 +1217,69 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _directBodyCpuReadbackFallbackReason = reason;
         }
 
+        private long BeginDirectReadbackDiagnostic()
+        {
+            var serial = Interlocked.Increment(ref _directReadbackDiagnosticSerial);
+            Volatile.Write(ref _directReadbackCallbackSerial, 0L);
+            Interlocked.Exchange(ref _directReadbackCallbackEnterTicks, 0L);
+            Interlocked.Exchange(ref _directReadbackCallbackExitTicks, 0L);
+            return serial;
+        }
+
+        private void RecordDirectReadbackCallback(long serial, AsyncGPUReadbackRequest completedRequest)
+        {
+            _ = completedRequest;
+            var enterTicks = Stopwatch.GetTimestamp();
+            Interlocked.Exchange(ref _directReadbackCallbackEnterTicks, enterTicks);
+            var exitTicks = Stopwatch.GetTimestamp();
+            Interlocked.Exchange(ref _directReadbackCallbackExitTicks, exitTicks);
+            Volatile.Write(ref _directReadbackCallbackSerial, serial);
+        }
+
+        private void RecordDirectReadbackTimingSample(
+            long serial,
+            long submitStartTicks,
+            long submitReturnTicks,
+            long coroutineObserveTicks,
+            long publishTicks,
+            bool isError)
+        {
+            var callbackSerial = Volatile.Read(ref _directReadbackCallbackSerial);
+            var callbackEnterTicks = Interlocked.Read(ref _directReadbackCallbackEnterTicks);
+            var callbackExitTicks = Interlocked.Read(ref _directReadbackCallbackExitTicks);
+            if (!DirectReadbackTimingMath.TryCreateSample(
+                    serial,
+                    callbackSerial,
+                    submitStartTicks,
+                    submitReturnTicks,
+                    callbackEnterTicks,
+                    callbackExitTicks,
+                    coroutineObserveTicks,
+                    publishTicks,
+                    isError,
+                    out var sample))
+            {
+                _directReadbackTimingWindow.RecordMissingSample();
+                return;
+            }
+
+            _directReadbackTimingWindow.Add(sample);
+        }
+
+        private void RecordDirectReadbackTerminalWithoutPublish(long serial)
+        {
+            if (Volatile.Read(ref _directReadbackCallbackSerial) == serial &&
+                Interlocked.Read(ref _directReadbackCallbackEnterTicks) > 0L &&
+                Interlocked.Read(ref _directReadbackCallbackExitTicks) > 0L)
+            {
+                _directReadbackTimingWindow.RecordExcludedSample();
+            }
+            else
+            {
+                _directReadbackTimingWindow.RecordMissingSample();
+            }
+        }
+
         private void TrackActiveDirectReadbackRequest(AsyncGPUReadbackRequest request)
         {
             _activeDirectReadbackRequest = request;
@@ -1048,6 +1310,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             var readbackStartedAtSeconds = NowSeconds();
             var directRequest = false;
             var directTimedOut = false;
+            var directDiagnosticSerial = 0L;
+            var directSubmitStartTicks = 0L;
+            var directSubmitReturnTicks = 0L;
             try
             {
                 Texture readbackSource = _webCamTexture;
@@ -1116,12 +1381,17 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     }
                     else
                     {
+                        directDiagnosticSerial = BeginDirectReadbackDiagnostic();
+                        directSubmitStartTicks = Stopwatch.GetTimestamp();
                         request = AsyncGPUReadback.RequestIntoNativeArray(
                             ref rawData,
                             directReadbackSource,
                             0,
                             TextureFormat.RGBA32,
-                            null);
+                            completedRequest => RecordDirectReadbackCallback(
+                                directDiagnosticSerial,
+                                completedRequest));
+                        directSubmitReturnTicks = Stopwatch.GetTimestamp();
                         TrackActiveDirectReadbackRequest(request);
                         directRequest = true;
                         _directReadbacksInWindow++;
@@ -1180,23 +1450,30 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 }
             }
 
+            var requestDoneAtCoroutineObservation = request.done;
+            var coroutineObserveTicks = Stopwatch.GetTimestamp();
             if (directRequest)
             {
-                ClearActiveDirectReadbackRequestIfTerminal(request.done);
+                ClearActiveDirectReadbackRequestIfTerminal(requestDoneAtCoroutineObservation);
             }
 
             LastGpuReadbackDurationMilliseconds = (float)((NowSeconds() - readbackStartedAtSeconds) * 1000d);
 
             if (directRequest && directTimedOut)
             {
+                RecordDirectReadbackTerminalWithoutPublish(directDiagnosticSerial);
                 textureFrame.Release();
                 _readbackPending = false;
                 _skippedInWindow++;
                 yield break;
             }
 
-            if (!request.done || request.hasError)
+            if (!requestDoneAtCoroutineObservation || request.hasError)
             {
+                if (directRequest)
+                {
+                    RecordDirectReadbackTerminalWithoutPublish(directDiagnosticSerial);
+                }
                 textureFrame.Release();
                 _readbackPending = false;
                 _skippedInWindow++;
@@ -1224,6 +1501,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
             if (_shuttingDown || coordinateConventionVersion != _coordinateConventionVersion || _poseLandmarker == null)
             {
+                if (directRequest)
+                {
+                    RecordDirectReadbackTerminalWithoutPublish(directDiagnosticSerial);
+                }
                 textureFrame.Release();
                 _readbackPending = false;
                 yield break;
@@ -1240,6 +1521,16 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _preparedCoordinateConventionVersion = coordinateConventionVersion;
             _preparedFramePublishedAtSeconds = NowSeconds();
             _preparedFramePublishedFrameCount = Time.frameCount;
+            if (directRequest)
+            {
+                RecordDirectReadbackTimingSample(
+                    directDiagnosticSerial,
+                    directSubmitStartTicks,
+                    directSubmitReturnTicks,
+                    coroutineObserveTicks,
+                    Stopwatch.GetTimestamp(),
+                    isError: false);
+            }
             _readbackPending = false;
 
             TryImmediateLaunchAfterReadback();
@@ -1490,6 +1781,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _immediateLaunchesInWindow = 0;
             _directReadbacksInWindow = 0;
             _directReadbackFailuresInWindow = 0;
+            _directReadbackTimingWindow.Reset();
+            Volatile.Write(ref _directReadbackCallbackSerial, 0L);
+            Interlocked.Exchange(ref _directReadbackCallbackEnterTicks, 0L);
+            Interlocked.Exchange(ref _directReadbackCallbackExitTicks, 0L);
             _freshCameraFramePending = false;
             _latestFreshFrameObservedAtSeconds = 0d;
             _activeInferenceFrameObservedAtSeconds = 0d;
@@ -1622,11 +1917,18 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     _activeBodyReadbackPath == BodyReadbackPath.DirectCPU
                         ? $"DirectCPU stage={ActiveDirectReadbackStageLabel}"
                         : ActiveBodyReadbackPathLabel;
+                var directTimingSummary = _activeBodyReadbackPath == BodyReadbackPath.DirectCPU
+                    ? $"\nDirect cb: n={DirectReadbackTimingSampleCount} " +
+                      $"submit→cb={FormatTimingPair(DirectReadbackTimingSubmitToCallbackMedianMilliseconds, DirectReadbackTimingSubmitToCallbackP95Milliseconds)}ms " +
+                      $"cb→poll={FormatTimingPair(DirectReadbackTimingCallbackToPollMedianMilliseconds, DirectReadbackTimingCallbackToPollP95Milliseconds)}ms " +
+                      $"poll→pub={FormatTimingPair(DirectReadbackTimingPollToPublishMedianMilliseconds, DirectReadbackTimingPollToPublishP95Milliseconds)}ms"
+                    : string.Empty;
                 StatusMessage =
                     $"Camera/Pose ready | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
                     $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
                     $"Readback: {readbackPathSummary} H={(FlipInputHorizontally ? 1 : 0)} V={(FlipInputVertically ? 1 : 0)} direct={DirectReadbacksPerSecond:0.0}/s fail={DirectReadbackFailuresPerSecond:0.0}/s{fallbackSuffix}\n" +
-                    $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s";
+                    $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s" +
+                    directTimingSummary;
             }
 
             _requestsInWindow = 0;
@@ -1644,6 +1946,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _directReadbacksInWindow = 0;
             _directReadbackFailuresInWindow = 0;
             _metricsWindowStartedAtSeconds = now;
+        }
+
+        private static string FormatTimingPair(double medianMilliseconds, double p95Milliseconds)
+        {
+            return double.IsNaN(medianMilliseconds) || double.IsNaN(p95Milliseconds)
+                ? "-/-"
+                : $"{medianMilliseconds:0.0}/{p95Milliseconds:0.0}";
         }
 
         private bool WasRecentlyTracked(int index, double nowSeconds)

@@ -489,6 +489,154 @@ namespace GoldenNeedle.Tests
                 Is.EqualTo(BodyInferenceResolution.MaximumLongEdge));
         }
 
+        [Test]
+        public void DirectReadbackTimingSampleAcceptsMatchingCallbackSerial()
+        {
+            Assert.That(
+                DirectReadbackTimingMath.TryCreateSample(
+                    expectedSerial: 7,
+                    callbackSerial: 7,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 103,
+                    callbackEnterTicks: 130,
+                    callbackExitTicks: 131,
+                    coroutineObserveTicks: 150,
+                    publishTicks: 151,
+                    isError: false,
+                    out var sample,
+                    frequency: 1000),
+                Is.True);
+            Assert.That(sample.SubmitToCallbackMilliseconds, Is.EqualTo(30d));
+            Assert.That(sample.CallbackEnterToPollMilliseconds, Is.EqualTo(20d));
+            Assert.That(sample.CallbackExitToPollMilliseconds, Is.EqualTo(19d));
+            Assert.That(sample.PollToPublishMilliseconds, Is.EqualTo(1d));
+            Assert.That(sample.SubmitCallMilliseconds, Is.EqualTo(3d));
+        }
+
+        [Test]
+        public void DirectReadbackTimingSampleRejectsSerialMismatch()
+        {
+            Assert.That(
+                DirectReadbackTimingMath.TryCreateSample(
+                    expectedSerial: 7,
+                    callbackSerial: 6,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 103,
+                    callbackEnterTicks: 130,
+                    callbackExitTicks: 131,
+                    coroutineObserveTicks: 150,
+                    publishTicks: 151,
+                    isError: false,
+                    out _,
+                    frequency: 1000),
+                Is.False);
+        }
+
+        [Test]
+        public void DirectReadbackTimingSampleRejectsMissingCallback()
+        {
+            Assert.That(
+                DirectReadbackTimingMath.TryCreateSample(
+                    expectedSerial: 7,
+                    callbackSerial: 0,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 103,
+                    callbackEnterTicks: 0,
+                    callbackExitTicks: 0,
+                    coroutineObserveTicks: 150,
+                    publishTicks: 151,
+                    isError: false,
+                    out _,
+                    frequency: 1000),
+                Is.False);
+        }
+
+        [Test]
+        public void DirectReadbackTimingTicksConvertToMilliseconds()
+        {
+            Assert.That(
+                DirectReadbackTimingMath.TicksToMilliseconds(2500, 10000),
+                Is.EqualTo(250d));
+        }
+
+        [Test]
+        public void DirectReadbackTimingWindowCalculatesOddAndEvenMedians()
+        {
+            var window = new DirectReadbackTimingWindow(8);
+            window.Add(TimingSample(10d));
+            window.Add(TimingSample(30d));
+            window.Add(TimingSample(20d));
+
+            Assert.That(
+                window.GetMedianMilliseconds(DirectReadbackTimingMetric.CallbackExitToPoll),
+                Is.EqualTo(20d));
+
+            window.Add(TimingSample(40d));
+            Assert.That(
+                window.GetMedianMilliseconds(DirectReadbackTimingMetric.CallbackExitToPoll),
+                Is.EqualTo(25d));
+        }
+
+        [Test]
+        public void DirectReadbackTimingWindowCalculatesNearestRankP95()
+        {
+            var window = new DirectReadbackTimingWindow(32);
+            for (var i = 1; i <= 20; i++)
+            {
+                window.Add(TimingSample(i));
+            }
+
+            Assert.That(
+                window.GetP95Milliseconds(DirectReadbackTimingMetric.CallbackExitToPoll),
+                Is.EqualTo(19d));
+        }
+
+        [Test]
+        public void DirectReadbackTimingWindowRollsOverWithoutGrowing()
+        {
+            var window = new DirectReadbackTimingWindow(3);
+            window.Add(TimingSample(1d));
+            window.Add(TimingSample(2d));
+            window.Add(TimingSample(3d));
+            window.Add(TimingSample(4d));
+
+            Assert.That(window.ValidSampleCount, Is.EqualTo(3));
+            Assert.That(
+                window.GetMedianMilliseconds(DirectReadbackTimingMetric.CallbackExitToPoll),
+                Is.EqualTo(3d));
+        }
+
+        [Test]
+        public void DirectReadbackTimingWindowExcludesErrorSamples()
+        {
+            var window = new DirectReadbackTimingWindow(4);
+            var errorSample = new DirectReadbackTimingSample(
+                serial: 1,
+                submitToCallbackMilliseconds: 1d,
+                callbackEnterToPollMilliseconds: 2d,
+                callbackExitToPollMilliseconds: 3d,
+                pollToPublishMilliseconds: 4d,
+                submitCallMilliseconds: 5d,
+                isError: true);
+
+            window.Add(errorSample);
+
+            Assert.That(window.ValidSampleCount, Is.EqualTo(0));
+            Assert.That(window.ExcludedSampleCount, Is.EqualTo(1));
+        }
+
+        private static DirectReadbackTimingSample TimingSample(double callbackToPollMilliseconds)
+        {
+            return new DirectReadbackTimingSample(
+                serial: 1,
+                submitToCallbackMilliseconds: 1d,
+                callbackEnterToPollMilliseconds: callbackToPollMilliseconds + 1d,
+                callbackExitToPollMilliseconds: callbackToPollMilliseconds,
+                pollToPublishMilliseconds: 1d,
+                submitCallMilliseconds: 1d,
+                isError: false);
+        }
+
         private static bool ImmediateLaunchAllowed(
             bool experimentEnabled = true,
             bool providerReady = true,

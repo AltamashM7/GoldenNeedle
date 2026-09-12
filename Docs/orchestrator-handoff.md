@@ -6,13 +6,13 @@ Repository: `AltamashM7/GoldenNeedle`
 
 Working branch: `engine/pose-tracking-spike`
 
-Starting checkpoint for the DirectCPU teardown-lifetime safety follow-up: `b86d182bcf79764b4d1ab66301304f18d811f14a` — `fix: support flipped direct body readback`.
+Starting checkpoint for the DirectCPU callback-timing instrumentation checkpoint: `6a9351c808b251f9726444008806dd0d9471166a` — `fix: guard direct readback lifetime during teardown`.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
 - `b64a311...` Lab-camera quaternion/clear-only-camera correction: **USER-runtime accepted**.
 - Immediate Launch After Readback: **USER-runtime accepted**; keep ON.
-- Direct Body CPU Readback flip staging + teardown guard: **IMPLEMENTED / NOT USER ACCEPTED**.
+- Direct Body CPU Readback flip staging + teardown guard: **USER-runtime PASS** as a modest beneficial optimization; callback-vs-coroutine timing instrumentation is **IMPLEMENTED / AWAITING USER MEASUREMENT**.
 - Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 - No merge to `main` without explicit USER approval.
@@ -130,7 +130,10 @@ V:    scale=( 1,-1), offset=(0,1)
 HV:   scale=(-1,-1), offset=(1,1)
 ```
 
-Rotation remains exclusively in `ImageProcessingOptions`. The DirectCPU path remains default OFF and not USER accepted.
+Rotation remains exclusively in `ImageProcessingOptions`. The DirectCPU path remains default OFF for
+the serialized experiment control, but is now USER-runtime PASS as a modest beneficial optimization.
+The callback timing instrumentation does not change the default, runtime authority or scheduling
+behavior.
 
 The Homuler package remains untouched and authoritative whenever DirectCPU is OFF or ineligible.
 
@@ -196,15 +199,71 @@ The safety patch does not change:
 
 `WaitForCompletion()` is never called each frame. It is only considered during cleanup when a tracked direct request still exists.
 
+## DirectCPU USER runtime result
+
+The USER completed the DirectCPU safety smoke and representative A/B on the built-in HP TrueVision
+camera using `640x480 @ 30`, body input `320x240`, target inference `30`, and Immediate Launch
+After Readback ON. The active DirectCPU path was confirmed as:
+
+```text
+DirectCPU stage=V H=0 V=1
+```
+
+Representative evidence:
+
+| Metric | Homuler | DirectCPU |
+| --- | ---: | ---: |
+| Capture | ~28.9 FPS | ~29.5 FPS |
+| Render | ~32.4 FPS | ~33.1 FPS |
+| Requests | ~10.9/s | ~10.9/s |
+| Results | ~10.8/s | ~11.7/s |
+| RB | ~58.1 ms | ~54.7 ms |
+| Detect | ~62.3 ms | ~59.1 ms |
+| Prep -> launch | ~0.3 ms | ~0.3 ms |
+| Approx. frame -> result | ~120.7 ms | ~112.0 ms |
+
+DirectCPU was judged a modest beneficial optimization with no observed orientation/tracking
+regression and no direct readback failures. The larger frame-to-result difference also contains
+Detect run-to-run variation, so this is representative runtime evidence rather than a formal latency
+benchmark. Keep DirectCPU as the preferred body-pose readback path for now.
+
+The USER observed the expected Play-stop safety diagnostic:
+
+```text
+[PoseTrackingSpike] Waiting for active DirectCPU readback before body resource teardown
+```
+
+No resource error or hang was reported from that event.
+
+## Callback-vs-coroutine timing instrumentation checkpoint
+
+DirectCPU `RequestIntoNativeArray` now has a minimal diagnostic callback. It records only monotonic
+callback-enter/exit timestamps and a monotonically increasing request serial using thread-safe
+isolated state. The coroutine remains authoritative for `request.done`, error/timeout handling,
+active-request ownership, prepared-frame publication, accepted immediate launch and teardown.
+
+F7 exposes a rolling fixed-window sample count plus submit->callback, callback->poll and
+poll->publish median/p95 values. Missing or unmatched callbacks are not represented as zero-latency
+samples, and error/timeout/non-published requests are excluded from the normal latency window.
+
+This checkpoint is **IMPLEMENTED / AWAITING USER MEASUREMENT**. It is not evidence for callback-driven
+scheduling optimization. Do not publish frames, release `TextureFrame`, launch inference or alter
+teardown from the callback.
+
 ## Diagnostics
 
-Existing F7/Status remains unchanged by this safety patch: capture/render/req/res/cb rates, RB/build/detect/~F->R, pose age, prepared->launch delay/frame delta/origin/fast rate, noFresh/int/RB/inf/pool waits, readback failures/timeouts, replacements, active readback path, DirectCPU stage, H/V state, direct submissions/s, direct failures/s and fallback reason.
+Existing F7/Status remains unchanged for its prior metrics: capture/render/req/res/cb rates, RB/build/detect/~F->R, pose age, prepared->launch delay/frame delta/origin/fast rate, noFresh/int/RB/inf/pool waits, readback failures/timeouts, replacements, active readback path, DirectCPU stage, H/V state, direct submissions/s, direct failures/s and fallback reason. DirectCPU additionally exposes the callback timing aggregate described above.
 
 One exceptional cleanup log may appear if teardown actually has to wait for a DirectCPU request. There is no per-frame Console spam.
 
+The Unity CLI EditMode validation attempt for this checkpoint did not reach compilation or the Test
+Runner. Unity exited before reporting results because the `Unity-LicenseClient-user` mutex was already
+held and the project was already open in another Unity instance. This is an environment/license/mutex
+limitation, not a test result; no Unity PASS is claimed.
+
 ## Focused deterministic tests
 
-Existing scheduler, immediate-launch, body-resolution, DirectCPU path-selection and flip-transform tests remain.
+Existing scheduler, immediate-launch, body-resolution, DirectCPU path-selection and flip-transform tests remain. Focused pure timing-helper tests now cover serial matching, missing callbacks, tick conversion, median/p95, ring rollover and error exclusion.
 
 Additional pure teardown-policy tests cover:
 - no active DirectCPU request -> cleanup does not require wait;
@@ -231,22 +290,14 @@ Common settings:
 
 Confirm F7 actually says `Readback: DirectCPU stage=None|H|V|HV`, not fallback. Then repeatedly stop and restart Play Mode at arbitrary moments while DirectCPU is active. Also test one live Direct toggle and one safe camera switch. Verify no NativeArray/AsyncGPUReadback/Texture destruction errors, no crash/hang, and normal orientation/alignment remains intact.
 
-Only after that smoke passes, run the A/B:
+The safety smoke and A/B are complete and USER-runtime PASS. The remaining USER validation is callback timing only. With the same HP TrueVision settings, enable Direct Body CPU Readback, settle with `C` then `K`, and confirm F7 shows `Readback: DirectCPU stage=None|H|V|HV` plus:
 
-**Run A — accepted baseline**
-- Direct Body CPU Readback OFF;
-- confirm `Readback: Homuler`.
+`Direct cb: n=... submit→cb=... cb→poll=... poll→pub=...`
 
-**Run B — candidate**
-- change only Direct Body CPU Readback ON;
-- confirm `Readback: DirectCPU stage=H`, `V`, `HV` or `None`;
-- record `H=0/1 V=0/1`;
-- if it reports `DirectFallback`, do not benchmark and report the exact reason.
+Run representative arm/torso motion for 45–60 seconds with OBS and record the callback timing medians/p95s, sample counts, missing/excluded samples, cadence and subjective responsiveness. Treat `cb→poll` as primary: `>=12–15 ms` median warrants investigation, `25–30 ms` is strong evidence of a polling gap, `<=2–3 ms` argues against changing scheduling, and `3–12 ms` is modest/inconclusive. This remains a diagnostic measurement, not a formal latency benchmark; do not implement callback-driven scheduling from this checkpoint alone.
 
-Use the same OBS flow: Play Mode -> settle/C/K -> start OBS -> wait 5–10 seconds -> comparable arm/torso motion -> stop OBS while Play Mode remains running.
+Accepted A/B evidence remains approximately RB `56.7 ms`, detect `56.7 ms`, Prep->launch `0.4 ms`, `~F->R 117.7 ms`, results `11.7/s`.
 
-Record capture FPS, render FPS, req/s, res/s, cb/s, RB, build, detect, Prep->launch, `~F->R`, pose age, wait rates, replacement rate, DirectCPU rate, direct failures, stage mode and subjective responsiveness. Verify F1/F2/F4 alignment, upright skeleton/avatar, no new mirror inversion, full-resolution Lab preview unchanged and Console clean.
-
-Accepted baseline remains approximately RB `56.7 ms`, detect `56.7 ms`, Prep->launch `0.4 ms`, `~F->R 117.7 ms`, results `11.7/s`.
-
-DirectCPU remains **IMPLEMENTED / NOT USER ACCEPTED** until both the teardown smoke and a real DirectCPU performance A/B pass.
+DirectCPU is **USER-runtime PASS** as a modest beneficial optimization. Callback-vs-coroutine timing
+instrumentation is **IMPLEMENTED / AWAITING USER MEASUREMENT**. Phase 5A remains **IMPLEMENTED / NOT
+USER ACCEPTED**, Phase 6 is **NOT STARTED**, and there is no merge to `main`.
