@@ -1081,13 +1081,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     var priorCompletion = CapturePendingInferenceCompletion();
                     var diagnosticSessionId = Volatile.Read(ref _inferenceDiagnosticSessionId);
                     var diagnosticSerial = Interlocked.Increment(ref _nextInferenceDiagnosticSerial);
-                    var diagnosticSubmitStartTicks = Stopwatch.GetTimestamp();
                     Interlocked.Exchange(ref _activeInferenceDiagnosticSessionId, diagnosticSessionId);
                     Interlocked.Exchange(ref _activeInferenceDiagnosticSerial, diagnosticSerial);
                     Interlocked.Exchange(ref _activeInferenceDiagnosticTimestampMilliseconds, timestampMillisec);
-                    Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitStartTicks, diagnosticSubmitStartTicks);
                     Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitReturnTicks, 0L);
                     Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
+                    var diagnosticSubmitStartTicks = Stopwatch.GetTimestamp();
+                    Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitStartTicks, diagnosticSubmitStartTicks);
 
                     try
                     {
