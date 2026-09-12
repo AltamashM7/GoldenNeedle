@@ -1,9 +1,8 @@
 param(
-    [ValidateSet("CPU", "GPU")]
-    [string[]]$Devices = @("CPU", "GPU"),
     [int]$Warmup = 30,
     [int]$Iterations = 300,
     [int]$CopyIterations = 100,
+    [string]$PoseImage = "",
     [switch]$Reinstall
 )
 
@@ -13,7 +12,7 @@ $RepoRoot = (Resolve-Path (Join-Path $ToolDir "..\..")).Path
 $VenvDir = Join-Path $ToolDir ".venv"
 $VenvPython = Join-Path $VenvDir "Scripts\python.exe"
 $Requirements = Join-Path $ToolDir "requirements.txt"
-$Benchmark = Join-Path $ToolDir "benchmark.py"
+$Benchmark = Join-Path $ToolDir "precision_benchmark.py"
 
 function Test-PythonCandidate {
     param([string]$Exe, [string[]]$PrefixArgs)
@@ -85,27 +84,38 @@ if ($LASTEXITCODE -ne 0) {
 
 $NeedInstall = $Reinstall
 if (-not $NeedInstall) {
-    & $VenvPython -c "import importlib.metadata as m; v=next((d.version for d in m.distributions() if (d.metadata.get('Name') or '').lower() == 'openvino'), ''); raise SystemExit(0 if v == '2026.3.0' else 1)"
+    & $VenvPython -c "import importlib.metadata as m; ov=next((d.version for d in m.distributions() if (d.metadata.get('Name') or '').lower() == 'openvino'), ''); pil=next((d.version for d in m.distributions() if (d.metadata.get('Name') or '').lower() == 'pillow'), ''); raise SystemExit(0 if ov == '2026.3.0' and pil == '12.3.0' else 1)"
     $NeedInstall = $LASTEXITCODE -ne 0
 }
 
 if ($NeedInstall) {
-    Write-Host "Installing pinned benchmark dependency openvino==2026.3.0 into the local venv..."
+    Write-Host "Installing pinned OpenVINO/Pillow benchmark dependencies into the local venv..."
     & $VenvPython -m pip install --disable-pip-version-check -r $Requirements
     if ($LASTEXITCODE -ne 0) {
-        throw "OpenVINO dependency installation failed."
+        throw "Benchmark dependency installation failed."
     }
 }
 
-Write-Host "Running exact-landmark benchmark. No AUTO/HETERO fallback will be used."
-$Arguments = @(
+$ResolvedPoseImage = $null
+if ($PoseImage) {
+    if (-not (Test-Path -LiteralPath $PoseImage -PathType Leaf)) {
+        throw "Pose image not found: $PoseImage"
+    }
+    $ResolvedPoseImage = (Resolve-Path -LiteralPath $PoseImage).Path
+}
+
+Write-Host "Running exact-landmark OpenVINO precision benchmark. No AUTO/HETERO/MULTI fallback will be used."
+$CommandArgs = @(
     $Benchmark,
     "--repo-root", $RepoRoot,
     "--warmup", $Warmup,
     "--iterations", $Iterations,
     "--copy-iterations", $CopyIterations,
-    "--devices"
-) + $Devices
+    "--profiles", "CPU_DEFAULT", "GPU_DEFAULT", "GPU_ACCURACY_FP32"
+)
+if ($ResolvedPoseImage) {
+    $CommandArgs += @("--pose-image", $ResolvedPoseImage)
+}
 
-& $VenvPython @Arguments
+& $VenvPython @CommandArgs
 exit $LASTEXITCODE

@@ -1,6 +1,7 @@
 .venv/
 artifacts/
 results/
+inputs/
 __pycache__/
 *.pyc
 *.pyo
