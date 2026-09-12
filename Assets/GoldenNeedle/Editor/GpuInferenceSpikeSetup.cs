@@ -16,7 +16,7 @@ using UnityEngine.SceneManagement;
 
 namespace GoldenNeedle.EditorTools
 {
-    public static class GpuInferenceSpikeSetup
+    public static partial class GpuInferenceSpikeSetup
     {
         const string BundleAssetPath =
             "Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes";
@@ -45,50 +45,66 @@ namespace GoldenNeedle.EditorTools
                 WriteIfChanged(ToAbsoluteAssetPath(DetectorAssetPath), detectorBytes);
                 WriteIfChanged(ToAbsoluteAssetPath(LandmarkAssetPath), landmarkBytes);
 
+                // Audit the exact bytes before asking Sentis to import either model. This ensures the
+                // sparse/DENSIFY report survives even when an importer rejects one model.
                 var detectorAudit = TfliteAudit.Read(detectorBytes);
                 var landmarkAudit = TfliteAudit.Read(landmarkBytes);
+
+                var detectorImport = ImportModelIndependently(
+                    "Detector",
+                    DetectorAssetPath,
+                    detectorAudit.DensifyOperators.Count > 0);
+                var landmarkImport = ImportModelIndependently(
+                    "Landmark",
+                    LandmarkAssetPath,
+                    landmarkAudit.DensifyOperators.Count > 0);
+
                 var auditText = BuildAuditText(
                     bundleBytes,
                     detectorBytes,
                     landmarkBytes,
                     detectorAudit,
-                    landmarkAudit);
+                    landmarkAudit,
+                    detectorImport,
+                    landmarkImport);
                 WriteIfChanged(ToAbsoluteAssetPath(AuditAssetPath), Encoding.UTF8.GetBytes(auditText));
-
-                AssetDatabase.ImportAsset(
-                    DetectorAssetPath,
-                    ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
-                AssetDatabase.ImportAsset(
-                    LandmarkAssetPath,
-                    ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
                 AssetDatabase.ImportAsset(
                     AuditAssetPath,
                     ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
 
-                var detectorModel = AssetDatabase.LoadAssetAtPath<ModelAsset>(DetectorAssetPath);
-                var landmarkModel = AssetDatabase.LoadAssetAtPath<ModelAsset>(LandmarkAssetPath);
-                if (detectorModel == null || landmarkModel == null)
+                if (detectorImport.Asset == null && landmarkImport.Asset == null)
                 {
                     throw new InvalidOperationException(
-                        "Sentis did not import one or both exact .tflite files as ModelAsset. " +
-                        "Check the Console/importer errors. Do not convert to ONNX for this spike.");
+                        "Neither exact TFLite imported as a Sentis ModelAsset. " +
+                        "Detector: " + detectorImport.Display + " Landmark: " + landmarkImport.Display +
+                        " The detailed importer summaries and DENSIFY audit were still written to " + AuditAssetPath + ".");
                 }
 
                 CreateDiagnosticScene(
-                    detectorModel,
-                    landmarkModel,
+                    detectorImport,
+                    landmarkImport,
                     detectorAudit,
                     landmarkAudit);
 
                 AssetDatabase.Refresh();
+
+                var suitePlan = BuildSuitePlan(detectorImport, landmarkImport);
                 UnityEngine.Debug.Log(
-                    "[GpuInferenceSpike] Exact TFLite models extracted/imported without modifying the production bundle.\n" +
+                    "[GpuInferenceSpike] Landmark-first preparation completed without modifying the production bundle.\n" +
+                    "Detector: " + detectorImport.Display + "\n" +
+                    "Landmark: " + landmarkImport.Display + "\n" +
+                    suitePlan + "\n\n" +
                     auditText + "\nDiagnostic scene: " + SceneAssetPath);
+
                 EditorUtility.DisplayDialog(
                     "Golden Needle GPU Inference Spike",
-                    "Exact detector and landmark TFLite models were extracted and imported.\n\n" +
-                    "A separate diagnostic scene was generated at:\n" + SceneAssetPath + "\n\n" +
-                    "Double-click that scene when you are ready to benchmark. The current scene was not replaced.",
+                    "Exact models were extracted and audited independently.\n\n" +
+                    "Detector: " + detectorImport.Display + "\n" +
+                    "Landmark: " + landmarkImport.Display + "\n\n" +
+                    suitePlan + "\n\n" +
+                    "Diagnostic scene:\n" + SceneAssetPath + "\n\n" +
+                    "Importer failures do not block a benchmark for the model that did import. " +
+                    "See Console and Generated/model-audit.txt for full details.",
                     "OK");
             }
             catch (Exception ex)
@@ -96,14 +112,117 @@ namespace GoldenNeedle.EditorTools
                 UnityEngine.Debug.LogError("[GpuInferenceSpike] Preparation failed.\n" + ex);
                 EditorUtility.DisplayDialog(
                     "GPU Inference Spike preparation failed",
-                    ex.Message + "\n\nSee Console for details. No ONNX fallback was attempted.",
+                    ex.Message + "\n\nSee Console and Generated/model-audit.txt when present. No ONNX fallback or model rewrite was attempted.",
                     "OK");
             }
         }
 
+        static ImportAttempt ImportModelIndependently(string label, string assetPath, bool modelContainsDensify)
+        {
+            var capturedErrors = new List<string>();
+            Exception thrown = null;
+            var fileName = Path.GetFileName(assetPath);
+
+            Application.LogCallback callback = (condition, stackTrace, type) =>
+            {
+                if (type != LogType.Error && type != LogType.Exception && type != LogType.Assert)
+                    return;
+
+                if (IsRelevantImporterMessage(condition, fileName, label))
+                    capturedErrors.Add(CompactImporterMessage(condition));
+            };
+
+            Application.logMessageReceived += callback;
+            try
+            {
+                AssetDatabase.ImportAsset(
+                    assetPath,
+                    ImportAssetOptions.ForceSynchronousImport | ImportAssetOptions.ForceUpdate);
+            }
+            catch (Exception ex)
+            {
+                thrown = ex;
+                capturedErrors.Add(CompactImporterMessage(ex.GetBaseException().Message));
+            }
+            finally
+            {
+                Application.logMessageReceived -= callback;
+            }
+
+            var asset = AssetDatabase.LoadAssetAtPath<ModelAsset>(assetPath);
+            if (asset != null && thrown == null)
+            {
+                var detail = capturedErrors.Count == 0
+                    ? "Sentis produced a ModelAsset."
+                    : "Sentis produced a ModelAsset; importer also logged: " + JoinDistinct(capturedErrors);
+                return new ImportAttempt(label, asset, "IMPORTED", detail);
+            }
+
+            var errors = JoinDistinct(capturedErrors);
+            var densifyObserved = errors.IndexOf("DENSIFY", StringComparison.OrdinalIgnoreCase) >= 0;
+            var status = densifyObserved
+                ? "FAILED IMPORT (DENSIFY)"
+                : modelContainsDensify
+                    ? "FAILED IMPORT (model contains DENSIFY; inspect importer error)"
+                    : "FAILED IMPORT";
+
+            if (string.IsNullOrWhiteSpace(errors))
+            {
+                errors = modelContainsDensify
+                    ? "No ModelAsset was produced. The exact model audit contains DENSIFY; inspect the Unity Console for the Sentis importer error."
+                    : "No ModelAsset was produced. Inspect the Unity Console for the Sentis importer error.";
+            }
+
+            return new ImportAttempt(label, null, status, errors);
+        }
+
+        static bool IsRelevantImporterMessage(string condition, string fileName, string label)
+        {
+            if (string.IsNullOrWhiteSpace(condition))
+                return false;
+
+            return condition.IndexOf(fileName, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   condition.IndexOf(label, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   condition.IndexOf("LiteRT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   condition.IndexOf("TFLite", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   condition.IndexOf("DENSIFY", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   condition.IndexOf("unsupported operator", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   condition.IndexOf("unsupported data", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        static string CompactImporterMessage(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return string.Empty;
+
+            var oneLine = message.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            const int maxLength = 1200;
+            return oneLine.Length <= maxLength ? oneLine : oneLine.Substring(0, maxLength) + "…";
+        }
+
+        static string JoinDistinct(List<string> messages)
+        {
+            var distinct = messages
+                .Where(message => !string.IsNullOrWhiteSpace(message))
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+            return distinct.Length == 0 ? string.Empty : string.Join(" | ", distinct);
+        }
+
+        static string BuildSuitePlan(ImportAttempt detector, ImportAttempt landmark)
+        {
+            if (detector.Asset != null && landmark.Asset != null)
+                return "Suites: Detector + Landmark will run.";
+            if (landmark.Asset != null)
+                return "Suites: LANDMARK ONLY will run; detector will be SKIPPED because import failed.";
+            if (detector.Asset != null)
+                return "Suites: DETECTOR ONLY will run; landmark will be SKIPPED because import failed.";
+            return "Suites: none; neither model imported.";
+        }
+
         static void CreateDiagnosticScene(
-            ModelAsset detectorModel,
-            ModelAsset landmarkModel,
+            ImportAttempt detectorImport,
+            ImportAttempt landmarkImport,
             TfliteAudit detectorAudit,
             TfliteAudit landmarkAudit)
         {
@@ -116,8 +235,12 @@ namespace GoldenNeedle.EditorTools
                 var runner = runnerObject.AddComponent<GpuInferenceSpikeRunner>();
 
                 var serialized = new SerializedObject(runner);
-                serialized.FindProperty("detectorModelAsset").objectReferenceValue = detectorModel;
-                serialized.FindProperty("landmarkModelAsset").objectReferenceValue = landmarkModel;
+                serialized.FindProperty("detectorModelAsset").objectReferenceValue = detectorImport.Asset;
+                serialized.FindProperty("landmarkModelAsset").objectReferenceValue = landmarkImport.Asset;
+                serialized.FindProperty("detectorImportStatus").stringValue = detectorImport.Status;
+                serialized.FindProperty("detectorImportDetails").stringValue = detectorImport.Details;
+                serialized.FindProperty("landmarkImportStatus").stringValue = landmarkImport.Status;
+                serialized.FindProperty("landmarkImportDetails").stringValue = landmarkImport.Details;
 
                 ApplyInputShape(serialized, "detector", detectorAudit);
                 ApplyInputShape(serialized, "landmark", landmarkAudit);
@@ -167,12 +290,14 @@ namespace GoldenNeedle.EditorTools
             byte[] detector,
             byte[] landmark,
             TfliteAudit detectorAudit,
-            TfliteAudit landmarkAudit)
+            TfliteAudit landmarkAudit,
+            ImportAttempt detectorImport,
+            ImportAttempt landmarkImport)
         {
             var builder = new StringBuilder();
             builder.AppendLine("Golden Needle GPU inference spike — exact model audit");
             builder.AppendLine("Generated locally from the production MediaPipe .task/.bytes bundle.");
-            builder.AppendLine("No model conversion was performed.");
+            builder.AppendLine("No model conversion or mutation was performed.");
             builder.AppendLine();
             builder.AppendLine(
                 $"bundle: {BundleAssetPath} size={bundle.LongLength} sha256={Sha256(bundle)}");
@@ -180,6 +305,13 @@ namespace GoldenNeedle.EditorTools
                 $"pose_detector.tflite size={detector.LongLength} sha256={Sha256(detector)}");
             builder.AppendLine(
                 $"pose_landmarks_detector.tflite size={landmark.LongLength} sha256={Sha256(landmark)}");
+            builder.AppendLine();
+            builder.AppendLine("Sentis import status:");
+            builder.AppendLine("  Detector: " + detectorImport.Display);
+            builder.AppendLine("    " + detectorImport.Details);
+            builder.AppendLine("  Landmark: " + landmarkImport.Display);
+            builder.AppendLine("    " + landmarkImport.Details);
+            builder.AppendLine("  " + BuildSuitePlan(detectorImport, landmarkImport));
             builder.AppendLine();
             builder.Append(detectorAudit.ToReport("pose_detector.tflite"));
             builder.AppendLine();
@@ -250,368 +382,24 @@ namespace GoldenNeedle.EditorTools
             return builder.ToString();
         }
 
-        sealed class TfliteAudit
+        sealed class ImportAttempt
         {
-            public readonly List<TensorInfo> Inputs = new List<TensorInfo>();
-            public readonly List<TensorInfo> Outputs = new List<TensorInfo>();
-            public readonly SortedSet<string> OperatorSet = new SortedSet<string>(StringComparer.Ordinal);
-            public int TensorCount;
-            public int QuantizedTensorCount;
+            public readonly string Label;
+            public readonly ModelAsset Asset;
+            public readonly string Status;
+            public readonly string Details;
 
-            public static TfliteAudit Read(byte[] data)
+            public ImportAttempt(string label, ModelAsset asset, string status, string details)
             {
-                var reader = new FlatBufferReader(data);
-                var model = reader.RootTable();
-                var operatorCodesVector = reader.Vector(model, 1);
-                var subgraphsVector = reader.Vector(model, 2);
-                if (subgraphsVector.Count == 0)
-                    throw new InvalidDataException("TFLite model contains no subgraphs.");
-
-                var audit = new TfliteAudit();
-                var subgraph = reader.VectorTable(subgraphsVector, 0);
-                var tensors = reader.Vector(subgraph, 0);
-                var inputs = reader.Vector(subgraph, 1);
-                var outputs = reader.Vector(subgraph, 2);
-                var operators = reader.Vector(subgraph, 3);
-
-                audit.TensorCount = tensors.Count;
-                for (var i = 0; i < tensors.Count; i++)
-                {
-                    var tensor = reader.VectorTable(tensors, i);
-                    if (reader.TableOffset(tensor, 4) != 0)
-                    {
-                        var quant = reader.Table(tensor, 4);
-                        var scales = reader.Vector(quant, 2);
-                        if (scales.Count > 0)
-                            audit.QuantizedTensorCount++;
-                    }
-                }
-
-                for (var i = 0; i < inputs.Count; i++)
-                    audit.Inputs.Add(ReadTensorInfo(reader, tensors, reader.VectorInt(inputs, i)));
-                for (var i = 0; i < outputs.Count; i++)
-                    audit.Outputs.Add(ReadTensorInfo(reader, tensors, reader.VectorInt(outputs, i)));
-
-                for (var i = 0; i < operators.Count; i++)
-                {
-                    var op = reader.VectorTable(operators, i);
-                    var opcodeIndex = (int)reader.UInt(op, 0, 0);
-                    if (opcodeIndex < 0 || opcodeIndex >= operatorCodesVector.Count)
-                        throw new InvalidDataException("TFLite operator references invalid opcode index.");
-
-                    var opcode = reader.VectorTable(operatorCodesVector, opcodeIndex);
-                    var deprecated = reader.Byte(opcode, 0, 0);
-                    var builtin = reader.Int(opcode, 3, deprecated);
-                    var custom = reader.String(opcode, 1);
-                    var version = reader.Int(opcode, 2, 1);
-                    var name = builtin == 32 && !string.IsNullOrEmpty(custom)
-                        ? "CUSTOM:" + custom
-                        : BuiltinOperatorName(builtin);
-                    audit.OperatorSet.Add(name + "@v" + version);
-                }
-
-                return audit;
+                Label = label;
+                Asset = asset;
+                Status = status;
+                Details = string.IsNullOrWhiteSpace(details) ? "(no importer detail captured)" : details.Trim();
             }
 
-            static TensorInfo ReadTensorInfo(
-                FlatBufferReader reader,
-                FlatBufferReader.VectorRef tensors,
-                int tensorIndex)
-            {
-                if (tensorIndex < 0 || tensorIndex >= tensors.Count)
-                    throw new InvalidDataException("TFLite input/output tensor index is invalid.");
-
-                var tensor = reader.VectorTable(tensors, tensorIndex);
-                var shapeVector = reader.Vector(tensor, 0);
-                var shape = new int[shapeVector.Count];
-                for (var i = 0; i < shape.Length; i++)
-                    shape[i] = reader.VectorInt(shapeVector, i);
-
-                return new TensorInfo(
-                    tensorIndex,
-                    reader.String(tensor, 3) ?? string.Empty,
-                    TensorTypeName(reader.Byte(tensor, 1, 0)),
-                    shape);
-            }
-
-            public string ToReport(string label)
-            {
-                var builder = new StringBuilder();
-                builder.AppendLine(label + ":");
-                builder.AppendLine(
-                    $"  tensors={TensorCount} quantizedTensors={QuantizedTensorCount} " +
-                    $"quantization={(QuantizedTensorCount == 0 ? "none detected" : "present")}");
-
-                for (var i = 0; i < Inputs.Count; i++)
-                    builder.AppendLine("  input[" + i + "] " + Inputs[i]);
-                for (var i = 0; i < Outputs.Count; i++)
-                    builder.AppendLine("  output[" + i + "] " + Outputs[i]);
-
-                builder.AppendLine("  TFLite operator set:");
-                foreach (var op in OperatorSet)
-                    builder.AppendLine("    " + op);
-                return builder.ToString();
-            }
-
-            static string TensorTypeName(int value)
-            {
-                switch (value)
-                {
-                    case 0: return "FLOAT32";
-                    case 1: return "FLOAT16";
-                    case 2: return "INT32";
-                    case 3: return "UINT8";
-                    case 4: return "INT64";
-                    case 5: return "STRING";
-                    case 6: return "BOOL";
-                    case 7: return "INT16";
-                    case 8: return "COMPLEX64";
-                    case 9: return "INT8";
-                    case 10: return "FLOAT64";
-                    case 11: return "COMPLEX128";
-                    case 12: return "UINT64";
-                    case 13: return "RESOURCE";
-                    case 14: return "VARIANT";
-                    case 15: return "UINT32";
-                    case 16: return "UINT16";
-                    case 17: return "INT4";
-                    case 18: return "BFLOAT16";
-                    default: return "TENSOR_TYPE_" + value;
-                }
-            }
-
-            static string BuiltinOperatorName(int value)
-            {
-                switch (value)
-                {
-                    case 0: return "ADD";
-                    case 1: return "AVERAGE_POOL_2D";
-                    case 2: return "CONCATENATION";
-                    case 3: return "CONV_2D";
-                    case 4: return "DEPTHWISE_CONV_2D";
-                    case 6: return "DEQUANTIZE";
-                    case 9: return "FULLY_CONNECTED";
-                    case 14: return "LOGISTIC";
-                    case 17: return "MAX_POOL_2D";
-                    case 18: return "MUL";
-                    case 19: return "RELU";
-                    case 21: return "RELU6";
-                    case 22: return "RESHAPE";
-                    case 23: return "RESIZE_BILINEAR";
-                    case 25: return "SOFTMAX";
-                    case 28: return "TANH";
-                    case 32: return "CUSTOM";
-                    case 34: return "PAD";
-                    case 36: return "GATHER";
-                    case 39: return "TRANSPOSE";
-                    case 40: return "MEAN";
-                    case 41: return "SUB";
-                    case 42: return "DIV";
-                    case 43: return "SQUEEZE";
-                    case 45: return "STRIDED_SLICE";
-                    case 47: return "EXP";
-                    case 49: return "SPLIT";
-                    case 53: return "CAST";
-                    case 54: return "PRELU";
-                    case 55: return "MAXIMUM";
-                    case 57: return "MINIMUM";
-                    case 59: return "NEG";
-                    case 60: return "PADV2";
-                    case 65: return "SLICE";
-                    case 67: return "TRANSPOSE_CONV";
-                    case 69: return "TILE";
-                    case 70: return "EXPAND_DIMS";
-                    case 74: return "SUM";
-                    case 75: return "SQRT";
-                    case 76: return "RSQRT";
-                    case 77: return "SHAPE";
-                    case 78: return "POW";
-                    case 83: return "PACK";
-                    case 88: return "UNPACK";
-                    case 92: return "SQUARE";
-                    case 94: return "FILL";
-                    case 97: return "RESIZE_NEAREST_NEIGHBOR";
-                    case 98: return "LEAKY_RELU";
-                    case 101: return "ABS";
-                    case 106: return "ADD_N";
-                    case 114: return "QUANTIZE";
-                    case 117: return "HARD_SWISH";
-                    case 126: return "BATCH_MATMUL";
-                    default: return "BUILTIN_" + value;
-                }
-            }
+            public string Display => Status;
         }
 
-        readonly struct TensorInfo
-        {
-            public readonly int Index;
-            public readonly string Name;
-            public readonly string Type;
-            public readonly int[] Shape;
-
-            public TensorInfo(int index, string name, string type, int[] shape)
-            {
-                Index = index;
-                Name = name;
-                Type = type;
-                Shape = shape;
-            }
-
-            public override string ToString()
-            {
-                return $"tensor={Index} name=\"{Name}\" type={Type} shape=[{string.Join(",", Shape)}]";
-            }
-        }
-
-        sealed class FlatBufferReader
-        {
-            readonly byte[] _data;
-
-            public FlatBufferReader(byte[] data)
-            {
-                _data = data ?? throw new ArgumentNullException(nameof(data));
-                if (_data.Length < 8)
-                    throw new InvalidDataException("TFLite flatbuffer is too small.");
-            }
-
-            public int RootTable()
-            {
-                var root = checked((int)ReadUInt32(0));
-                Require(root, 4);
-                return root;
-            }
-
-            public int TableOffset(int table, int fieldIndex)
-            {
-                Require(table, 4);
-                var vtableDistance = ReadInt32(table);
-                var vtable = table - vtableDistance;
-                Require(vtable, 4);
-                var vtableLength = ReadUInt16(vtable);
-                var entry = vtable + 4 + (fieldIndex * 2);
-                if (entry + 2 > vtable + vtableLength)
-                    return 0;
-                return ReadUInt16(entry);
-            }
-
-            public int Table(int table, int fieldIndex)
-            {
-                var offset = TableOffset(table, fieldIndex);
-                if (offset == 0)
-                    return 0;
-                var location = table + offset;
-                return location + checked((int)ReadUInt32(location));
-            }
-
-            public VectorRef Vector(int table, int fieldIndex)
-            {
-                var offset = TableOffset(table, fieldIndex);
-                if (offset == 0)
-                    return default;
-
-                var location = table + offset;
-                var vector = location + checked((int)ReadUInt32(location));
-                var count = ReadInt32(vector);
-                if (count < 0)
-                    throw new InvalidDataException("Negative FlatBuffer vector length.");
-                Require(vector + 4, count == 0 ? 0 : 1);
-                return new VectorRef(vector + 4, count);
-            }
-
-            public int VectorTable(VectorRef vector, int index)
-            {
-                CheckVectorIndex(vector, index);
-                var element = vector.Data + (index * 4);
-                return element + checked((int)ReadUInt32(element));
-            }
-
-            public int VectorInt(VectorRef vector, int index)
-            {
-                CheckVectorIndex(vector, index);
-                return ReadInt32(vector.Data + (index * 4));
-            }
-
-            public byte Byte(int table, int fieldIndex, byte defaultValue)
-            {
-                var offset = TableOffset(table, fieldIndex);
-                return offset == 0 ? defaultValue : ReadByte(table + offset);
-            }
-
-            public int Int(int table, int fieldIndex, int defaultValue)
-            {
-                var offset = TableOffset(table, fieldIndex);
-                return offset == 0 ? defaultValue : ReadInt32(table + offset);
-            }
-
-            public uint UInt(int table, int fieldIndex, uint defaultValue)
-            {
-                var offset = TableOffset(table, fieldIndex);
-                return offset == 0 ? defaultValue : ReadUInt32(table + offset);
-            }
-
-            public string String(int table, int fieldIndex)
-            {
-                var offset = TableOffset(table, fieldIndex);
-                if (offset == 0)
-                    return null;
-
-                var location = table + offset;
-                var target = location + checked((int)ReadUInt32(location));
-                var length = ReadInt32(target);
-                if (length < 0)
-                    throw new InvalidDataException("Negative FlatBuffer string length.");
-                Require(target + 4, length);
-                return Encoding.UTF8.GetString(_data, target + 4, length);
-            }
-
-            byte ReadByte(int offset)
-            {
-                Require(offset, 1);
-                return _data[offset];
-            }
-
-            ushort ReadUInt16(int offset)
-            {
-                Require(offset, 2);
-                return BitConverter.ToUInt16(_data, offset);
-            }
-
-            int ReadInt32(int offset)
-            {
-                Require(offset, 4);
-                return BitConverter.ToInt32(_data, offset);
-            }
-
-            uint ReadUInt32(int offset)
-            {
-                Require(offset, 4);
-                return BitConverter.ToUInt32(_data, offset);
-            }
-
-            void CheckVectorIndex(VectorRef vector, int index)
-            {
-                if (index < 0 || index >= vector.Count)
-                    throw new ArgumentOutOfRangeException(nameof(index));
-            }
-
-            void Require(int offset, int count)
-            {
-                if (offset < 0 || count < 0 || offset > _data.Length - count)
-                    throw new InvalidDataException("FlatBuffer offset is outside the model bytes.");
-            }
-
-            public readonly struct VectorRef
-            {
-                public readonly int Data;
-                public readonly int Count;
-
-                public VectorRef(int data, int count)
-                {
-                    Data = data;
-                    Count = count;
-                }
-            }
-        }
     }
 }
 #endif

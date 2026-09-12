@@ -163,3 +163,54 @@ No current production PoseTrackingSpike-scene QA is required for this checkpoint
 ## If the measured spike passes
 
 The next narrow architecture phase is to reconstruct only the MediaPipe glue around the exact neural models: detector decode/NMS as needed, ROI acquisition/tracking/cadence, landmark decode, normalized + world landmark postprocessing and confidence semantics. Keep image/tensor neural work GPU-resident, transfer only proven-required small outputs to CPU, emit the existing `PoseObservation` contract, and keep the existing CPU MediaPipe provider as fallback. Do not begin Phase 6 as part of that work.
+
+## Landmark-first DENSIFY follow-up — 2026-09-12
+
+This section is the authoritative correction to the earlier GPU-spike runtime procedure above. Keep the preceding text as durable history, but use this section for current execution.
+
+Starting remote checkpoint for this follow-up: `86c9c56fe3198a870d1012e4fa41dd8f8e7a01ed` — `fix: qualify gpu spike editor logging`.
+
+New USER-runtime evidence from the exact production bundle:
+- direct detector TFLite import fails in Sentis 2.6.1 with `Model contains unsupported operator(s): DENSIFY`;
+- the explicit failed asset is the generated exact `pose_detector.tflite`;
+- this happened at importer time, so GPU execution was never reached and the result is **not** an HD 620 failure;
+- the supplied exact audit maps builtin 124 to `DENSIFY` and builtin 5 to `DEPTH_TO_SPACE`;
+- the landmark model's observed operator set contains no DENSIFY, but its Sentis compatibility remains unverified until a USER-local import succeeds.
+
+The follow-up source now implements a landmark-first split:
+- extraction/audit still covers both exact networks;
+- detector and landmark import independently with separate status/error summaries;
+- detector import failure does not prevent landmark import or scene generation;
+- the scene is generated if at least one model imports;
+- the runner's button is enabled with any available model;
+- each suite is independently `SKIPPED`, `FAILED RUNTIME`, or `RAN`, so detector GPU success is never implied when it was skipped;
+- no ONNX conversion, model substitution, network rewrite, or production integration was introduced.
+
+The detector audit was extended from a unique-op listing to a storage/dataflow audit. It now reports operator counts; every DENSIFY operator index/version; input/output tensor index/name/type/shape; input buffer index/length; constant/producers; TFLite sparsity presence; traversal order; block map; per-dimension `DENSE`/`SPARSE_CSR`; segment/index union type/count/value summary; output consumers; static-vs-model-input dependence; and sparse stored bytes versus estimated dense bytes. A storage-rewrite conclusion is emitted only when the path is entirely static sparse constants with readable sparsity metadata, known dense estimates, and ordinary builtin consumers. This is an audit-only conclusion and does not approve a rewrite.
+
+Because this Web Builder cannot run Unity, the enhanced exact DENSIFY count/dataflow/storage totals and the independent landmark import/benchmark are still pending the next USER-generated `model-audit.txt`. Do not infer those totals from the old unique-operator audit.
+
+The recurring landmark model is now the performance gate. Strong evidence to continue requires exact landmark import, sane CPU/GPU outputs, GPU-resident landmark roundtrip at least `20/s` (ideally `25–30/s`), a real advantage over Sentis CPU, and acceptable frame impact. `15–20/s` is conditional. Landmark import failure, GPU slower than CPU, `<15/s`, output mismatch/nonfinite values, or unacceptable render contention is evidence to stop the GPUCompute route. Detector failure alone is not a stop condition if landmark performance is strong.
+
+Benchmark caveats remain explicit: Sentis CPU vs GPU is only Sentis backend consistency; all small float outputs under the cap are currently read and may overestimate final transfer cost; the diagnostic scene is lighter than gameplay; MediaPipe ROI/tracking/postprocessing is not reconstructed; HD 620 shares resources with Unity rendering; raw landmark-network throughput is not full production pose throughput.
+
+Current durable status:
+- CPU MediaPipe remains fallback;
+- Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED**;
+- Phase 6 remains **NOT STARTED**;
+- no detector conversion/densification route has been chosen;
+- `Packages/packages-lock.json` must not be fabricated remotely.
+
+Updated USER procedure (supersedes the earlier procedure above):
+1. Fetch/Pull `engine/pose-tracking-spike` and let Unity 6.5 finish compile/import.
+2. Run `Golden Needle > GPU Inference Spike > Prepare Exact Models + Scene`.
+3. Confirm detector and landmark are reported independently. Detector is likely `FAILED IMPORT (DENSIFY)`; landmark success must be observed, not assumed.
+4. If landmark imported, open the generated diagnostic scene and enter Play Mode.
+5. Verify Intel HD Graphics 620, actual graphics API and compute support in the UI.
+6. Run the benchmark once. Confirm an unavailable detector is `SKIPPED` while the landmark suite still runs.
+7. Capture the final diagnostic UI/Console output.
+8. Attach the updated `Generated/model-audit.txt`; it is required for the exact DENSIFY count/static-constant/dataflow/storage conclusion.
+9. If practical, capture Task Manager GPU utilization during the landmark GPU stage.
+10. Send Console errors plus all evidence to the Orchestrator.
+
+Only after the USER landmark benchmark should the Orchestrator compare detector options such as offline dense materialization with an equivalence gate, a maintained conversion route, or a lightweight CPU detector. Do not pre-approve detector surgery now.
