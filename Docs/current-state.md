@@ -1,324 +1,141 @@
 # Current state
 
-## Authoritative checkpoint — inference-completion → next-launch timing instrumentation
+## Authoritative checkpoint — hybrid Sentis GPU inference spike
 
 Working branch: `engine/pose-tracking-spike`.
 
-Starting checkpoint for this task: `90ceab892c7fae0647e085f586716f10101be077` — `perf: expose direct readback submit timing`.
+Starting checkpoint for this architecture spike: `3a4b851b606fa9af1063cc835286a3b389d8933e` — `fix: tighten inference launch timestamp boundary`.
 
 Status:
 - Phase 4: **USER ACCEPTED — PASS**.
-- `b64a3115401689b94cf5f86d691fc5e6c763f510` Lab-camera quaternion / clear-only camera correction: **USER-runtime accepted**.
-- Immediate Launch After Readback at `87b68999cf73f6dee09cace6c8ef264697158de4`: **USER-runtime accepted** and kept ON.
-- Direct Body CPU Readback flip staging + teardown guard: **USER-runtime PASS** as a modest beneficial optimization; callback→poll timing was USER-measured at approximately `0.6–0.9 ms` median, `1.3–1.6 ms` p95, with poll→publish approximately `0 ms`.
-- Callback-driven readback scheduling optimization: **CLOSED / REJECTED**; the callback remains diagnostic-only and does not launch inference.
-- Inference-completion → next-launch timing instrumentation: **IMPLEMENTED / AWAITING USER MEASUREMENT**.
+- Lab-camera quaternion / clear-only camera correction: **USER-runtime accepted**.
+- Immediate Launch After Readback: **USER-runtime accepted** and stays ON.
+- Direct Body CPU Readback: **USER-runtime PASS** as a modest optimization and retained as the known-safe CPU fallback path.
+- Callback-driven readback scheduling: **CLOSED / REJECTED**. The readback callback remains diagnostic-only.
+- Result-callback / inference-completion scheduling optimization: **CLOSED** after USER steady-state measurement. Do not introduce callback-driven inference launch without new reproducible evidence.
+- Hybrid Sentis GPU inference spike: **IMPLEMENTED / AWAITING USER RUNTIME BENCHMARK**.
 - Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 - Do not merge to `main` without explicit USER approval.
 
-## Accepted response improvements so far
+## Why the GPU track exists
 
-The body-pose-only inference downscale remains enabled at a `320`-pixel long edge. The full-resolution `WebCamTexture` remains the authoritative `CameraTexture` and Lab-preview source. A `640x480` source therefore stays full resolution for camera presentation while the current body-pose experiment uses `320x240`.
+The current latest-frame CPU MediaPipe path is stable and avoids backlog, but USER runtime evidence shows only about `10–12` fresh pose results/s on the low-end proof laptop. Readback is commonly about `55–65 ms`, accepted Pose Landmarker request to callback commonly about `60–75+ ms`, and observed frame-to-result age is commonly about `110–140 ms` depending on load. The USER reports that fast movements can therefore lose trajectory detail unless performed more slowly.
 
-The USER's laptop native-vs-scaled comparison showed only a modest benefit from the body-only downscale:
+This is now primarily a pose-sampling / neural-inference throughput problem rather than a reason to increase smoothing, queue old poses, or reopen accepted Phase 4 semantics.
 
-- Native `640x480`: RB about `63.3 ms`, `~F->R` about `144.9 ms`, pose results about `10.85/s`.
-- Scaled `320x240`: RB about `58.3 ms`, `~F->R` about `137.5 ms`, pose results about `11.75/s`.
+## Frozen production motion path
 
-Conclusion: keep `320x240` for body pose, but do not reduce to `160x120` merely to chase latency. No obvious body-tracking collapse was visible in the supplied recording.
+The production `MediaPipePoseProvider`, current `PoseTrackingSpike.unity`, canonical coordinate mapping, modular calibration, retargeting/IK, locomotion, camera/orientation conventions, trust thresholds and smoothing are not changed by the GPU spike.
 
-The next scheduling experiment removed a real render-frame boundary after readback completion. With `320x240` body input in both runs, the USER measured approximately:
-
-| Metric | Immediate Launch OFF | Immediate Launch ON |
-| --- | ---: | ---: |
-| Capture | 29.9 FPS | 29.5 FPS |
-| Render | 33.1 FPS | 33.5 FPS |
-| Requests/results | 11.0/s | 11.7/s |
-| RB | 60.4 ms | 56.7 ms |
-| Detect | 61.8 ms | 56.7 ms |
-| Prepared -> launch | 25.7 ms | 0.4 ms |
-| Approx. frame -> result | 150.4 ms | 117.7 ms |
-| Frame delta | usually 1 | usually 0 |
-| Launch origin | Update | RB |
-| Fast-launch rate | ~0/s | ~10–12/s |
-
-This is accepted USER runtime evidence. **Immediate Launch After Readback stays ON.** It removed roughly one Unity render-frame scheduling delay. Do not reopen prepared-frame -> DetectAsync scheduling unless new reproducible evidence requires it.
-
-The remaining major timing on the USER laptop is now roughly:
-- observed readback preparation (`RB`): `55–60 ms`;
-- DetectAsync -> callback: `55–60 ms`;
-- approximate fresh-frame -> result: `115–120 ms`.
-
-## Bounded latest-frame pipeline
-
-The provider preserves the following hard bounds:
+The CPU fallback remains:
 
 ```text
-<= 1 active camera/body readback
+camera / latest useful frame
+-> body-only 320x240 preparation
+-> DirectCPU readback (Homuler fallback remains available)
+-> MediaPipe Pose Landmarker Lite CPU delegate
+-> existing PoseObservation / canonical / stabilization / calibration / retarget / gameplay
+```
+
+The accepted runtime bounds remain:
+
+```text
+<= 1 active readback
 <= 1 replaceable prepared TextureFrame
 <= 1 outstanding MediaPipe inference
+no camera-frame history
+no inference backlog
+no delayed pose replay
+no catch-up loop
 ```
 
-The newest useful camera frame wins. Readback may overlap one active inference. A newer prepared frame replaces/releases the previous prepared slot. There is no camera-frame history, inference backlog, delayed pose replay or catch-up loop.
+## Isolated Sentis GPU inference spike
 
-When a readback successfully publishes a prepared frame, the accepted immediate-launch path attempts the same shared inference launch immediately if all safety/cadence conditions allow it. If not, the frame remains prepared for the ordinary Update path. The actual BuildCPUImage/Release/DetectAsync code remains a single launch authority.
+The spike is intentionally separate from production under `Assets/GoldenNeedle/Debug/GpuInferenceSpike/`.
 
-Physical camera switching still has priority. Pending switches do not allow the readback continuation to start another inference. Coordinate-convention versions are snapshotted with readback work and stale work is discarded. Live body-input configuration changes cannot launch frames prepared under obsolete resources; the ordinary Update resource-rebuild path releases stale prepared work after active readback/inference drains.
+`Packages/manifest.json` adds `com.unity.ai.inference` `2.6.1`. Modern Sentis directly imports LiteRT/TensorFlow Lite `.tflite` models, so this spike does **not** convert the current models to ONNX.
 
-## Direct Body CPU Readback experiment
+The editor command:
 
-The serialized control is **Direct Body CPU Readback**, and its default remains **OFF** so the USER-accepted Homuler/Immediate-Launch checkpoint remains the default behavior.
+`Golden Needle > GPU Inference Spike > Prepare Exact Models + Scene`
 
-The accepted baseline remains unchanged:
+reads the existing production bundle:
+
+`Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes`
+
+and extracts `pose_detector.tflite` and `pose_landmarks_detector.tflite` byte-for-byte into the isolated ignored `Generated/` area. The original bundle is never modified. Generated exact model copies are intentionally not committed and therefore do not change Git LFS policy.
+
+The setup also writes a local audit containing bundle/submodel SHA-256 values plus raw TFLite input/output/operator/quantization metadata, imports both exact `.tflite` files through Sentis, and creates a separate `GpuInferenceSpike.unity` diagnostic scene.
+
+The web-builder environment cannot decode the repository binary bundle through its text-only GitHub connector, so exact hashes, output shapes/operator sets and import/backend compatibility are **not claimed here**. They are established by the local setup/import step and USER runtime benchmark.
+
+## Diagnostic modes
+
+### Backend equivalence
+
+For detector and landmark models independently:
+- load the exact imported TFLite model;
+- run deterministic zero, gradient and seeded-random float NHWC inputs;
+- execute the same tensor on Sentis CPU and `BackendType.GPUCompute`;
+- asynchronously read **all** outputs;
+- compare output shape plus finite/non-finite count, max absolute error, mean absolute error, RMS error and mean relative error.
+
+This mode is a neural-network equivalence check. It is not a claim of production-equivalent MediaPipe pose output because detector decode, ROI tracking and landmark/world-landmark postprocessing are intentionally outside this first spike.
+
+### GPU-resident realistic path
+
+The realistic path keeps the large input on the GPU:
 
 ```text
-persistent body RenderTexture
--> TextureFrame.ReadTextureAsync(...)
--> Homuler temporary staging RenderTexture + Graphics.Blit
--> AsyncGPUReadback
--> callback GetData<byte>()
--> Texture2D.LoadRawTextureData(...)
--> Texture2D.Apply()
--> prepared TextureFrame
--> accepted immediate launch
--> BuildCPUImage
--> DetectAsync
+model-sized RenderTexture
+-> CommandBuffer + RenderTargetIdentifier TextureConverter path
+-> GPU-resident NHWC tensor
+-> BackendType.GPUCompute
+-> asynchronous readback of selected small float outputs
 ```
 
-The DirectCPU path continues to write directly into the pooled TextureFrame-owned CPU buffer:
+The RenderTexture conversion uses the command-buffer TextureConverter overload rather than the Texture2D-only direct overload. No full-frame CPU readback is required by this experimental path.
+
+Current performance readback selects float outputs at or below the configured element cap. The exact minimum detector/landmark output subset will only be narrowed when the MediaPipe detector decode / ROI / landmark postprocess stage is reconstructed and the required tensors are proven.
+
+Defaults are `30` warmup iterations and `300` measured iterations per model/backend, with helper statistics for mean, p50, p95, p99 and completed inferences/s. The diagnostic UI also reports actual Unity version, OS, CPU, adapter/vendor, graphics API, graphics memory, compute-shader support, Sentis assembly version and render frame-time samples.
+
+## Intended future hybrid CPU + GPU architecture
+
+If the spike earns a measured pass, the intended split is heterogeneous rather than GPU-only:
 
 ```text
-persistent 320x240 body RenderTexture
--> pooled RGBA32 TextureFrame
--> TextureFrame.GetRawTextureData<byte>()
--> AsyncGPUReadback.RequestIntoNativeArray(..., TextureFormat.RGBA32, diagnostic callback)
--> same coroutine request.done observation
--> no LoadRawTextureData copy
--> no Texture2D.Apply
--> prepared TextureFrame
--> accepted immediate launch
--> existing BuildCPUImage
--> DetectAsync
+CPU: camera/session/latest-frame state + ROI/tracking cadence
+  -> issue detector or landmark work
+GPU: crop/resize/channel/layout preprocessing + detector/landmark CNN
+  -> keep large tensors GPU-resident
+CPU: async small-output decode / ROI update / normalized + world landmark reconstruction
+  -> existing PoseObservation
+  -> canonical / stabilization / calibration / retarget / locomotion
 ```
 
-The callback-vs-coroutine timing instrumentation records only monotonic callback timestamps and a
-request serial. The coroutine remains authoritative for request completion observation, ownership,
-error/timeout handling, prepared-frame publication, immediate inference launch and teardown safety.
-No callback-driven scheduling or resource handoff was introduced.
+CPU MediaPipe remains the fallback/error-recovery path. Production must not run duplicate CPU and GPU pose inference every frame merely to claim both processors are used.
 
-The Homuler package is not modified. The direct path uses the TextureFrame-owned CPU raw buffer rather than allocating a second persistent NativeArray. The NativeArray view is never manually disposed.
+## Verification state
 
-`TextureFrame.BuildCPUImage()` constructs `Mediapipe.Image` from the Texture2D, and the installed `Mediapipe.Image(ImageFormat, Texture2D)` constructor reads `Texture2D.GetRawTextureData<byte>()`. Golden Needle's prepared-frame handoff uses `BuildCPUImage`, not `BuildGPUImage`, so the direct candidate does not need `Texture2D.Apply` for the current CPU body-pose handoff.
+Source/static implementation is complete enough for USER runtime validation, but this Web Builder did **not** run Unity package resolution, `.tflite` import, Unity compilation, EditMode tests, CPU worker execution, GPUCompute worker execution, output readback or the HD 620 benchmark. No Unity/runtime PASS is claimed.
 
-### USER evidence from `00cbb1`
+`Packages/packages-lock.json` is intentionally not fabricated by the Web Builder; Unity's package resolver should create/update the correct lock entry when the USER opens the project.
 
-`00cbb1` compiled and ran on USER hardware. With HP TrueVision, `640x480 @ 30`, body input `320x240`, and Direct Body CPU Readback enabled, F7 reported:
+The spike verdict is therefore **UNMEASURED — AWAITING USER RUNTIME BENCHMARK**. It is neither a strong pass, conditional pass nor rejection yet.
 
-```text
-Readback: DirectFallback direct=0.0/s fail=0.0/s (inference flip required)
-```
+## Next USER validation
 
-This was **not a DirectCPU runtime failure**. `direct=0.0/s` and `fail=0.0/s` show that no direct request was attempted. The `00cbb1` policy intentionally rejected any H/V inference-flipped input before submitting DirectCPU. Therefore there is still **no DirectCPU performance result** from that run and the fallback must not be benchmarked as the candidate.
+1. Pull the latest `engine/pose-tracking-spike` in GitHub Desktop.
+2. Open the project in Unity 6.5 and allow package resolution/import/compilation to finish.
+3. Run `Golden Needle > GPU Inference Spike > Prepare Exact Models + Scene`.
+4. Confirm the Console reports successful exact TFLite extraction/import and no model-import error. If direct TFLite import fails, stop and report the exact error; do not convert to ONNX automatically.
+5. Open `Assets/GoldenNeedle/Debug/GpuInferenceSpike/Generated/GpuInferenceSpike.unity`.
+6. Enter Play Mode and verify the hardware line reports the actual Intel HD 620 adapter, actual graphics API and compute-shader support.
+7. Click **Run benchmark** and let equivalence, CPU, GPUCompute and GPU-resident passes complete for both models.
+8. Capture the final diagnostic UI/Console output plus `Generated/model-audit.txt`.
+9. If practical, keep Windows Task Manager > Performance > GPU visible during GPU passes to capture Intel HD 620 utilization.
+10. Send the evidence to the Orchestrator for the measured PASS / CONDITIONAL PASS / STOP decision.
 
-### Flip-staging follow-up at `b86d182`
-
-`b86d182` keeps the no-flip DirectCPU path unchanged and extends the candidate to flipped inputs using one persistent Golden Needle-owned staging RenderTexture. The staging RT is created/released with the scaled body-inference resources and has the same active body-input dimensions, no mipmaps, AA 1, Clamp wrap and matching body RT format.
-
-For no inference flip:
-
-```text
-WebCamTexture
--> persistent body RT
--> RequestIntoNativeArray directly from body RT
-```
-
-For H and/or V inference flip:
-
-```text
-WebCamTexture
--> persistent body RT
--> Graphics.Blit(bodyRT, persistent direct staging RT, scale, offset)
--> RequestIntoNativeArray from direct staging RT
-```
-
-The staging transform mirrors Homuler exactly:
-
-```text
-None: scale=( 1, 1), offset=(0,0)
-H:    scale=(-1, 1), offset=(1,0)
-V:    scale=( 1,-1), offset=(0,1)
-HV:   scale=(-1,-1), offset=(1,1)
-```
-
-Quarter-turn rotation remains exclusively in `ImageProcessingOptions`; it is not baked into the staging RT. Camera/canonical/display semantics therefore remain unchanged.
-
-DirectCPU eligibility remains: experiment ON, provider Ready, active persistent scaled body RT, matching TextureFrame/body dimensions, current body-resource intent, valid flip staging if needed, RGBA32 frame/raw buffer, supported async GPU readback/ReadPixels formats, and a DirectCPU session not already disabled by an error. H/V flip is no longer itself a rejection reason.
-
-## Post-audit DirectCPU teardown lifetime guard
-
-A post-audit of `b86d182` found a concrete Play-stop/`OnDestroy` ownership hazard before any DirectCPU benchmark was accepted. `RequestIntoNativeArray` writes directly into the pooled TextureFrame-owned Texture2D CPU memory. The normal coroutine kept that frame alive until `request.done`, but `CleanupRuntime()` previously disposed the TextureFramePool and body/staging RenderTextures immediately. If Unity stopped the coroutine during Play-stop while the direct request was still in flight, the backing Texture2D could be destroyed while the GPU/Unity request still owned its NativeArray target.
-
-The provider now tracks the exact active DirectCPU `AsyncGPUReadbackRequest` at provider scope. The tracked request becomes valid immediately after `RequestIntoNativeArray` successfully returns. Normal asynchronous behavior is unchanged: the coroutine still waits without blocking the frame loop, and only after the direct request reaches a terminal `done` state does it clear provider-owned request tracking and continue with timeout/error handling or normal publication.
-
-Timeout semantics remain conservative. Timing out disables DirectCPU for the current session, but it does **not** clear active request ownership; the coroutine continues waiting for actual `request.done`, then clears tracking and releases the frame. An error is also considered safe to clear only after the request is terminal.
-
-Before `CleanupRuntime()` disposes the TextureFramePool or releases the direct staging/body RenderTextures, it now checks the tracked DirectCPU request. If the tracked request is valid and not done, teardown calls that request's own `WaitForCompletion()` exactly once in this exceptional cleanup path. This synchronous wait is not used in the normal frame loop and does not replace the asynchronous runtime path. Only after the request is confirmed terminal are the pooled TextureFrame backing memory and RenderTextures destroyed.
-
-If request-state inspection or `WaitForCompletion()` throws, cleanup acts conservatively: it does not dispose the TextureFramePool or body/direct-staging RenderTextures while the provider still knows a DirectCPU request may be writing to them. Restart is blocked rather than rebuilding on top of uncertain ownership. A diagnostic is emitted for that exceptional teardown failure. Normal camera switching already waits until `_readbackPending` and inference are clear, so under expected operation this guard is a no-op for camera switching and ordinary restarts.
-
-The guard changes teardown safety only. It does not change the DirectCPU running path, persistent flip transform, readback eligibility, body resolution, Homuler fallback, accepted immediate-launch behavior, canonical coordinates, calibration, retargeting, locomotion, F12, Lab geometry or readback timing boundaries.
-
-## DirectCPU USER runtime result and callback timing checkpoint
-
-The USER completed the DirectCPU safety smoke and representative A/B on the built-in HP TrueVision
-camera using `640x480 @ 30`, body input `320x240`, target inference `30`, and Immediate Launch
-After Readback ON. The active DirectCPU path was confirmed as:
-
-```text
-DirectCPU stage=V H=0 V=1
-```
-
-Representative evidence:
-
-| Metric | Homuler | DirectCPU |
-| --- | ---: | ---: |
-| Capture | ~28.9 FPS | ~29.5 FPS |
-| Render | ~32.4 FPS | ~33.1 FPS |
-| Requests | ~10.9/s | ~10.9/s |
-| Results | ~10.8/s | ~11.7/s |
-| RB | ~58.1 ms | ~54.7 ms |
-| Detect | ~62.3 ms | ~59.1 ms |
-| Prep -> launch | ~0.3 ms | ~0.3 ms |
-| Approx. frame -> result | ~120.7 ms | ~112.0 ms |
-
-DirectCPU was judged a modest beneficial optimization with no observed orientation/tracking
-regression. Direct readbacks were observed at approximately `10.8–11.9/s` with `0/s` direct
-failures. The larger frame-to-result difference also contains
-Detect run-to-run variation, so this evidence is not a formal latency benchmark. Keep DirectCPU as
-the preferred body-pose readback path for now.
-
-The USER observed the expected Play-stop safety diagnostic:
-
-```text
-[PoseTrackingSpike] Waiting for active DirectCPU readback before body resource teardown
-```
-
-No resource error or hang was reported from that event.
-
-The earlier callback-vs-coroutine timing result is now synchronized: callback→poll was approximately
-`0.6–0.9 ms` median, `1.3–1.6 ms` p95, and poll→publish was approximately `0 ms`. The USER result
-does not justify callback-driven scheduling, so that optimization line is closed/rejected.
-
-This checkpoint adds inference-completion → next-accepted-launch instrumentation only. It does not
-change runtime scheduling, request ownership, publication, inference launch, or teardown behavior.
-It remains **IMPLEMENTED / AWAITING USER MEASUREMENT** until the USER records the new F7 values.
-
-## Inference-completion → next-launch instrumentation
-
-The provider now records `I0` at the `DetectAsync` call start, `I1` after a successful accepted
-submission, `I2` at `OnPoseLandmarkerResult` callback entry, `I3` immediately around the existing
-`Interlocked.Exchange(ref _inferenceOutstanding, 0)`, and `I4` at the next accepted `DetectAsync`
-call start. A monotonically increasing diagnostic serial, provider-session id, and callback request
-timestamp prevent requests from being mismatched across callbacks or restarts.
-
-The primary metric is `I4-I3`, result completion → next accepted launch. The callback reads only an
-atomic prepared-slot indicator at `I2/I3`; it never dereferences `_preparedTextureFrame`, touches
-Unity objects, logs per frame, publishes/releases frames, or launches inference. Samples are kept in
-a fixed 64-entry rolling window. F7 reports valid samples, prepared-waiting count/rate, prepared-only
-and origin-aware result→next-launch timing, and Update/Readback next-launch counts. Missing,
-unmatched, failed, cross-session, and incomplete samples are excluded rather than zero-filled.
-
-The new compact F7 line is:
-
-`Inf next: n=... prep=.../... (...%) cb→next=.../...ms U/RB=.../... missing=...`
-
-The existing RB/build/detect/~F→R and results/callback metrics remain in F7.
-
-## MediaPipe CPU inference audit
-
-The CPU audit found no supported public CPU-thread or XNNPACK tuning knob for the current stack.
-The Windows GPU delegate is not suitable for production use here. Lite remains the fastest official
-compatible model preserving the current 33-landmark/world-landmark contract; fixed internal detector
-and landmark tensors limit expected neural-compute gains from lowering source resolution, and
-LIVE_STREAM remains appropriate. Confidence thresholds were not changed for speed.
-
-## Readback observability
-
-The RB timer keeps the same boundaries for Homuler and DirectCPU: it starts before the full-resolution -> body RenderTexture blit and ends when Golden Needle observes readback completion.
-
-For flipped DirectCPU, RB includes camera -> body RT, body RT -> persistent direct staging RT flip blit, direct AsyncGPUReadback, and coroutine completion observation. For Homuler, RB continues to include camera -> body RT plus Homuler's temporary staging/flip/readback/copy/Apply path. This keeps the A/B meaningful. RB remains an observed end-to-end preparation duration, not a pure GPU-time claim.
-
-F7 continues to expose body input, capture/render cadence, request/result/callback rates, RB/build/detect/~F->R, pose age, prepared->launch delay/frame delta/origin/fast rate, waits, readback failures/timeouts, prepared replacements, active readback path, DirectCPU stage (`None/H/V/HV`), current `H=0/1 V=0/1`, direct submissions/s, direct failures/s and fallback reason. When DirectCPU is active, it also exposes rolling callback timing sample count plus submit->callback, callback->poll and poll->publish median/p95 values. No per-frame diagnostic logging was added.
-
-## Camera / orientation / Lab behavior remains frozen
-
-External cameras remain one Unity `WebCamTexture` / `WebCamDevice` path. Scene defaults remain automatic device, `640x480 @ 30`, target inference 30 FPS, Orientation Auto and display mirror OFF. `480x640 @ 30` remains supported for portrait capture.
-
-Front-facing metadata still does not imply inference horizontal mirror: production remains `shouldFlipHorizontally=false`. Display mirror remains presentation-only. Auto/0/90/180/270 orientation behavior, fitted whole-frame Lab geometry, F1/F2/F4 overlay mapping and F12 Lab/Game behavior are unchanged.
-
-The clear-only Lab Camera and quaternion normalization correction at `b64a311...` received USER runtime QA and all four targeted checks passed:
-1. `QuaternionToEuler` warning stayed gone.
-2. `No cameras rendering` stayed gone.
-3. Lab webcam/overlays remained correct.
-4. F12 Game -> Lab switching worked and did not restart the warning.
-
-That acceptance is specific to the camera correction and does not imply Phase 5A acceptance.
-
-## Motion Engine behavior preserved
-
-No canonical-coordinate semantics, modular calibration, signed canonical-to-avatar mapping, accepted Phase 4 Humanoid retarget/IK, Neko binding, presentation smoothing, Phase 5A support-foot model, cadence/fusion/heading, physical scales `0.9 / 1.5`, K recenter behavior, root-Y exclusion or root-rotation exclusion is redesigned by this experiment.
-
-Pose Landmarker remains Lite, CPU delegate, one pose, segmentation OFF. No hand/finger tracking was added.
-
-## Verification state / next USER QA
-
-Focused deterministic tests retain scheduler/immediate-launch, body-resolution, DirectCPU path-selection and None/H/V/HV flip-transform coverage. Additional teardown policy and callback-timing helper coverage verifies:
-- no active DirectCPU request -> cleanup does not require a wait;
-- tracked valid + not done -> cleanup policy requires a wait and ownership cannot clear;
-- tracked valid + done -> no blocking wait is needed and ownership can clear;
-- a timeout state does not permit ownership clear until actual completion.
-- matching and mismatching callback serials;
-- missing callback timestamps;
-- monotonic tick-to-millisecond conversion;
-- odd/even median, nearest-rank p95 and fixed-ring rollover;
-- error-sample exclusion from the normal timing window.
-- inference completion→next-launch serial/session matching and monotonic tick conversion;
-- prepared-waiting classification, prepared-only median/p95, Update/Readback origin counts, reset;
-- incomplete continuation samples remain missing rather than becoming zero-latency samples.
-
-The Unity CLI EditMode attempt for this checkpoint did not reach compilation or the Test Runner:
-Unity exited before producing a verdict because another Unity instance already had this project open
-(`Multiple Unity instances cannot open the same project`). This is an Editor-instance/mutex
-limitation, not a test result; no Unity PASS is claimed here.
-
-The DirectCPU safety smoke and representative A/B are complete and USER-runtime PASS. The earlier
-callback timing result is also synchronized above; no callback-driven scheduling change is authorized.
-The remaining USER measurement is the structural inference-completion → next-launch timing only.
-Use HP TrueVision with camera request `640x480 @ 30`, target inference `30`, body downscale ON, long
-edge `320`, Immediate Launch After Readback ON, Direct Body CPU Readback ON, then `C` and `K`.
-In Play Mode, settle with `C`/`K`, start OBS, wait `5–10 seconds`, make ordinary arm/torso motion
-for approximately `45–60 seconds`, then stop OBS while Play Mode remains running. This is not an
-A/B test.
-
-Confirm F7 shows `Readback: DirectCPU stage=None|H|V|HV`, not fallback, and its compact lines include:
-
-`Direct cb: n=... submit→cb=... cb→poll=... poll→pub=...`
-
-`Inf next: n=... prep=.../... (...%) cb→next=.../...ms U/RB=.../... missing=...`
-
-Record the valid `n`, prepared-waiting count/rate, prepared-only cb→next median/p95, Update/RB split,
-RB, Detect, ~F→R, results/s, DirectCPU failures, and missing samples. This is a timing diagnostic,
-not a formal latency benchmark.
-
-Interpret only prepared-waiting cb→next as decisive: approximately `>=20 ms` median warrants
-investigation, `25–35 ms` is strong evidence of an almost full render-frame delay, `<=3–5 ms` is
-near the structural floor, and `5–15 ms` is modest/inconclusive. If prepared frames are rarely
-waiting, the opportunity is low even when occasional delays are large. Do not implement
-callback-driven launch from this measurement.
-
-DirectCPU is **USER-runtime PASS** as a modest beneficial optimization and remains the preferred
-body-pose readback path for now. Its callback→poll result is **USER-measured** as above, and
-callback-driven scheduling is **CLOSED / REJECTED**. Inference-completion → next-launch timing
-instrumentation is **IMPLEMENTED / AWAITING USER MEASUREMENT**. Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED** and Phase 6 is
-**NOT STARTED**.
+No current `PoseTrackingSpike.unity` QA is required for this isolated spike because production motion code and the production scene are untouched.
