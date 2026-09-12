@@ -1,176 +1,437 @@
-# Current state
+# Golden Needle — Current State
 
-## Authoritative checkpoint — hybrid Sentis GPU inference spike
+Last substantive runtime/code checkpoint before this documentation refresh:
+`3584e4a059937dfa80b278fe2d96334344025b76` — `feat: add landmark-first sentis spike audit`.
 
 Working branch: `engine/pose-tracking-spike`.
 
-Starting checkpoint for this architecture spike: `3a4b851b606fa9af1063cc835286a3b389d8933e` — `fix: tighten inference launch timestamp boundary`.
+Always verify the current remote branch HEAD before new implementation work because documentation-only commits may exist after the runtime/code checkpoint above.
 
-Status:
-- Phase 4: **USER ACCEPTED — PASS**.
-- Lab-camera quaternion / clear-only camera correction: **USER-runtime accepted**.
-- Immediate Launch After Readback: **USER-runtime accepted** and stays ON.
-- Direct Body CPU Readback: **USER-runtime PASS** as a modest optimization and retained as the known-safe CPU fallback path.
-- Callback-driven readback scheduling: **CLOSED / REJECTED**. The readback callback remains diagnostic-only.
-- Result-callback / inference-completion scheduling optimization: **CLOSED** after USER steady-state measurement. Do not introduce callback-driven inference launch without new reproducible evidence.
-- Hybrid Sentis GPU inference spike: **IMPLEMENTED / AWAITING USER RUNTIME BENCHMARK**.
-- Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**.
+## Governance and branch policy
+
+- Repository: `AltamashM7/GoldenNeedle`.
+- Active development branch: `engine/pose-tracking-spike`.
+- Do **not** merge to `main` without explicit USER approval.
+- Do not force-push or rewrite branch history merely to clean experimental/checkpoint commits.
+- GitHub Desktop is the USER's normal Git workflow.
+- Known USER-local dirty files that have repeatedly existed and must not be reverted, cleaned, staged or overwritten casually:
+  - `M Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity`
+  - `M GoldenNeedle.slnx`
+  - `?? ProjectSettings/SceneTemplateSettings.json`
+- Unity/package resolution may also create legitimate USER-local package-lock changes; inspect before touching them rather than assuming they are disposable.
+
+## Phase status
+
+- Phase 1 — MediaPipe provider/raw overlays: **PASS WITH NOTES**.
+- Phase 2 — canonical skeleton/debug: **PASS** after orientation correction.
+- Phase 3 — stabilization/confidence: **PASS**.
+- Phase 4 — humanoid retargeting/calibration/orientation: **USER ACCEPTED — PASS**.
+- Phase 5A — support-foot locomotion / Lab-Game presentation work: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
-- Do not merge to `main` without explicit USER approval.
+- Current optimization track: responsiveness / high-speed-motion fidelity. CPU scheduling optimization is closed; GPU/alternate-inference-runtime feasibility is being investigated.
 
-## Why the GPU track exists
+## Accepted production motion-engine behavior
 
-The current latest-frame CPU MediaPipe path is stable and avoids backlog, but USER runtime evidence shows only about `10–12` fresh pose results/s on the low-end proof laptop. Readback is commonly about `55–65 ms`, accepted Pose Landmarker request to callback commonly about `60–75+ ms`, and observed frame-to-result age is commonly about `110–140 ms` depending on load. The USER reports that fast movements can therefore lose trajectory detail unless performed more slowly.
+The accepted production path remains the reference and must not be casually disturbed by experimental inference work.
 
-This is now primarily a pose-sampling / neural-inference throughput problem rather than a reason to increase smoothing, queue old poses, or reopen accepted Phase 4 semantics.
+### Camera and source
 
-## Frozen production motion path
+- Unity 6.5 (`6000.5.0f1`) with URP 17.5.0.
+- MediaPipeUnityPlugin 0.16.3.
+- Windows experimental environment.
+- Camera request approximately `640x480 @ 30` where supported.
+- External cameras are selected through Unity `WebCamDevice`; Inspector dropdown plus `V` cycle are available.
+- Camera switching is safe/pending and invalidates source-dependent calibration/Phase 5 assumptions.
+- After source change: recalibrate with `C`, then recenter with `K`.
+- Orientation modes Auto / 0 / 90 / 180 / 270 affect inference/display as implemented.
+- Front-facing metadata does not automatically mirror inference.
+- Display Mirror is presentation-only.
+- Full-resolution camera/display texture is retained independently from the body-pose inference resolution.
 
-The production `MediaPipePoseProvider`, current `PoseTrackingSpike.unity`, canonical coordinate mapping, modular calibration, retargeting/IK, locomotion, camera/orientation conventions, trust thresholds and smoothing are not changed by the GPU spike.
+### Canonical and retarget semantics
 
-The CPU fallback remains:
+- Canonical image/world convention uses the correctly oriented inference frame.
+- Canonical 3D: +X camera/view right, +Y up, +Z away.
+- MediaPipe world conversion uses `(x, -y, z)`, pelvis-relative.
+- Calibration body basis:
+  - right = rightShoulder - leftShoulder;
+  - up = chest - pelvis;
+  - forward = Cross(right, up).
+- `HumanoidRetargetingMath` / `HumanoidRetargeter` map stabilized canonical positions through the signed canonical-to-avatar basis and then torso/analytic IK.
+- Phase 4 uses swing-only limb alignment rather than axial twist.
+- F3 canonical debug remains upstream of humanoid mapping.
+- F6 provides orientation/basis/target diagnostics.
+- Modular calibration supports torso/arm/leg segments and partial-body operation.
+- Phase 4 Animator Humanoid orientation was corrected and USER accepted.
 
-```text
-camera / latest useful frame
--> body-only 320x240 preparation
--> DirectCPU readback (Homuler fallback remains available)
--> MediaPipe Pose Landmarker Lite CPU delegate
--> existing PoseObservation / canonical / stabilization / calibration / retarget / gameplay
-```
+### Stabilization and confidence
 
-The accepted runtime bounds remain:
+Accepted Phase 3 baseline:
+- One Euro filter: min 1.0, beta 0.05, derivative 1.0.
+- acquire confidence 0.60;
+- sustain confidence 0.40;
+- acquire samples 2;
+- grace 0.10 s;
+- reset 0.25 s.
 
-```text
-<= 1 active readback
-<= 1 replaceable prepared TextureFrame
-<= 1 outstanding MediaPipe inference
-no camera-frame history
-no inference backlog
-no delayed pose replay
-no catch-up loop
-```
+Do not change these merely to hide inference latency.
 
-## Isolated Sentis GPU inference spike
+### Phase 5A frozen implementation pending final USER acceptance
 
-The spike is intentionally separate from production under `Assets/GoldenNeedle/Debug/GpuInferenceSpike/`.
+- support-foot locomotion v3;
+- physical scales approximately 0.9 lateral / 1.5 depth;
+- cadence logic;
+- mapped body heading;
+- safe recenter;
+- avatar root X/Z locomotion only;
+- `K` makes the current physical location the new tracking origin while preserving virtual X/Z without a jump;
+- F12 switches Lab/Game presentation;
+- third-person Lab/Game camera behavior is implemented;
+- Humanoid render-rate smoothing is presentation-only after the exact Phase 4 solve, defaults 45/s with max blend 0.05 s.
 
-`Packages/manifest.json` adds `com.unity.ai.inference` `2.6.1`. Modern Sentis directly imports LiteRT/TensorFlow Lite `.tflite` models, so this spike does **not** convert the current models to ONNX.
+Phase 5A is still **not USER accepted**.
 
-The editor command:
+## Production CPU pose architecture
 
-`Golden Needle > GPU Inference Spike > Prepare Exact Models + Scene`
+Current production provider remains MediaPipe Pose Landmarker Lite on CPU.
 
-reads the existing production bundle:
-
+Model:
 `Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes`
 
-and extracts `pose_detector.tflite` and `pose_landmarks_detector.tflite` byte-for-byte into the isolated ignored `Generated/` area. The original bundle is never modified. Generated exact model copies are intentionally not committed and therefore do not change Git LFS policy.
+Production goals/constraints:
+- Pose Landmarker Lite;
+- one pose;
+- segmentation disabled;
+- world landmarks required;
+- target inference request rate 30 FPS;
+- body-only inference target 320x240 by default;
+- full camera/display path remains native resolution;
+- at most one readback, one replaceable prepared frame and one outstanding inference;
+- latest useful frame wins;
+- no camera-frame history;
+- no inference backlog;
+- no pose replay/catch-up queue.
 
-The setup also writes a local audit containing bundle/submodel SHA-256 values plus raw TFLite input/output/operator/quantization metadata, imports both exact `.tflite` files through Sentis, and creates a separate `GpuInferenceSpike.unity` diagnostic scene.
+### Body inference downscale
 
-The web-builder environment cannot decode the repository binary bundle through its text-only GitHub connector, so exact hashes, output shapes/operator sets and import/backend compatibility are **not claimed here**. They are established by the local setup/import step and USER runtime benchmark.
+The current body-only path defaults to 320x240 while preserving the full camera/display texture.
 
-## Diagnostic modes
+USER native-vs-scaled evidence showed only a modest but repeatable improvement, roughly:
+- throughput gain around 8–9%;
+- frame-to-result improvement around 7–8 ms / ~5%;
+- no obvious tracking-quality collapse.
 
-### Backend equivalence
+Keep 320x240 for the current body path; do not assume that dropping to 160x120 will materially reduce neural inference because the underlying model uses fixed neural tensor sizes.
 
-For detector and landmark models independently:
-- load the exact imported TFLite model;
-- run deterministic zero, gradient and seeded-random float NHWC inputs;
-- execute the same tensor on Sentis CPU and `BackendType.GPUCompute`;
-- asynchronously read **all** outputs;
-- compare output shape plus finite/non-finite count, max absolute error, mean absolute error, RMS error and mean relative error.
+### Immediate Launch After Readback
 
-This mode is a neural-network equivalence check. It is not a claim of production-equivalent MediaPipe pose output because detector decode, ROI tracking and landmark/world-landmark postprocessing are intentionally outside this first spike.
+Accepted USER A/B result:
+- OFF: prepared-to-launch roughly 25.7 ms and frame-to-result around 150.4 ms;
+- ON: prepared-to-launch roughly 0.4 ms and frame-to-result around 117.7 ms;
+- launch origin changes from Update to readback continuation in the normal fast path;
+- roughly one render-frame of artificial scheduling latency was removed.
 
-### GPU-resident realistic path
+Status: **USER-runtime accepted; keep ON**.
 
-The realistic path keeps the large input on the GPU:
+### Direct Body CPU Readback
 
-```text
-model-sized RenderTexture
--> CommandBuffer + RenderTargetIdentifier TextureConverter path
--> GPU-resident NHWC tensor
--> BackendType.GPUCompute
--> asynchronous readback of selected small float outputs
-```
+The DirectCPU path bypasses Homuler's extra temporary-RT / Texture2D LoadRawTextureData / Apply sequence for the CPU Pose Landmarker path.
 
-The RenderTexture conversion uses the command-buffer TextureConverter overload rather than the Texture2D-only direct overload. No full-frame CPU readback is required by this experimental path.
+The accepted path supports the required H/V flip through a persistent staging RenderTexture, then reads directly into the pooled TextureFrame CPU buffer.
 
-Current performance readback selects float outputs at or below the configured element cap. The exact minimum detector/landmark output subset will only be narrowed when the MediaPipe detector decode / ROI / landmark postprocess stage is reconstructed and the required tensors are proven.
+USER A/B showed a modest improvement, approximately:
+- readback ~58.1 ms OFF vs ~54.7 ms ON;
+- frame-to-result ~120.7 ms OFF vs ~112.0 ms ON;
+- no DirectCPU failures in that run.
 
-Defaults are `30` warmup iterations and `300` measured iterations per model/backend, with helper statistics for mean, p50, p95, p99 and completed inferences/s. The diagnostic UI also reports actual Unity version, OS, CPU, adapter/vendor, graphics API, graphics memory, compute-shader support, Sentis assembly version and render frame-time samples.
+Status: **USER-runtime PASS as a modest optimization; retain it for the CPU fallback**.
 
-## Intended future hybrid CPU + GPU architecture
+The serialized code default may still be OFF even though the USER test configuration enables it; do not claim the serialized default is ON without checking the current source/scene.
 
-If the spike earns a measured pass, the intended split is heterogeneous rather than GPU-only:
+### DirectCPU teardown guard
 
-```text
-CPU: camera/session/latest-frame state + ROI/tracking cadence
-  -> issue detector or landmark work
-GPU: crop/resize/channel/layout preprocessing + detector/landmark CNN
-  -> keep large tensors GPU-resident
-CPU: async small-output decode / ROI update / normalized + world landmark reconstruction
-  -> existing PoseObservation
-  -> canonical / stabilization / calibration / retarget / locomotion
-```
+A real lifetime hazard existed because `RequestIntoNativeArray` writes into TextureFrame-owned memory while pool disposal could otherwise occur during an in-flight request.
 
-CPU MediaPipe remains the fallback/error-recovery path. Production must not run duplicate CPU and GPU pose inference every frame merely to claim both processors are used.
+A teardown guard now tracks the active direct request and waits only during teardown/restart when necessary. USER observed the expected stop-time diagnostic and no reported crash/hang/resource error.
 
-## Verification state
+## CPU scheduling diagnostics — closed lines of investigation
 
-Source/static implementation is complete enough for USER runtime validation, but this Web Builder did **not** run Unity package resolution, `.tflite` import, Unity compilation, EditMode tests, CPU worker execution, GPUCompute worker execution, output readback or the HD 620 benchmark. No Unity/runtime PASS is claimed.
+### Readback callback polling
 
-`Packages/packages-lock.json` is intentionally not fabricated by the Web Builder; Unity's package resolver should create/update the correct lock entry when the USER opens the project.
+USER measurement showed approximately:
+- callback-to-poll median ~0.6–0.9 ms;
+- callback-to-poll p95 ~1.3–1.6 ms;
+- poll-to-publish ~0 ms.
 
-The spike verdict is therefore **UNMEASURED — AWAITING USER RUNTIME BENCHMARK**. It is neither a strong pass, conditional pass nor rejection yet.
+Conclusion: callback/coroutine polling is not worth optimizing.
 
-## Next USER validation
+### Inference-completion to next launch
 
-1. Pull the latest `engine/pose-tracking-spike` in GitHub Desktop.
-2. Open the project in Unity 6.5 and allow package resolution/import/compilation to finish.
-3. Run `Golden Needle > GPU Inference Spike > Prepare Exact Models + Scene`.
-4. Confirm the Console reports successful exact TFLite extraction/import and no model-import error. If direct TFLite import fails, stop and report the exact error; do not convert to ONNX automatically.
-5. Open `Assets/GoldenNeedle/Debug/GpuInferenceSpike/Generated/GpuInferenceSpike.unity`.
-6. Enter Play Mode and verify the hardware line reports the actual Intel HD 620 adapter, actual graphics API and compute-shader support.
-7. Click **Run benchmark** and let equivalence, CPU, GPUCompute and GPU-resident passes complete for both models.
-8. Capture the final diagnostic UI/Console output plus `Generated/model-audit.txt`.
-9. If practical, keep Windows Task Manager > Performance > GPU visible during GPU passes to capture Intel HD 620 utilization.
-10. Send the evidence to the Orchestrator for the measured PASS / CONDITIONAL PASS / STOP decision.
+Instrumentation measured whether a prepared frame was already waiting when MediaPipe inference completed.
 
-No current `PoseTrackingSpike.unity` QA is required for this isolated spike because production motion code and the production scene are untouched.
+Steady-state USER evidence showed prepared-waiting frames were usually `0/64`; next launches were essentially all readback-continuation launches. A rare prepared-waiting sample could have a large delay, but prevalence was around only a few percent in the sampled region.
 
-## Landmark-first DENSIFY follow-up — 2026-09-12
+Conclusion: result-callback-driven inference launch is not a meaningful steady-state optimization. Do **not** call `DetectAsync` from the uncertain MediaPipe callback thread without fundamentally new evidence.
 
-This section is the authoritative correction to the original GPU-spike validation notes above. Preserve the earlier section as historical context, but use this follow-up for the next USER run.
+### MediaPipe CPU tuning audit
 
-The USER's first local preparation run established that the exact detector TFLite fails Sentis 2.6.1 import with `Model contains unsupported operator(s): DENSIFY`. The failure occurred during import, before any GPU worker ran, so it is an importer/sparse-constant limitation and **not** an Intel HD 620 GPU failure. The supplied exact audit identifies TFLite builtin 124 as the detector blocker; builtin 5 is `DEPTH_TO_SPACE`. The landmark model's observed operator set contains no DENSIFY, but landmark compatibility must still be proved by the USER's Unity importer.
+Read-only audit established:
+- no supported high-level Pose Landmarker option for CPU thread count;
+- no supported direct XNNPACK thread knob through the current Tasks API;
+- Lite is already the lightest compatible official model family used by this project;
+- detector input is 224x224 and landmark input is 256x256 internally;
+- lowering the upstream 320x240 image further does not shrink those fixed neural tensors;
+- LIVE_STREAM remains the appropriate task mode for the current architecture;
+- Homuler's distributed Windows GPU path is not a safe production answer.
 
-Starting remote checkpoint for this follow-up: `86c9c56fe3198a870d1012e4fa41dd8f8e7a01ed` — `fix: qualify gpu spike editor logging`.
+That result closed further small CPU-scheduling tweaks, but it did **not** mean the whole laptop/GPU had reached its absolute performance limit.
 
-The isolated preparation/runner is now landmark-first:
-- detector and landmark bytes are extracted/audited as before;
-- each exact TFLite is imported independently and receives its own status/error summary;
-- detector failure no longer aborts landmark import;
-- the diagnostic scene is generated whenever at least one `ModelAsset` exists;
-- landmark-only is a valid benchmark state;
-- the runner distinguishes `SKIPPED`, `FAILED RUNTIME`, and `RAN` per model and never reports a skipped detector as GPU success;
-- no ONNX fallback, model substitution, detector rewrite, or production-path integration was added.
+## Why the heterogeneous CPU+GPU track exists
 
-The generated TFLite audit now reports operator counts, human names for `DENSIFY`/`DEPTH_TO_SPACE`, and every DENSIFY's tensor/buffer/dataflow/sparsity details: input/output tensor identity and shape/type, constant-buffer test, producer/consumers, traversal order, block map, each dimension's `DENSE`/`SPARSE_CSR` metadata, segment/index vectors, static-vs-runtime dependence, and sparse stored bytes versus estimated dense bytes. Its aggregate densification conclusion is intentionally audit-only and conservative; no rewrite occurs.
+The USER reports that fast body/arm movements are not faithfully reproduced unless movements are performed somewhat more slowly.
 
-The recurring **landmark** network is now the performance gate. The existing thresholds remain: strong evidence at `>=20/s` GPU-resident landmark roundtrip (ideally `25–30/s`) with sane CPU/GPU output comparison, faster than Sentis CPU and acceptable frame impact; conditional around `15–20/s`; likely stop below `15/s`, on slower-than-CPU behavior, import failure, output mismatch/nonfinite results, or unacceptable render contention. Raw landmark-network throughput is not full production pose throughput.
+Current production observations before the alternate-runtime experiments were commonly:
+- camera ~29–30 FPS;
+- fresh pose results around 10–12/s;
+- DirectCPU readback roughly 55–65 ms;
+- MediaPipe accepted-request-to-result callback roughly 60–75+ ms;
+- frame-to-result often around 110–140 ms depending on load.
 
-Important benchmark limits remain explicit: Sentis CPU/GPU checks Sentis backend consistency rather than independent Google LiteRT equivalence; current GPU-resident timing reads all small float outputs under the cap and may overestimate final transfer cost; the diagnostic scene is lighter than gameplay; full MediaPipe ROI/tracking/postprocessing is not reconstructed; HD 620 shares resources with Unity rendering.
+At only 10–12 fresh pose samples/s, fast limb trajectories can move significantly between inference results. This is not merely display smoothing; the system may never observe some intermediate/extreme poses.
 
-This Web Builder did not run Unity after the follow-up source changes. Therefore the enhanced DENSIFY count/dataflow/storage totals and the independent landmark import/benchmark remain pending USER-local evidence. `Packages/packages-lock.json` was not fabricated. CPU MediaPipe remains the fallback. Phase 5A remains **NOT USER ACCEPTED** and Phase 6 remains **NOT STARTED**.
+The architecture goal is therefore:
+1. reduce real frame-to-result latency;
+2. raise actual fresh pose sampling frequency;
+3. preserve the accepted 33-landmark/world-landmark behavior and quality;
+4. use CPU and GPU heterogeneously, not as mutually exclusive marketing modes.
 
-Updated USER validation (supersedes the earlier steps above):
-1. Pull the latest `engine/pose-tracking-spike` and let Unity 6.5 finish compilation/import.
-2. Run `Golden Needle > GPU Inference Spike > Prepare Exact Models + Scene`.
-3. Confirm detector and landmark are reported independently. Detector is expected likely to fail on DENSIFY; landmark success must not be assumed.
-4. If landmark imports, open `Assets/GoldenNeedle/Debug/GpuInferenceSpike/Generated/GpuInferenceSpike.unity`, enter Play Mode, and verify Intel HD 620 / actual graphics API / compute-shader support.
-5. Run the benchmark once. Confirm an unavailable detector is marked skipped while the landmark suite still runs.
-6. Capture the final diagnostic UI/Console report and attach the updated `Generated/model-audit.txt`.
-7. If practical, capture Task Manager's GPU graph during the landmark GPU stage.
-8. Send all Console errors and evidence to the Orchestrator. Do not approve any detector rewrite until after the landmark benchmark decision.
+The intended philosophy is game-like workload assignment: use each processor for work it actually performs well. Do not run duplicate CPU+GPU inference on every frame just to claim both processors are active.
+
+## Actual low-end proof machine
+
+USER hardware established during the GPU spike:
+- Windows 10 build 19045, 64-bit;
+- Intel Core i3-7100U @ 2.40 GHz;
+- 2 cores / 4 logical processors;
+- Intel HD Graphics 620;
+- no discrete GPU on this machine;
+- Unity reports about 4047 MB graphics/shared memory;
+- compute shaders supported;
+- D3D11 and D3D12 both available in the tested Editor sessions.
+
+This machine is intentionally treated as a low-end proof target. Stronger/discrete GPUs may justify a different inference backend later.
+
+## Sentis / Unity InferenceEngine architecture spike
+
+Experimental package:
+- `com.unity.ai.inference` 2.6.1.
+
+Experimental code is isolated under:
+`Assets/GoldenNeedle/Debug/GpuInferenceSpike/`
+
+Editor setup lives under:
+`Assets/GoldenNeedle/Editor/GpuInferenceSpike*.cs`
+
+The production provider/canonical/retarget/locomotion path is not connected to these neural outputs.
+
+### Exact model extraction
+
+The setup extracts exact byte-for-byte submodels from the production task bundle into an ignored local `Generated/` area.
+
+Verified exact bundle/submodel data from the USER-generated audit:
+- task bundle size: 5,777,746 bytes;
+- bundle SHA-256: `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`;
+- `pose_detector.tflite`: 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
+- `pose_landmarks_detector.tflite`: 2,818,390 bytes, SHA-256 `ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58`.
+
+No ONNX conversion was used in the Sentis spike.
+
+### Exact landmark model contract observed by audit
+
+Input:
+- float32 `[1,256,256,3]`.
+
+Outputs:
+- `[1,195]` — landmark-related output;
+- `[1,1]` — presence/score-like output;
+- `[1,256,256,1]` — large segmentation-like output;
+- `[1,64,64,39]` — large refinement/heatmap-like output;
+- `[1,117]` — world-landmark-related output.
+
+The exact MediaPipe semantic decoding of every raw tensor is not yet reconstructed in Golden Needle. Raw neural throughput must not be claimed as full production pose throughput.
+
+## Sentis detector import result and DENSIFY audit
+
+The exact detector TFLite fails Sentis 2.6.1 import with:
+`Model contains unsupported operator(s): DENSIFY`.
+
+This is an importer/model-storage limitation and occurs before GPU execution, so it is **not** evidence that the HD 620 cannot execute the detector.
+
+The landmark TFLite imports successfully and can run through Sentis CPU and GPUCompute.
+
+Enhanced exact detector audit established:
+- 442 tensors;
+- 291 operators;
+- 38 `DENSIFY@v1` operators;
+- all 38 DENSIFY inputs are static constants with no producer op;
+- all 38 have sparsity metadata;
+- all audited DENSIFY outputs feed ordinary builtin consumers;
+- dense storage estimates are known;
+- sparse stored value bytes: 1,361,790;
+- sparse index metadata payload: approximately 1,028,345 bytes;
+- combined sparse values + index payload: approximately 2,390,135 bytes;
+- estimated dense value bytes: 5,447,168 bytes.
+
+Audit conclusion:
+`STATIC_STORAGE_REWRITE_CANDIDATE_IN_PRINCIPLE`.
+
+This means offline densification looks like a plausible storage-format rewrite in principle, **not** that it is already approved or numerically proven. A later equivalence gate would be mandatory before using a rewritten detector.
+
+Do not spend effort densifying the detector until an inference backend demonstrates a worthwhile performance win.
+
+## Sentis landmark benchmark — Direct3D11 USER result
+
+First landmark-only benchmark ran in Unity 6.5 with:
+- Intel HD Graphics 620;
+- Direct3D11;
+- Sentis/InferenceEngine 2.6.1;
+- compute shaders true.
+
+USER reported OBS was running during most of this benchmark and GPU utilization was visible throughout the phases, so cross-run comparison with later tests must be treated cautiously.
+
+Measured recurring landmark network results:
+- Sentis CPU: mean 64.64 ms, p50 62.43 ms, p95 96.39 ms, p99 112.24 ms, 15.47/s;
+- GPUCompute fixed tensor: mean 123.40 ms, p50 121.11 ms, p95 154.08 ms, p99 170.19 ms, 8.10/s;
+- GPU-resident path: mean 251.36 ms, p50 252.65 ms, p95 306.81 ms, p99 323.07 ms, 3.98/s;
+- GPU-resident selected-output readback: 1,252 bytes;
+- TextureConverter submission mean ~0.135 ms;
+- diagnostic render frame mean ~14.83 ms, p95 ~73.53 ms.
+
+The D3D11 GPU path lost decisively to CPU.
+
+During this run Unity also reported several temporary-allocation lifetime warnings, including `JobTempAlloc has allocations that are more than the maximum lifespan of 4 frames old`. Record this as diagnostic-spike behavior; do not normalize it as acceptable production behavior.
+
+## Sentis landmark benchmark — Direct3D12 USER result
+
+A second run launched Unity with a temporary `-force-d3d12` session. The screenshot/report confirms:
+- Graphics API: Direct3D12;
+- Intel HD Graphics 620;
+- compute shaders true;
+- Sentis/InferenceEngine 2.6.1.
+
+Measured results:
+- Sentis CPU: mean 46.24 ms, p50 45.60 ms, p95 56.96 ms, p99 64.67 ms, **21.63/s**;
+- GPUCompute fixed tensor: mean 60.48 ms, p50 60.02 ms, p95 64.00 ms, p99 64.88 ms, **16.53/s**;
+- GPU-resident path: mean 127.96 ms, p50 125.76 ms, p95 139.80 ms, p99 145.04 ms, **7.82/s**;
+- GPU-resident selected-output readback: 1,252 bytes;
+- TextureConverter submission mean ~0.136 ms;
+- diagnostic render frame mean ~13.98 ms, p95 ~36.78 ms.
+
+Within the same D3D12 run, CPU still beats GPUCompute decisively:
+- GPU fixed-tensor mean latency is ~31% worse than Sentis CPU;
+- GPU fixed-tensor throughput is ~24% lower than Sentis CPU;
+- GPU-resident roundtrip is far below the required 15–20+/s gate.
+
+The D3D12 run also emitted repeated:
+`d3d12: failed to wait for fence (258)`
+messages. Treat this as an additional stability warning for this low-end iGPU/Editor path, not as acceptable production noise.
+
+Cross-run D3D11-vs-D3D12 numbers are affected by different runtime load/OBS conditions, so do not attribute every improvement purely to the graphics API. The decisive evidence is the **same-run CPU-vs-GPU comparison** in D3D12.
+
+## Sentis CPU/GPU numerical comparison
+
+For deterministic zero, gradient and seeded-random inputs:
+- all tested landmark outputs remained finite;
+- no NaN/Inf values were reported;
+- CPU/GPU differences for the small landmark/world-landmark outputs were generally small;
+- the large segmentation-like tensor showed larger isolated max-absolute differences on synthetic inputs.
+
+This is only a Sentis CPU-vs-GPU backend-consistency check. It is **not** an independent Google LiteRT equivalence proof and it is not full MediaPipe pose-pipeline equivalence.
+
+## Sentis decision
+
+### Intel HD 620
+
+**Sentis GPUCompute is rejected as the low-end neural-inference backend on the HD 620.**
+
+Reasons:
+- fixed-tensor GPU inference is slower than Sentis CPU in the clean D3D12 run;
+- GPU-resident roundtrip is substantially slower;
+- D3D12 produced repeated fence timeout messages;
+- D3D11 produced JobTempAlloc lifetime warnings in the spike;
+- the path fails the previously defined throughput gates.
+
+This does **not** mean the GPU should be unused. It means neural inference is not the correct workload assignment for this specific iGPU/backend combination.
+
+### Important positive finding
+
+Sentis CPU ran the raw recurring landmark network at about **21.63/s** in the D3D12-session benchmark, which is materially above the roughly 10–12 complete pose results/s of the current full MediaPipe Tasks pipeline.
+
+Do not interpret this as a ready production replacement: Sentis raw-network timing excludes the full MediaPipe detector cadence, ROI tracking, raw-output decoding, landmark projection, world-landmark semantics and confidence/tracking behavior. But it proves there may be room outside the current full MediaPipe Tasks runtime.
+
+## Heterogeneous architecture direction after Sentis
+
+The goal remains CPU+GPU cooperation, but assignment should be capability-driven.
+
+For HD 620-class machines, a plausible future split may be:
+- GPU: Unity rendering, visual effects and any camera/preprocess operations that benchmark well;
+- CPU: pose neural inference if CPU remains faster, plus detector/ROI/tracking/postprocess/canonical/retarget/game logic.
+
+For stronger/discrete GPUs, a GPU neural backend may still win and should remain architecturally possible.
+
+Future product policy should eventually support capability-based selection rather than one hardcoded backend, e.g. Auto / CPU / Accelerated, with a safe CPU fallback.
+
+Do not manually split individual neural layers across CPU/GPU without evidence. Do not run duplicate CPU and GPU pose inference every frame.
+
+## Next architecture experiment — OpenVINO
+
+The next approved direction is an **isolated OpenVINO exact-TFLite benchmark**, owned by the intelligent Web Builder rather than a routine Luna worker.
+
+Purpose:
+- determine whether Intel's inference runtime can outperform the current alternatives on the actual HD 620 machine;
+- compare OpenVINO CPU and Intel GPU using the exact current landmark TFLite first;
+- avoid production Unity/provider integration until hard numbers justify it.
+
+The next Orchestrator should independently verify current OpenVINO 2026 support/documentation before implementation. Do not rely on stale assumptions about supported devices or APIs.
+
+Preferred first proof:
+- outside the production Unity pose provider;
+- exact landmark `.tflite` if the current OpenVINO frontend supports it;
+- measure CPU and Intel GPU separately, not AUTO/HETERO first;
+- warmup excluded;
+- hundreds of iterations if practical;
+- p50/p95/p99/mean and inferences/s;
+- actual device selected;
+- input/output tensor metadata;
+- required output-transfer cost;
+- CPU/GPU utilization where practical;
+- no detector surgery yet.
+
+Decision logic:
+- if OpenVINO GPU substantially beats the ~46 ms / 21.63/s Sentis CPU raw-landmark result and remains stable, continue the Intel GPU route;
+- if OpenVINO CPU substantially beats current alternatives, consider it as a low-end CPU inference candidate while the GPU remains focused on rendering;
+- if neither gives a meaningful win, stop spending time on HD 620 neural GPU acceleration and preserve accelerated inference only for stronger hardware/backends.
+
+The full production target remains higher fresh-pose sampling and lower latency, not merely high utilization numbers.
+
+## Things the next Orchestrator must not do
+
+- Do not merge to `main` without explicit USER approval.
+- Do not mark Phase 5A accepted; final USER acceptance is still pending.
+- Do not start Phase 6 yet.
+- Do not connect experimental Sentis/OpenVINO outputs to the avatar before an isolated benchmark passes.
+- Do not densify/convert the detector merely because the audit says it is possible in principle.
+- Do not reopen callback-poll or result-callback launch optimizations without new reproducible evidence.
+- Do not delete or weaken the accepted CPU MediaPipe path; it remains the known-safe fallback.
+- Do not force D3D12 globally based on this spike.
+- Do not equate GPU utilization with useful acceleration.
+- Do not use Luna for broad inference-architecture design; use the intelligent Web Builder for architecture changes and Luna only for tightly scoped follow-ups.
+
+## Immediate next step
+
+Switch to a fresh Web Orchestrator to avoid context-limit risk. The new Orchestrator should:
+1. verify the latest remote `engine/pose-tracking-spike` HEAD;
+2. read this file plus `Docs/orchestrator-handoff.md`;
+3. inspect the current experimental Sentis files only as needed;
+4. prepare and supervise an isolated OpenVINO CPU-vs-Intel-GPU landmark benchmark through the new intelligent Web Builder;
+5. keep production motion behavior frozen until benchmark evidence supports a new provider architecture.
