@@ -98,6 +98,68 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
+        public void ImmediateLaunchAllowedWhenAllConditionsAreValid()
+        {
+            Assert.That(
+                ImmediateLaunchAllowed(),
+                Is.True);
+        }
+
+        [Test]
+        public void ImmediateLaunchIsBlockedByCameraSwitchPending()
+        {
+            Assert.That(
+                ImmediateLaunchAllowed(cameraSwitchPending: true),
+                Is.False);
+        }
+
+        [Test]
+        public void ImmediateLaunchIsBlockedByOutstandingInference()
+        {
+            Assert.That(
+                ImmediateLaunchAllowed(inferenceOutstanding: true),
+                Is.False);
+        }
+
+        [Test]
+        public void ImmediateLaunchIsBlockedUntilTargetIntervalElapses()
+        {
+            Assert.That(
+                ImmediateLaunchAllowed(intervalElapsed: false),
+                Is.False);
+        }
+
+        [Test]
+        public void ImmediateLaunchIsBlockedByBodyResourceConfigurationMismatch()
+        {
+            Assert.That(
+                ImmediateLaunchAllowed(bodyResourcesCurrent: false),
+                Is.False);
+        }
+
+        [Test]
+        public void ImmediateLaunchIsBlockedByCoordinateConventionMismatch()
+        {
+            Assert.That(
+                ImmediateLaunchAllowed(coordinateConventionCurrent: false),
+                Is.False);
+        }
+
+        [Test]
+        public void ExperimentOffLeavesBaselineUpdateLaunchPolicyAvailable()
+        {
+            Assert.That(
+                ImmediateLaunchAllowed(experimentEnabled: false),
+                Is.False);
+            Assert.That(
+                LatestFramePipelinePolicy.CanLaunchInference(
+                    preparedFrameAvailable: true,
+                    inferenceOutstanding: false,
+                    intervalElapsed: true),
+                Is.True);
+        }
+
+        [Test]
         public void ProviderDefaultInferenceTargetIsThirtyFps()
         {
             var gameObject = new GameObject("MediaPipeProviderDefaultTest");
@@ -127,6 +189,9 @@ namespace GoldenNeedle.Tests
                 Assert.That(
                     serializedProvider.FindProperty("bodyInferenceLongEdge").intValue,
                     Is.EqualTo(320));
+                Assert.That(
+                    serializedProvider.FindProperty("enableImmediateInferenceLaunchAfterReadback").boolValue,
+                    Is.True);
             }
             finally
             {
@@ -215,6 +280,31 @@ namespace GoldenNeedle.Tests
             Assert.That(
                 BodyInferenceResolution.ClampLongEdge(int.MaxValue),
                 Is.EqualTo(BodyInferenceResolution.MaximumLongEdge));
+        }
+
+        private static bool ImmediateLaunchAllowed(
+            bool experimentEnabled = true,
+            bool providerReady = true,
+            bool shuttingDown = false,
+            bool cameraSwitchPending = false,
+            bool poseLandmarkerAvailable = true,
+            bool preparedFrameAvailable = true,
+            bool coordinateConventionCurrent = true,
+            bool bodyResourcesCurrent = true,
+            bool inferenceOutstanding = false,
+            bool intervalElapsed = true)
+        {
+            return LatestFramePipelinePolicy.CanImmediateLaunchAfterReadback(
+                experimentEnabled,
+                providerReady,
+                shuttingDown,
+                cameraSwitchPending,
+                poseLandmarkerAvailable,
+                preparedFrameAvailable,
+                coordinateConventionCurrent,
+                bodyResourcesCurrent,
+                inferenceOutstanding,
+                intervalElapsed);
         }
     }
 }

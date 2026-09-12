@@ -29,6 +29,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         Stopped,
     }
 
+    public enum PreparedInferenceLaunchOrigin
+    {
+        None,
+        Update,
+        ReadbackContinuation,
+    }
+
     /// <summary>
     /// Main-thread request cadence helper. Busy frames never advance timing state, so once the
     /// previous inference finishes, the next prepared frame may launch immediately if the minimum
@@ -94,6 +101,30 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             bool intervalElapsed)
         {
             return preparedFrameAvailable && !inferenceOutstanding && intervalElapsed;
+        }
+
+        public static bool CanImmediateLaunchAfterReadback(
+            bool experimentEnabled,
+            bool providerReady,
+            bool shuttingDown,
+            bool cameraSwitchPending,
+            bool poseLandmarkerAvailable,
+            bool preparedFrameAvailable,
+            bool coordinateConventionCurrent,
+            bool bodyResourcesCurrent,
+            bool inferenceOutstanding,
+            bool intervalElapsed)
+        {
+            return experimentEnabled &&
+                providerReady &&
+                !shuttingDown &&
+                !cameraSwitchPending &&
+                poseLandmarkerAvailable &&
+                preparedFrameAvailable &&
+                coordinateConventionCurrent &&
+                bodyResourcesCurrent &&
+                !inferenceOutstanding &&
+                intervalElapsed;
         }
     }
 
@@ -185,6 +216,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField] private bool enableBodyInferenceDownscale = true;
         [Tooltip("Target long edge for body-pose inference. The source aspect ratio is preserved and the value is safely bounded.")]
         [SerializeField] private int bodyInferenceLongEdge = 320;
+        [Tooltip("Attempt body-pose inference immediately when a readback finishes. If unsafe or ineligible, the frame remains prepared for the normal Update path; no extra queue or concurrent inference is created.")]
+        [SerializeField] private bool enableImmediateInferenceLaunchAfterReadback = true;
 
         private readonly object _observationGate = new object();
         private readonly double[] _lastTrackedAtSeconds = new double[PoseObservation.LandmarkCount];
@@ -211,6 +244,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private TextureFrame _preparedTextureFrame;
         private double _preparedFrameObservedAtSeconds;
         private int _preparedCoordinateConventionVersion;
+        private double _preparedFramePublishedAtSeconds;
+        private int _preparedFramePublishedFrameCount = -1;
         private bool _shuttingDown;
         private bool _cameraSwitchPending;
         private string _pendingCameraName = string.Empty;
@@ -232,6 +267,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private int _readbackFailuresInWindow;
         private int _readbackTimeoutsInWindow;
         private int _preparedFrameReplacementsInWindow;
+        private int _immediateLaunchesInWindow;
         private int _resultCallbackReceived;
         private int _resultCallbackLogPublished;
         private int _totalInferenceRequests;
@@ -241,6 +277,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private CameraOrientationState _orientation;
         private bool _hasPublishedCoordinateConvention;
         private int _coordinateConventionVersion;
+        private PreparedInferenceLaunchOrigin _lastAcceptedLaunchOrigin;
 
         public PoseProviderStatus Status { get; private set; } = PoseProviderStatus.Starting;
         public string StatusMessage { get; private set; } = "Starting pose-tracking spike";
@@ -270,6 +307,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public bool BodyInferenceUsesScaledTexture =>
             _bodyInferenceRenderTexture != null &&
             (_bodyInferenceWidth != ActualCameraWidth || _bodyInferenceHeight != ActualCameraHeight);
+        public bool ImmediateInferenceLaunchAfterReadbackEnabled => enableImmediateInferenceLaunchAfterReadback;
         public float CameraFramesPerSecond { get; private set; }
         public float InferenceRequestsPerSecond { get; private set; }
         public float ResultCallbacksPerSecond { get; private set; }
@@ -282,6 +320,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public float ReadbackFailuresPerSecond { get; private set; }
         public float ReadbackTimeoutsPerSecond { get; private set; }
         public float PreparedFrameReplacementsPerSecond { get; private set; }
+        public float ImmediateLaunchesPerSecond { get; private set; }
         public bool HasPreparedFrame => _preparedTextureFrame != null;
         public bool ReadbackPending => _readbackPending;
         public bool InferencePending => Volatile.Read(ref _inferenceOutstanding) != 0;
@@ -293,6 +332,15 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public float LastCpuImageBuildDurationMilliseconds { get; private set; }
         public float LastInferenceDurationMilliseconds { get; private set; }
         public float LastApproxFrameToResultMilliseconds { get; private set; }
+        public float LastPreparedToInferenceLaunchMilliseconds { get; private set; }
+        public int LastPreparedToInferenceLaunchFrameDelta { get; private set; }
+        public PreparedInferenceLaunchOrigin LastAcceptedLaunchOrigin => _lastAcceptedLaunchOrigin;
+        public string LastAcceptedLaunchOriginLabel =>
+            _lastAcceptedLaunchOrigin == PreparedInferenceLaunchOrigin.ReadbackContinuation
+                ? "RB"
+                : _lastAcceptedLaunchOrigin == PreparedInferenceLaunchOrigin.Update
+                    ? "Update"
+                    : "-";
         public double LatestPoseAgeMilliseconds
         {
             get
@@ -366,11 +414,19 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             UpdateInputTransform();
 
             var interval = 1d / Mathf.Max(1f, targetInferenceFps);
-            TryLaunchPreparedInference(now, interval);
+            TryLaunchPreparedInference(
+                now,
+                interval,
+                PreparedInferenceLaunchOrigin.Update,
+                countWaits: true);
             TryStartLatestReadback();
         }
 
-        private void TryLaunchPreparedInference(double now, double interval)
+        private void TryLaunchPreparedInference(
+            double now,
+            double interval,
+            PreparedInferenceLaunchOrigin origin,
+            bool countWaits)
         {
             if (_preparedTextureFrame == null)
             {
@@ -385,23 +441,38 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
             if (Volatile.Read(ref _inferenceOutstanding) != 0)
             {
-                _inferenceBusyWaitsInWindow++;
-                _skippedInWindow++;
+                if (countWaits)
+                {
+                    _inferenceBusyWaitsInWindow++;
+                    _skippedInWindow++;
+                }
                 return;
             }
 
             if (!_inferenceScheduler.IsIntervalElapsed(now, interval))
             {
-                _targetIntervalWaitsInWindow++;
-                _skippedInWindow++;
+                if (countWaits)
+                {
+                    _targetIntervalWaitsInWindow++;
+                    _skippedInWindow++;
+                }
                 return;
             }
 
+            LaunchPreparedInference(origin);
+        }
+
+        private void LaunchPreparedInference(PreparedInferenceLaunchOrigin origin)
+        {
             var textureFrame = _preparedTextureFrame;
             var frameObservedAtSeconds = _preparedFrameObservedAtSeconds;
+            var framePublishedAtSeconds = _preparedFramePublishedAtSeconds;
+            var framePublishedFrameCount = _preparedFramePublishedFrameCount;
             _preparedTextureFrame = null;
             _preparedFrameObservedAtSeconds = 0d;
             _preparedCoordinateConventionVersion = 0;
+            _preparedFramePublishedAtSeconds = 0d;
+            _preparedFramePublishedFrameCount = -1;
 
             var frameReleased = false;
             try
@@ -421,7 +492,19 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     try
                     {
                         _poseLandmarker.DetectAsync(image, timestampMillisec, _imageProcessingOptions);
-                        _inferenceScheduler.MarkAccepted(NowSeconds());
+                        var acceptedAtSeconds = NowSeconds();
+                        _inferenceScheduler.MarkAccepted(acceptedAtSeconds);
+                        LastPreparedToInferenceLaunchMilliseconds = framePublishedAtSeconds > 0d
+                            ? (float)((acceptedAtSeconds - framePublishedAtSeconds) * 1000d)
+                            : 0f;
+                        LastPreparedToInferenceLaunchFrameDelta = framePublishedFrameCount >= 0
+                            ? Mathf.Max(0, Time.frameCount - framePublishedFrameCount)
+                            : 0;
+                        _lastAcceptedLaunchOrigin = origin;
+                        if (origin == PreparedInferenceLaunchOrigin.ReadbackContinuation)
+                        {
+                            _immediateLaunchesInWindow++;
+                        }
                         Interlocked.Increment(ref _totalInferenceRequests);
                         _requestsInWindow++;
                         if (!_inferenceRequestLogPublished)
@@ -592,21 +675,29 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             UnityEngine.Debug.Log($"[PoseTrackingSpike] Webcam started: {_selectedDevice.name}, actualResolution={ActualCameraWidth}x{ActualCameraHeight}, requestedFps={requestedCameraFps}, rotation={VideoRotationAngle}, verticallyMirrored={VideoVerticallyMirrored}");
         }
 
-        private bool EnsureBodyInferenceResources()
+        private bool BodyInferenceResourcesMatchCurrentIntent()
         {
+            if (_webCamTexture == null || _textureFramePool == null)
+            {
+                return false;
+            }
+
             var desiredDimensions = BodyInferenceResolution.Calculate(
                 ActualCameraWidth,
                 ActualCameraHeight,
                 enableBodyInferenceDownscale,
                 bodyInferenceLongEdge);
-            var configurationMatches = _textureFramePool != null &&
-                _configuredCameraWidth == ActualCameraWidth &&
+            return _configuredCameraWidth == ActualCameraWidth &&
                 _configuredCameraHeight == ActualCameraHeight &&
                 _configuredBodyInferenceDownscale == enableBodyInferenceDownscale &&
                 _configuredBodyInferenceLongEdge == BodyInferenceResolution.ClampLongEdge(bodyInferenceLongEdge) &&
                 _bodyInferenceWidth == desiredDimensions.x &&
                 _bodyInferenceHeight == desiredDimensions.y;
-            if (configurationMatches)
+        }
+
+        private bool EnsureBodyInferenceResources()
+        {
+            if (BodyInferenceResourcesMatchCurrentIntent())
             {
                 return true;
             }
@@ -750,7 +841,38 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _preparedTextureFrame = textureFrame;
             _preparedFrameObservedAtSeconds = frameObservedAtSeconds;
             _preparedCoordinateConventionVersion = coordinateConventionVersion;
+            _preparedFramePublishedAtSeconds = NowSeconds();
+            _preparedFramePublishedFrameCount = Time.frameCount;
             _readbackPending = false;
+
+            TryImmediateLaunchAfterReadback();
+        }
+
+        private void TryImmediateLaunchAfterReadback()
+        {
+            var now = NowSeconds();
+            var interval = 1d / Mathf.Max(1f, targetInferenceFps);
+            var canImmediateLaunch = LatestFramePipelinePolicy.CanImmediateLaunchAfterReadback(
+                enableImmediateInferenceLaunchAfterReadback,
+                Status == PoseProviderStatus.Ready,
+                _shuttingDown,
+                _cameraSwitchPending,
+                _poseLandmarker != null,
+                _preparedTextureFrame != null,
+                _preparedCoordinateConventionVersion == _coordinateConventionVersion,
+                BodyInferenceResourcesMatchCurrentIntent(),
+                Volatile.Read(ref _inferenceOutstanding) != 0,
+                _inferenceScheduler.IsIntervalElapsed(now, interval));
+            if (!canImmediateLaunch)
+            {
+                return;
+            }
+
+            TryLaunchPreparedInference(
+                now,
+                interval,
+                PreparedInferenceLaunchOrigin.ReadbackContinuation,
+                countWaits: false);
         }
 
         private void OnPoseLandmarkerResult(PoseLandmarkerResult result, Image _, long timestampMillisec)
@@ -958,9 +1080,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _readbackFailuresInWindow = 0;
             _readbackTimeoutsInWindow = 0;
             _preparedFrameReplacementsInWindow = 0;
+            _immediateLaunchesInWindow = 0;
             _freshCameraFramePending = false;
             _latestFreshFrameObservedAtSeconds = 0d;
             _activeInferenceFrameObservedAtSeconds = 0d;
+            _preparedFramePublishedAtSeconds = 0d;
+            _preparedFramePublishedFrameCount = -1;
             InferenceRequestsPerSecond = 0f;
             ResultCallbacksPerSecond = 0f;
             PoseResultsPerSecond = 0f;
@@ -973,10 +1098,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             ReadbackFailuresPerSecond = 0f;
             ReadbackTimeoutsPerSecond = 0f;
             PreparedFrameReplacementsPerSecond = 0f;
+            ImmediateLaunchesPerSecond = 0f;
             LastGpuReadbackDurationMilliseconds = 0f;
             LastCpuImageBuildDurationMilliseconds = 0f;
             LastInferenceDurationMilliseconds = 0f;
             LastApproxFrameToResultMilliseconds = 0f;
+            LastPreparedToInferenceLaunchMilliseconds = 0f;
+            LastPreparedToInferenceLaunchFrameDelta = 0;
+            _lastAcceptedLaunchOrigin = PreparedInferenceLaunchOrigin.None;
             _metricsWindowStartedAtSeconds = NowSeconds();
             _inferenceRequestLogPublished = false;
         }
@@ -1062,12 +1191,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             ReadbackFailuresPerSecond = (float)(_readbackFailuresInWindow / elapsed);
             ReadbackTimeoutsPerSecond = (float)(_readbackTimeoutsInWindow / elapsed);
             PreparedFrameReplacementsPerSecond = (float)(_preparedFrameReplacementsInWindow / elapsed);
+            ImmediateLaunchesPerSecond = (float)(_immediateLaunchesInWindow / elapsed);
             SkippedInferenceOpportunities += _skippedInWindow;
 
             if (Status == PoseProviderStatus.Ready && !_cameraSwitchPending)
             {
                 StatusMessage =
                     $"Camera/Pose ready | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
+                    $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
                     $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s";
             }
 
@@ -1082,6 +1213,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _readbackFailuresInWindow = 0;
             _readbackTimeoutsInWindow = 0;
             _preparedFrameReplacementsInWindow = 0;
+            _immediateLaunchesInWindow = 0;
             _metricsWindowStartedAtSeconds = now;
         }
 
@@ -1118,6 +1250,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _preparedTextureFrame = null;
             _preparedFrameObservedAtSeconds = 0d;
             _preparedCoordinateConventionVersion = 0;
+            _preparedFramePublishedAtSeconds = 0d;
+            _preparedFramePublishedFrameCount = -1;
         }
 
         private void CleanupRuntime()

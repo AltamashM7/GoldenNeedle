@@ -24,6 +24,7 @@ namespace GoldenNeedle.Editor
         private SerializedProperty _trustSettings;
         private SerializedProperty _enableBodyInferenceDownscale;
         private SerializedProperty _bodyInferenceLongEdge;
+        private SerializedProperty _enableImmediateInferenceLaunchAfterReadback;
 
         private void OnEnable()
         {
@@ -51,6 +52,8 @@ namespace GoldenNeedle.Editor
                 serializedObject.FindProperty("enableBodyInferenceDownscale");
             _bodyInferenceLongEdge =
                 serializedObject.FindProperty("bodyInferenceLongEdge");
+            _enableImmediateInferenceLaunchAfterReadback =
+                serializedObject.FindProperty("enableImmediateInferenceLaunchAfterReadback");
         }
 
         public override void OnInspectorGUI()
@@ -173,6 +176,12 @@ namespace GoldenNeedle.Editor
                     BodyInferenceInspectorMaxLongEdge);
             }
 
+            EditorGUILayout.PropertyField(
+                _enableImmediateInferenceLaunchAfterReadback,
+                new GUIContent(
+                    "Immediate Launch After Readback",
+                    "Attempts body-pose inference immediately when readback finishes. If unsafe or ineligible, the frame remains prepared for the normal Update path; no extra queue or concurrent inference is created."));
+
             serializedObject.ApplyModifiedProperties();
 
             if (deviceChanged &&
@@ -203,6 +212,9 @@ namespace GoldenNeedle.Editor
                 EditorGUILayout.LabelField(
                     "Body Input",
                     $"{provider.BodyInferenceWidth}x{provider.BodyInferenceHeight} {(provider.BodyInferenceUsesScaledTexture ? "scaled" : "native")}");
+                EditorGUILayout.LabelField(
+                    "Immediate Launch",
+                    provider.ImmediateInferenceLaunchAfterReadbackEnabled ? "On" : "Off");
                 EditorGUILayout.LabelField(
                     "Rotation",
                     $"{provider.EffectiveRotationDegrees}° (reported {provider.VideoRotationAngle}°)");
