@@ -9,7 +9,7 @@ Active branch: `engine/pose-tracking-spike`
 Latest substantive runtime/code checkpoint before this documentation refresh:
 `3584e4a059937dfa80b278fe2d96334344025b76` — `feat: add landmark-first sentis spike audit`.
 
-There are documentation-only commits after that checkpoint. Always fetch and verify the current remote branch HEAD before doing new work.
+There are documentation-only and isolated benchmark commits after that checkpoint. Always fetch and verify the current remote branch HEAD before doing new work.
 
 Hard rules:
 - do **not** merge to `main` without explicit USER approval;
@@ -360,68 +360,80 @@ Possible future product policy:
 
 Auto should probe support and choose the lowest-latency stable backend rather than assuming GPU is always faster.
 
-## 14. Next approved architecture experiment — OpenVINO
+## 14. OpenVINO exact-landmark benchmark — USER result
 
-Next task for a **fresh intelligent Web Builder**:
-perform an isolated OpenVINO benchmark with the exact landmark TFLite, comparing CPU and Intel GPU on the actual laptop.
+The previously planned first OpenVINO experiment is complete. Do not treat it as a future task.
 
-This is the next approved direction after the Sentis decision.
+Environment:
+- Windows 10 build 19045 x64;
+- Intel Core i3-7100U @ 2.40 GHz;
+- Intel HD Graphics 620;
+- Python 3.14 x64;
+- OpenVINO 2026.3.0.
 
-The next Orchestrator must independently verify current OpenVINO 2026 documentation/device support before writing the Builder brief. Do not blindly inherit earlier Luna statements.
+Exact identity/contract:
+- production task bundle 5,777,746 bytes, SHA-256 `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`;
+- exact landmark TFLite 2,818,390 bytes, SHA-256 `ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58`;
+- input float32 `[1,256,256,3]`;
+- outputs `[1,195]`, `[1,1]`, `[1,256,256,1]`, `[1,64,64,39]`, `[1,117]`;
+- exact-model identity and OpenVINO contract: **PASS**.
 
-Desired experiment shape:
-- outside the production Unity pose provider first;
-- exact current landmark TFLite if supported by current OpenVINO frontend;
-- measure OpenVINO CPU and Intel GPU separately;
-- do not start with AUTO/HETERO because isolated attribution matters;
-- verify actual selected device;
-- warmup excluded;
-- hundreds of measured runs if practical;
-- mean/p50/p95/p99 and inferences/s;
-- input/output metadata;
-- required output-transfer cost;
-- CPU/GPU utilization where practical;
-- no detector densification yet;
-- no production avatar integration yet.
+Method:
+- explicit CPU and GPU only;
+- no AUTO/HETERO;
+- LATENCY performance hint;
+- one serial request;
+- 30 warmups excluded;
+- 300 measured calls;
+- deterministic seeded-random input;
+- output materialization measured separately.
 
-Decision logic:
-- if OpenVINO GPU materially beats ~46 ms / 21.63/s raw Sentis CPU and is stable, continue Intel GPU route;
-- if OpenVINO CPU materially beats current alternatives, consider it as a low-end CPU inference candidate;
-- if neither wins meaningfully, stop spending time on HD 620 neural GPU acceleration and reserve accelerated inference for stronger hardware.
+Results:
+- OpenVINO CPU: mean **11.062 ms**, p50 10.511, p95 14.451, p99 18.878, **90.403/s**, execution device CPU;
+- OpenVINO GPU: actual Intel HD Graphics 620 / `GPU.0`, mean **9.067 ms**, p50 8.981, p95 9.749, p99 10.100, **110.284/s**;
+- selected 1,252-byte output copy/materialization cost was negligible relative to neural inference latency;
+- Sentis CPU reference: 46.24 ms / 21.63/s.
 
-## 15. Worker-role guidance
+Decision state:
+- OpenVINO raw-landmark performance feasibility: **PASS**;
+- OpenVINO HD 620 GPU compatibility: **PASS**;
+- OpenVINO production integration: **NOT APPROVED**.
 
-Use the **Web Builder** for:
-- new inference-runtime architecture;
-- provider abstraction changes;
-- OpenVINO integration/benchmark architecture;
-- broad multi-file refactors.
+The seeded-random CPU-vs-GPU comparison kept all outputs finite but showed non-trivial differences on some outputs. Representative examples from the first run include `[1,195]` max abs ~14.22 / mean abs ~1.57 and `[1,256,256,1]` max abs ~533.7 / mean abs ~4.46. This does not prove GPU semantic failure because seeded random noise is not a representative pose crop; it creates the current precision/representative-input follow-up requirement.
 
-Use **Luna** only for:
-- tightly scoped diagnostics;
-- instrumentation;
-- small helpers/tests;
-- read-only audits;
-- narrowly specified follow-up fixes.
+The OpenVINO numbers are raw recurring-landmark network speed, not full pose-pipeline throughput. Detector cadence, ROI tracking, exact ROI rotation/projection, raw-output decoding, confidence/tracking semantics, world-landmark semantics and the full camera/preprocess flow remain unreconstructed outside MediaPipe. The MediaPipe CPU path remains the safe production fallback.
 
-Do not delegate broad architecture decisions to Luna without Orchestrator verification.
+## 15. Current approved architecture experiment — precision + representative-pose validation
 
-## 16. Immediate next steps for the new Orchestrator
+Current Web Builder harness location:
+`Tools/OpenVinoLandmarkBenchmark/`
 
-1. Fetch and verify current `engine/pose-tracking-spike` remote HEAD.
-2. Read `Docs/current-state.md` and this file as primary durable context.
-3. Confirm the documentation-only checkpoint and ensure no USER dirty files were touched.
-4. Independently research current OpenVINO support for:
-   - Windows 10;
-   - Intel HD 620 / Gen9 Intel graphics;
-   - exact TFLite frontend support;
-   - CPU and GPU device plugins;
-   - Python/C++ benchmarking practicality;
-   - redistribution/licensing considerations for a later Unity integration.
-5. Prepare a narrow Web Builder brief for an isolated exact-landmark OpenVINO CPU-vs-Intel-GPU benchmark.
-6. Do not touch production pose provider, canonical, retargeting or locomotion in that benchmark.
-7. Do not densify/convert the detector yet.
-8. After OpenVINO results, choose whether to continue alternate-runtime work or return to Phase 5A final USER QA.
+The current proof compares three profiles independently:
+- `CPU_DEFAULT`: CPU + LATENCY;
+- `GPU_DEFAULT`: explicit GPU + LATENCY;
+- `GPU_ACCURACY_FP32`: explicit GPU + LATENCY + requested ACCURACY execution mode + f32 inference precision, only when both required precision-control properties are supported.
+
+For every successful profile the harness records requested configuration, device-supported properties and effective compiled properties separately, including `EXECUTION_DEVICES`, `PERFORMANCE_HINT`, `EXECUTION_MODE_HINT`, `INFERENCE_PRECISION_HINT`, `NUM_STREAMS` and `SUPPORTED_PROPERTIES` where queryable.
+
+Numerical comparisons now include reference magnitude plus absolute and normalized mean/RMS differences. No arbitrary numerical PASS/FAIL threshold is assigned.
+
+Optional `--pose-image` input is deliberately labelled `REPRESENTATIVE_IMAGE_DERIVED_INPUT`. Source evidence supports RGB input, 256x256 ImageToTensor, preserved ROI aspect ratio and float `[0,1]`; the production detector/tracker-derived ROI, rotation/projection and exact interpolation are **not** reconstructed. Therefore this is not exact MediaPipe Tasks equivalence. Raw `[1,195]` and `[1,117]` are reported as landmark-related/world-landmark-related raw outputs, not decoded landmarks.
+
+After the USER run, the Orchestrator must decide:
+- what precision/execution mode GPU default actually reports;
+- whether forced accuracy/f32 materially reduces raw differences;
+- whether the accuracy/f32 performance cost remains acceptable;
+- whether a representative human-image-derived input gives enough numerical confidence to justify any later Unity coexistence/prod-integration experiment.
+
+## 16. Worker-role guidance and immediate next step
+
+Use the **Web Builder** for inference-runtime architecture and broad provider work. Use Luna only for tightly scoped diagnostics/instrumentation/read-only audits.
+
+Immediate next step:
+1. fetch/pull the latest `engine/pose-tracking-spike`;
+2. run the OpenVINO precision harness on the USER laptop, ideally with a representative centered/full-body pose image;
+3. return the generated TXT + JSON plus the compact `GOLDEN NEEDLE OPENVINO PRECISION SUMMARY` block to the Orchestrator;
+4. keep production provider/canonical/retarget/locomotion frozen until the Orchestrator reviews the evidence.
 
 ## 17. Do not do these without new evidence/approval
 
@@ -430,9 +442,9 @@ Do not delegate broad architecture decisions to Luna without Orchestrator verifi
 - no Phase 6 start;
 - no callback-thread `DetectAsync` launch;
 - no further callback/poll micro-optimization;
-- no global D3D12 production switch based on the spike;
+- no global D3D12 production switch based on the Sentis spike;
 - no detector densification simply because audit says it is possible;
-- no production Sentis provider integration on HD 620;
+- no production Sentis/OpenVINO provider integration yet;
 - no duplicate CPU+GPU inference every frame;
 - no removal of the existing CPU MediaPipe fallback;
 - no lowering model quality just to hit an FPS target.
