@@ -191,7 +191,8 @@ Representative evidence:
 | Approx. frame -> result | ~120.7 ms | ~112.0 ms |
 
 DirectCPU was judged a modest beneficial optimization with no observed orientation/tracking
-regression and no direct readback failures. The larger frame-to-result difference also contains
+regression. Direct readbacks were observed at approximately `10.8–11.9/s` with `0/s` direct
+failures. The larger frame-to-result difference also contains
 Detect run-to-run variation, so this evidence is not a formal latency benchmark. Keep DirectCPU as
 the preferred body-pose readback path for now.
 
