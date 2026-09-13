@@ -6,34 +6,28 @@ Repository: `AltamashM7/GoldenNeedle`
 
 Active branch: `engine/pose-tracking-spike`
 
-Latest substantive runtime/code checkpoint before this documentation refresh:
-`3584e4a059937dfa80b278fe2d96334344025b76` — `feat: add landmark-first sentis spike audit`.
+Do **not** merge to `main` without explicit USER approval. Do not force-push, rebase or rewrite branch history merely to clean experimental work.
 
-There are documentation-only and isolated benchmark commits after that checkpoint. Always fetch and verify the current remote branch HEAD before doing new work.
+Known USER-local dirty files have repeatedly existed and must not be reverted, cleaned, staged or overwritten casually:
+- `M Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity`
+- `M GoldenNeedle.slnx`
+- `?? ProjectSettings/SceneTemplateSettings.json`
 
-Hard rules:
-- do **not** merge to `main` without explicit USER approval;
-- do not force-push or rewrite history merely to clean experimental commits;
-- preserve USER-local dirty files unless the USER explicitly asks otherwise;
-- current known USER-local dirty files have repeatedly been:
-  - `M Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity`
-  - `M GoldenNeedle.slnx`
-  - `?? ProjectSettings/SceneTemplateSettings.json`;
-- use the intelligent Web Builder for broad architecture/inference-runtime work;
-- use Luna only for tightly bounded implementation, instrumentation or read-only diagnostics;
-- USER performs manual Unity runtime QA unless a worker explicitly has safe Unity access.
+Unity/package resolution may also create legitimate USER-local package-lock changes. Inspect before touching them rather than assuming they are disposable.
+
+The USER performs manual Unity/runtime QA. Use the intelligent Web Builder for broad inference/runtime architecture work; use Luna only for tightly scoped diagnostics, instrumentation or read-only follow-ups.
 
 ## 2. Current project status
 
-- Phase 1 provider/raw overlays: PASS WITH NOTES.
-- Phase 2 canonical skeleton/debug: PASS.
-- Phase 3 stabilization/confidence: PASS.
+- Phase 1 provider/raw overlays: **PASS WITH NOTES**.
+- Phase 2 canonical skeleton/debug: **PASS**.
+- Phase 3 stabilization/confidence: **PASS**.
 - Phase 4 humanoid retargeting/calibration/orientation: **USER ACCEPTED — PASS**.
 - Phase 5A locomotion/presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
-- Current active work is a responsiveness / inference-architecture investigation.
+- Current active track: responsiveness / inference-architecture proof.
 
-Do not mark Phase 5A accepted and do not start Phase 6 until USER explicitly does so.
+Do not mark Phase 5A accepted and do not start Phase 6 until the USER explicitly does so.
 
 ## 3. Accepted production motion path — keep frozen during inference experiments
 
@@ -43,458 +37,129 @@ Unity baseline:
 - MediaPipeUnityPlugin 0.16.3;
 - Windows experimental environment.
 
-Camera/source:
-- camera request about 640x480@30 where supported;
-- external camera selection through Unity WebCamDevice;
-- Inspector dropdown plus `V` cycle;
-- source change invalidates calibration/Phase 5 assumptions;
-- after source change: `C` recalibrate then `K` recenter;
-- orientation Auto / 0 / 90 / 180 / 270;
-- front-camera metadata does not automatically mirror inference;
-- Display Mirror presentation-only.
-
-Canonical/retarget:
-- canonical +X right, +Y up, +Z away;
-- MediaPipe world conversion `(x,-y,z)` pelvis-relative;
-- calibration right = rightShoulder-leftShoulder;
-- up = chest-pelvis;
-- forward = Cross(right,up);
-- accepted Phase 4 humanoid orientation fix;
-- modular torso/arms/legs calibration;
-- partial-body operation accepted;
-- F3 canonical debug upstream of mapping;
-- F6 orientation/basis diagnostics;
-- swing-only limb alignment rather than axial twist.
-
-Phase 3 stabilization baseline:
-- One Euro min 1.0, beta 0.05, deriv 1.0;
-- acquire 0.60;
-- sustain 0.40;
-- samples 2;
-- grace 0.10 s;
-- reset 0.25 s.
-
-Phase 5A implementation pending USER acceptance:
-- support-foot locomotion v3;
-- physical scales ~0.9 lateral / 1.5 depth;
-- cadence logic;
-- mapped body heading;
-- safe recenter;
-- avatar root X/Z locomotion only;
-- F12 Lab/Game switching;
-- third-person presentation camera;
-- presentation-only humanoid render smoothing ~45/s, max blend 0.05 s.
-
-## 4. Production CPU pose pipeline
-
-Production provider remains MediaPipe Pose Landmarker Lite CPU.
-
-Model:
+Production provider remains MediaPipe Pose Landmarker Lite CPU using:
 `Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes`
 
-Current runtime architecture:
+Production task semantics:
+- BaseOptions delegate CPU;
+- `RunningMode.LIVE_STREAM`;
+- one pose;
+- min pose detection confidence 0.5;
+- min pose presence confidence 0.5;
+- min tracking confidence 0.5;
+- segmentation false;
+- world landmarks required.
+
+Current path:
 
 ```text
 camera/latest frame
--> body-only 320x240 preparation
+-> body-only ~320x240 preparation
 -> DirectCPU readback when enabled (Homuler fallback remains)
 -> MediaPipe Pose Landmarker Lite CPU
 -> PoseObservation
--> canonical/stabilization/calibration/retarget/locomotion
+-> canonical mapping
+-> stabilization/calibration
+-> humanoid retargeting/locomotion
 ```
 
 Scheduling invariants:
 - <=1 active readback;
 - <=1 replaceable prepared TextureFrame;
-- <=1 outstanding MediaPipe inference;
+- <=1 outstanding inference;
 - latest useful frame wins;
 - no camera-frame history;
 - no inference backlog;
 - no pose replay/catch-up queue.
 
-### Accepted optimization results
+Accepted production behavior that experimental inference work must not disturb:
+- canonical +X right, +Y up, +Z away;
+- MediaPipe world conversion `(x,-y,z)` pelvis-relative;
+- modular torso/arms/legs calibration and partial-body behavior;
+- Phase 4 orientation correction and swing-only limb alignment;
+- Phase 3 One Euro baseline: min 1.0, beta 0.05, deriv 1.0, acquire 0.60, sustain 0.40, 2 samples, grace 0.10 s, reset 0.25 s;
+- Phase 5A implementation remains frozen pending USER acceptance.
 
-320x240 body path:
-- modest ~8–9% throughput gain;
-- ~7–8 ms frame-to-result improvement;
-- no obvious quality collapse;
-- keep for body tracking.
+Accepted responsiveness improvements:
+- body path downscale to ~320x240 gave a modest repeatable gain without obvious quality collapse;
+- Immediate Launch After Readback removed roughly one render-frame of artificial scheduling delay and is USER accepted;
+- DirectCPU readback is a modest accepted CPU-path optimization with a teardown lifetime guard.
 
-Immediate Launch After Readback:
-- OFF prep->launch ~25.7 ms, frame->result ~150.4 ms;
-- ON prep->launch ~0.4 ms, frame->result ~117.7 ms;
-- roughly one render-frame artificial delay removed;
-- **USER accepted, keep ON**.
+## 4. Why the inference track exists
 
-DirectCPU readback:
-- modest readback and frame-to-result gain;
-- example ~58.1 -> 54.7 ms readback and ~120.7 -> 112.0 ms frame-to-result;
-- keep as CPU optimization/fallback path.
+The USER reports fast body/arm movement is undersampled unless movement is performed somewhat more slowly.
 
-DirectCPU teardown lifetime guard:
-- active direct request tracked;
-- teardown/restart waits safely only when needed;
-- USER saw expected diagnostic and no crash/hang.
-
-## 5. CPU scheduling optimization is closed
-
-Readback callback timing USER measurement:
-- callback->poll median ~0.6–0.9 ms;
-- p95 ~1.3–1.6 ms;
-- poll->publish ~0 ms.
-
-Conclusion: callback polling not worth optimizing.
-
-Inference-completion->next-launch measurement:
-- steady state usually preparedWaiting `0/64`;
-- next launches essentially all readback-continuation;
-- rare large delays had very low prevalence.
-
-Conclusion: do not add callback-driven `DetectAsync`; no meaningful steady-state win.
-
-MediaPipe CPU audit:
-- no supported public Pose Landmarker CPU thread-count knob;
-- no supported high-level XNNPACK thread control;
-- Lite is already the lightest compatible official model family;
-- detector fixed 224x224 input;
-- landmark fixed 256x256 input;
-- lower upstream body image does not shrink those tensors;
-- LIVE_STREAM remains appropriate;
-- Homuler distributed Windows GPU mode is not the answer.
-
-This closes small scheduling tweaks, not broader inference-runtime research.
-
-## 6. User-visible problem that motivates the new architecture track
-
-USER reports fast movement is not reproduced faithfully unless moving somewhat more slowly.
-
-Current production behavior commonly observed before alternate-runtime work:
+Representative production behavior before alternate-runtime experiments:
 - camera ~29–30 FPS;
 - fresh pose results ~10–12/s;
 - DirectCPU readback ~55–65 ms;
-- MediaPipe accepted-request->callback ~60–75+ ms;
-- frame-to-result often ~110–140 ms.
+- accepted MediaPipe request->callback commonly ~60–75+ ms;
+- frame->pose result often ~110–140 ms.
 
-At ~10–12 fresh pose samples/s, fast trajectories can be undersampled; some intermediate/extreme poses may never be observed.
+At ~10–12 fresh pose samples/s, fast trajectories can move significantly between inference results. The objective is to reduce real latency and raise fresh pose sampling while preserving current MediaPipe semantics and a safe CPU fallback.
 
-Primary goals:
-1. lower real end-to-end latency;
-2. raise actual fresh pose sampling frequency;
-3. preserve current 33-landmark/world-landmark behavior;
-4. keep a safe CPU fallback;
-5. use CPU and GPU heterogeneously according to measured strengths.
+## 5. Sentis result — useful evidence but rejected HD620 GPU backend
 
-Do not confuse "use CPU+GPU together" with running duplicate pose inference on both every frame.
+Exact production submodels:
+- bundle: 5,777,746 bytes, SHA-256 `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`;
+- detector: `pose_detector.tflite`, 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
+- landmark: `pose_landmarks_detector.tflite`, 2,818,390 bytes, SHA-256 `ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58`.
 
-## 7. Actual low-end proof machine
+Sentis detector import fails on `DENSIFY`. Audit found 38 DENSIFY nodes with static sparse constants and concluded densification is a plausible storage rewrite **in principle**, not an approved change.
 
-Confirmed by USER runtime:
-- Windows 10 build 19045 x64;
-- Intel Core i3-7100U @ 2.40 GHz;
-- 4 logical processors;
-- Intel HD Graphics 620;
-- no discrete GPU on this machine;
-- Unity reports ~4047 MB graphics/shared memory;
-- compute shaders true;
-- D3D11 and D3D12 both usable in Editor sessions.
+Clean D3D12 USER landmark result:
+- Sentis CPU: 46.24 ms / 21.63/s;
+- GPUCompute fixed tensor: 60.48 ms / 16.53/s;
+- GPU-resident: 127.96 ms / 7.82/s;
+- repeated D3D12 fence-wait diagnostics occurred.
 
-Treat this as the current low-end target. Stronger/discrete GPUs may justify different backend choices.
+Decision: Sentis GPUCompute is rejected as the low-end HD620 neural inference backend. This does **not** mean all GPU acceleration is impossible.
 
-## 8. Sentis / Unity InferenceEngine spike
+## 6. OpenVINO landmark evidence — strong raw feasibility, not production approval
 
-Package:
-- `com.unity.ai.inference` 2.6.1.
-
-Experimental code only:
-- `Assets/GoldenNeedle/Debug/GpuInferenceSpike/`
-- `Assets/GoldenNeedle/Editor/GpuInferenceSpike*.cs`
-
-Production provider/avatar are not wired to Sentis output.
-
-### Exact extracted models
-
-Production task bundle:
-- size 5,777,746 bytes;
-- SHA-256 `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`.
-
-Detector:
-- `pose_detector.tflite`;
-- 2,959,078 bytes;
-- SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
-- input `[1,224,224,3]` float32;
-- outputs `[1,2254,12]` and `[1,2254,1]`.
-
-Landmark model:
-- `pose_landmarks_detector.tflite`;
-- 2,818,390 bytes;
-- SHA-256 `ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58`;
-- input `[1,256,256,3]` float32;
-- outputs:
-  - `[1,195]`;
-  - `[1,1]`;
-  - `[1,256,256,1]`;
-  - `[1,64,64,39]`;
-  - `[1,117]`.
-
-No ONNX conversion was used in the Sentis spike.
-
-## 9. Detector DENSIFY blocker is understood
-
-Exact detector import into Sentis 2.6.1 fails with:
-`Model contains unsupported operator(s): DENSIFY`.
-
-Enhanced audit found:
-- 442 tensors;
-- 291 ops;
-- 38 `DENSIFY@v1` ops;
-- every DENSIFY input is a static constant with no producer;
-- every one has sparsity metadata;
-- audited outputs feed ordinary builtin ops;
-- sparse value bytes: 1,361,790;
-- sparse index metadata payload ~1,028,345 bytes;
-- sparse values + metadata payload ~2,390,135 bytes;
-- estimated dense value bytes 5,447,168.
-
-Audit conclusion:
-`STATIC_STORAGE_REWRITE_CANDIDATE_IN_PRINCIPLE`.
-
-Meaning:
-- offline densification is plausible as a storage-format rewrite;
-- it is **not** approved yet;
-- any rewritten detector must pass numerical equivalence before use;
-- do not spend effort on detector surgery until an inference backend proves worthwhile.
-
-## 10. Landmark Sentis import and numerical behavior
-
-The exact landmark TFLite imports successfully in Sentis.
-
-Deterministic zeros/gradient/seeded-random CPU-vs-GPU runs:
-- no NaN/Inf values;
-- small landmark/world-related outputs showed small numerical differences;
-- large segmentation-like output showed larger isolated max differences on synthetic input.
-
-This is only Sentis backend consistency, **not** an independent Google LiteRT equivalence proof and not full MediaPipe semantic equivalence.
-
-## 11. D3D11 Sentis benchmark — USER result
-
-Configuration:
-- Intel HD 620;
-- Direct3D11;
-- Sentis 2.6.1;
-- OBS was running during most of the test;
-- GPU utilization was visible during benchmark phases.
-
-Landmark results:
-- CPU mean 64.64 ms, p50 62.43, p95 96.39, p99 112.24, 15.47/s;
-- GPUCompute fixed tensor mean 123.40 ms, p50 121.11, p95 154.08, p99 170.19, 8.10/s;
-- GPU-resident path mean 251.36 ms, p50 252.65, p95 306.81, p99 323.07, 3.98/s;
-- selected-output readback 1,252 bytes;
-- TextureConverter submit mean ~0.135 ms;
-- frame mean ~14.83 ms, p95 ~73.53 ms.
-
-Additional diagnostics:
-- repeated `JobTempAlloc` lifetime warnings appeared.
-
-Interpretation:
-- D3D11 Sentis GPUCompute loses badly to CPU.
-- Cross-run comparisons with D3D12 must account for OBS/load differences.
-
-## 12. D3D12 Sentis benchmark — USER result
-
-Unity was launched with temporary `-force-d3d12` and OBS was closed.
-
-Confirmed:
-- Graphics API Direct3D12;
-- Intel HD 620;
-- compute shaders true;
-- Sentis 2.6.1.
-
-Landmark results:
-- CPU: mean **46.24 ms**, p50 45.60, p95 56.96, p99 64.67, **21.63/s**;
-- GPUCompute fixed tensor: mean **60.48 ms**, p50 60.02, p95 64.00, p99 64.88, **16.53/s**;
-- GPU-resident: mean **127.96 ms**, p50 125.76, p95 139.80, p99 145.04, **7.82/s**;
-- selected-output readback 1,252 bytes;
-- TextureConverter submit mean ~0.136 ms;
-- frame mean ~13.98 ms, p95 ~36.78 ms.
-
-Within the same clean D3D12 run:
-- fixed-tensor GPU mean latency is ~31% worse than CPU;
-- fixed-tensor GPU throughput is ~24% lower than CPU;
-- GPU-resident path is far below the desired 15–20+/s gate.
-
-Repeated messages also appeared:
-`d3d12: failed to wait for fence (258)`.
-
-Do not normalize these as harmless production behavior.
-
-### Sentis decision
-
-**Reject Sentis GPUCompute as the HD 620 neural-inference backend.**
-
-Do NOT conclude "GPU acceleration is impossible".
-The correct conclusion is narrower:
-- on this low-end iGPU, Sentis GPUCompute is not a good workload assignment;
-- CPU is faster for the landmark network;
-- D3D12 additionally showed fence-timeout diagnostics;
-- keep GPU focused on rendering/other work unless another inference runtime proves better.
-
-Important positive result:
-- Sentis CPU achieved ~21.63 raw landmark inferences/s.
-
-This is faster than current full MediaPipe fresh-result throughput, but it excludes detector cadence, ROI tracking, landmark decoding/projection, confidence/world semantics and full camera pipeline. It is evidence of headroom, not a ready replacement.
-
-## 13. Heterogeneous architecture philosophy after Sentis
-
-The architecture should be capability-driven.
-
-Low-end HD 620-class configuration may ultimately be:
-- GPU: rendering, visual effects, camera/preprocess operations that benchmark well;
-- CPU: neural pose inference if CPU remains faster, plus ROI/tracking/postprocess/canonical/retarget/game logic.
-
-Stronger/discrete GPU configuration may eventually use GPU inference if a backend benchmark proves it wins.
-
-Possible future product policy:
-- Auto;
-- CPU;
-- Accelerated.
-
-Auto should probe support and choose the lowest-latency stable backend rather than assuming GPU is always faster.
-
-## 14. OpenVINO exact-landmark benchmark — USER result
-
-The previously planned first OpenVINO experiment is complete. Do not treat it as a future task.
-
-Environment:
+USER machine:
 - Windows 10 build 19045 x64;
 - Intel Core i3-7100U @ 2.40 GHz;
 - Intel HD Graphics 620;
-- Python 3.14 x64;
 - OpenVINO 2026.3.0.
 
-Exact identity/contract:
-- production task bundle 5,777,746 bytes, SHA-256 `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`;
-- exact landmark TFLite 2,818,390 bytes, SHA-256 `ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58`;
-- input float32 `[1,256,256,3]`;
-- outputs `[1,195]`, `[1,1]`, `[1,256,256,1]`, `[1,64,64,39]`, `[1,117]`;
-- exact-model identity and OpenVINO contract: **PASS**.
+First exact-landmark proof:
+- CPU mean 11.062 ms / 90.403/s;
+- GPU.0 mean 9.067 ms / 110.284/s;
+- exact identity and tensor contract PASS;
+- output copy cost negligible.
 
-Method:
-- explicit CPU and GPU only;
-- no AUTO/HETERO;
-- LATENCY performance hint;
-- one serial request;
-- 30 warmups excluded;
-- 300 measured calls;
-- deterministic seeded-random input;
-- output materialization measured separately.
-
-Results:
-- OpenVINO CPU: mean **11.062 ms**, p50 10.511, p95 14.451, p99 18.878, **90.403/s**, execution device CPU;
-- OpenVINO GPU: actual Intel HD Graphics 620 / `GPU.0`, mean **9.067 ms**, p50 8.981, p95 9.749, p99 10.100, **110.284/s**;
-- selected 1,252-byte output copy/materialization cost was negligible relative to neural inference latency;
-- Sentis CPU reference: 46.24 ms / 21.63/s.
-
-Decision state:
-- OpenVINO raw-landmark performance feasibility: **PASS**;
-- OpenVINO HD 620 GPU compatibility: **PASS**;
-- OpenVINO production integration: **NOT APPROVED**.
-
-The seeded-random CPU-vs-GPU comparison kept all outputs finite but showed non-trivial differences on some outputs. Representative examples from the first run include `[1,195]` max abs ~14.22 / mean abs ~1.57 and `[1,256,256,1]` max abs ~533.7 / mean abs ~4.46. This does not prove GPU semantic failure because seeded random noise is not a representative pose crop; it creates the current precision/representative-input follow-up requirement.
-
-The OpenVINO numbers are raw recurring-landmark network speed, not full pose-pipeline throughput. Detector cadence, ROI tracking, exact ROI rotation/projection, raw-output decoding, confidence/tracking semantics, world-landmark semantics and the full camera/preprocess flow remain unreconstructed outside MediaPipe. The MediaPipe CPU path remains the safe production fallback.
-
-## 15. Current approved architecture experiment — precision + representative-pose validation
-
-Current Web Builder harness location:
-`Tools/OpenVinoLandmarkBenchmark/`
-
-The current proof compares three profiles independently:
-- `CPU_DEFAULT`: CPU + LATENCY;
-- `GPU_DEFAULT`: explicit GPU + LATENCY;
-- `GPU_ACCURACY_FP32`: explicit GPU + LATENCY + requested ACCURACY execution mode + f32 inference precision, only when both required precision-control properties are supported.
-
-For every successful profile the harness records requested configuration, device-supported properties and effective compiled properties separately, including `EXECUTION_DEVICES`, `PERFORMANCE_HINT`, `EXECUTION_MODE_HINT`, `INFERENCE_PRECISION_HINT`, `NUM_STREAMS` and `SUPPORTED_PROPERTIES` where queryable.
-
-Numerical comparisons now include reference magnitude plus absolute and normalized mean/RMS differences. No arbitrary numerical PASS/FAIL threshold is assigned.
-
-Optional `--pose-image` input is deliberately labelled `REPRESENTATIVE_IMAGE_DERIVED_INPUT`. Source evidence supports RGB input, 256x256 ImageToTensor, preserved ROI aspect ratio and float `[0,1]`; the production detector/tracker-derived ROI, rotation/projection and exact interpolation are **not** reconstructed. Therefore this is not exact MediaPipe Tasks equivalence. Raw `[1,195]` and `[1,117]` are reported as landmark-related/world-landmark-related raw outputs, not decoded landmarks.
-
-After the USER run, the Orchestrator must decide:
-- what precision/execution mode GPU default actually reports;
-- whether forced accuracy/f32 materially reduces raw differences;
-- whether the accuracy/f32 performance cost remains acceptable;
-- whether a representative human-image-derived input gives enough numerical confidence to justify any later Unity coexistence/prod-integration experiment.
-
-## 16. Worker-role guidance and immediate next step
-
-Use the **Web Builder** for inference-runtime architecture and broad provider work. Use Luna only for tightly scoped diagnostics/instrumentation/read-only audits.
-
-Immediate next step:
-1. fetch/pull the latest `engine/pose-tracking-spike`;
-2. run the OpenVINO precision harness on the USER laptop, ideally with a representative centered/full-body pose image;
-3. return the generated TXT + JSON plus the compact `GOLDEN NEEDLE OPENVINO PRECISION SUMMARY` block to the Orchestrator;
-4. keep production provider/canonical/retarget/locomotion frozen until the Orchestrator reviews the evidence.
-
-## 17. Do not do these without new evidence/approval
-
-- no merge to `main`;
-- no Phase 5A acceptance claim;
-- no Phase 6 start;
-- no callback-thread `DetectAsync` launch;
-- no further callback/poll micro-optimization;
-- no global D3D12 production switch based on the Sentis spike;
-- no detector densification simply because audit says it is possible;
-- no production Sentis/OpenVINO provider integration yet;
-- no duplicate CPU+GPU inference every frame;
-- no removal of the existing CPU MediaPipe fallback;
-- no lowering model quality just to hit an FPS target.
-
-The current priority is evidence-driven reduction of latency and improvement of fast-motion fidelity while preserving the accepted motion engine.
-
-## 18. Reuse-first architecture audit — authoritative continuation
-
-The precision/representative-pose experiment described in sections 15–16 has now completed. Treat those sections as historical context; the current next step is below.
-
-### Precision-controlled USER result
-
-Same USER machine and OpenVINO 2026.3.0:
-- `CPU_DEFAULT`: effective FP32 / PERFORMANCE; mean **10.355 ms**, p50 9.988, p95 12.233, p99 15.809, **96.569/s**;
-- `GPU_DEFAULT`: explicit Intel HD 620 `GPU.0`, effective FP16 / PERFORMANCE; mean **8.793 ms**, p50 8.738, p95 9.131, p99 9.564, **113.726/s**;
-- `GPU_ACCURACY_FP32`: explicit `GPU.0`, effective FP32 / ACCURACY; mean **12.858 ms**, p50 12.717, p95 14.012, p99 14.260, **77.775/s**.
+Precision-controlled follow-up:
+- `CPU_DEFAULT`: effective FP32/PERFORMANCE, mean **10.355 ms**, p95 12.233 ms, **96.569/s**;
+- `GPU_DEFAULT`: effective FP16/PERFORMANCE, mean **8.793 ms**, p95 9.131 ms, **113.726/s**;
+- `GPU_ACCURACY_FP32`: effective FP32/ACCURACY, mean **12.858 ms**, p95 14.012 ms, **77.775/s**.
 
 Representative human-image-derived consistency:
 - CPU FP32 vs GPU default FP16:
   - `[1,195]` normalized MAE/RMS ~0.00337486 / ~0.00376357;
-  - `[1,117]` normalized MAE/RMS ~0.0129529 / ~0.0145266;
+  - `[1,117]` ~0.0129529 / ~0.0145266;
 - CPU FP32 vs GPU forced FP32:
   - `[1,195]` ~1.00341e-06 / ~1.50298e-06;
   - `[1,117]` ~2.09536e-06 / ~2.38752e-06.
 
-Interpretation approved for architecture work:
-- OpenVINO raw landmark performance feasibility: **PASS**;
-- Intel HD 620 OpenVINO compatibility: **PASS**;
-- GPU default differences are primarily reduced-precision behavior;
-- **OpenVINO CPU FP32 is the leading low-end inference candidate**;
-- GPU FP16 remains a possible accelerated profile for stronger hardware;
+Interpretation:
+- OpenVINO raw-landmark performance feasibility: **PASS**;
+- Intel HD620 OpenVINO compatibility: **PASS**;
+- default GPU differences are predominantly reduced-precision behavior;
+- **OpenVINO CPU FP32 is the leading low-end candidate**;
+- GPU FP16 remains a possible accelerated profile for stronger hardware after end-to-end evidence;
 - GPU FP32 is not worthwhile on this HD620 because it is slower than CPU FP32;
-- production integration remains **NOT APPROVED** because full detector/ROI/tracking/decode/world semantics and Unity coexistence are not proven.
+- raw neural timing is not complete MediaPipe pose-pipeline throughput;
+- production integration remains **NOT APPROVED**.
 
-### USER architecture requirement
+## 7. Reuse-first architecture decision
 
-The USER explicitly requires a reuse-first, modular architecture:
-- reuse mature MediaPipe calculators/framework components where they are a better fit;
-- do not manually reconstruct detector/ROI/tracking/decoding merely because it is possible;
-- preserve all provider landmarks until a semantic mapper decides what a canonical definition needs;
-- do not make generic engine code permanently assume provider count 33 or canonical count 20;
-- preserve current accepted Phase 4 behavior as a stable compatibility definition, `CanonicalBodyV1`;
-- future providers/topologies must be additive.
+The USER explicitly requires reuse of mature framework/calculator components rather than manually recreating MediaPipe semantics when a practical reuse path exists.
 
-Authoritative audit document:
-`Docs/inference-architecture-reuse-audit.md`.
+Authoritative architecture document:
+`Docs/inference-architecture-reuse-audit.md`
 
-### Reuse decision
-
-Current 2026 source audit supports this leading route:
+Leading direction:
 
 ```text
 Current MediaPipe graph/calculators
@@ -507,7 +172,7 @@ replaceable inference node
   optional future accelerated OpenVINO profile
         |
         v
-Current MediaPipe landmark/heatmap/presence/world/projection calculators
+Current MediaPipe landmark/refinement/presence/world/projection calculators
         |
         v
 schema-driven Provider Landmark Frame
@@ -516,7 +181,8 @@ schema-driven Provider Landmark Frame
 provider-specific semantic mapper
         |
         v
-versioned canonical definition (CanonicalBodyV1 first)
+versioned Canonical Skeleton Definition
+  CanonicalBodyV1 first
         |
         +--> stabilization/calibration
         +--> retarget consumer profiles
@@ -524,79 +190,133 @@ versioned canonical definition (CanonicalBodyV1 first)
         +--> gestures/future hand systems
 ```
 
-Why this is credible:
-- current Google MediaPipe detector and landmark Tasks graphs still isolate neural execution behind `AddInference(...)` while keeping detector decode/NMS/ROI and landmark refinement/world projection in MediaPipe calculators;
-- Intel's OpenVINO MediaPipe references include an in-process direct `OpenVINOInferenceCalculator` using `ov::Core`, proving the integration shape exists;
-- the old Intel fork should **not** be adopted wholesale: it is based on MediaPipe 0.10.3 while Homuler 0.16.3 uses MediaPipe 0.10.22, and the direct calculator is an old prototype with hard-coded CPU/TODO configuration;
-- selectively porting/adapting the calculator concept into the current Homuler/MediaPipe native build is therefore preferred.
+Key decisions:
+- do not adopt Intel's old MediaPipe fork wholesale; it is based on 0.10.3 while Homuler 0.16.3 pins MediaPipe 0.10.22;
+- selectively adapt the in-process OpenVINO calculator concept into the current Homuler/MediaPipe generation;
+- OVMS sidecar is technically viable but rejected as the preferred local game path because process/IPC/startup/packaging overhead is unnecessary if in-process succeeds;
+- the archived TFLite/OpenVINO delegate is not a primary production route;
+- MediaPipe Holistic is the preferred future richer-MediaPipe provider to benchmark for hands/fingers/face;
+- RTMPose WholeBody remains a possible future rich-2D provider but lacks the current MediaPipe world-coordinate contract;
+- manual MediaPipe pipeline reimplementation is a last resort.
 
-Alternative status:
-- **OVMS sidecar:** technically viable on current Windows/MediaPipe graph tooling, but not preferred for this local latency-sensitive game because it adds process/IPC/startup/packaging complexity. Keep only as fallback/reference if in-process build proves impractical.
-- **TFLite/OpenVINO delegate:** Intel's repository is archived/read-only; no maintained HD620-target drop-in successor was found. Do not choose as primary route.
-- **official MediaPipe GPU on Windows:** still not a supported production route for this Homuler/desktop setup.
-- **RTMPose/WholeBody:** useful future rich-2D provider (133 keypoints; OpenVINO deployment documented), but it lacks the current MediaPipe world-landmark contract and has real tracking/3D/Windows-integration migration cost.
-- **MediaPipe Holistic:** preferred future rich-MediaPipe provider to benchmark for hands/fingers/face because it retains MediaPipe-style semantics and exposes pose/hand world outputs; low-end cost must be measured.
-- **manual pipeline reimplementation:** last resort only.
+Modular design remains **DESIGN-ONLY**. Do not refactor production runtime yet:
+- provider frame uses schema/provider ID, semantic landmark IDs/groups, schema-driven count, optional normalized/depth/world channels, visibility/presence/confidence and capability flags;
+- canonical definitions are versioned/schema-driven;
+- `CanonicalBodyV1` means exactly today's accepted 20-joint topology/derived-joint semantics;
+- retarget/locomotion/gesture consumers declare only the semantic joints they require;
+- richer providers/topologies are additive and do not rewrite `CanonicalBodyV1`.
 
-### Modular data design to preserve
+## 8. Gate A — exact detector OpenVINO compatibility: COMPLETE / PASS
 
-Provider layer:
-- versioned provider/schema ID;
-- schema-driven landmark count;
-- semantic landmark IDs/names and groups (body/left hand/right hand/face/etc.);
-- optional normalized image position, optional model depth, optional world position;
-- visibility/presence/confidence and capability flags;
-- never force a 2D provider to invent world coordinates.
+Gate A is no longer a future task.
 
-Canonical layer:
-- versioned schema-driven `CanonicalSkeletonDefinition`;
-- `CanonicalBodyV1` is exactly the current 20-joint meaning, coordinate convention and derived pelvis/chest/spine behavior;
-- future `CanonicalBodyV2` / `CanonicalBodyHandsV1` can add joints without changing V1;
-- frame capacity comes from the active definition rather than a global `JointCount=20` assumption.
+Exact detector result:
+- identity PASS: 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
+- OpenVINO 2026.3 direct `Core.read_model()` on unchanged TFLite: **SUCCESS**;
+- exact contract float32 `[1,224,224,3]` -> `[1,2254,12]` + `[1,2254,1]`: **TRUE**;
+- explicit CPU compile + finite-output inference: **SUCCESS**;
+- explicit GPU compile + finite-output inference: **SUCCESS**;
+- no conversion, densification, substitute model, AUTO/HETERO/MULTI or hidden fallback.
 
-Consumer layer:
-- retarget/locomotion/gesture systems declare the semantic joints they require;
-- current humanoid body profile continues to consume only the current body joints;
-- later fingers/gestures consume richer joints independently.
+Conclusion: the exact detector's DENSIFY problem is a Sentis importer limitation for Golden Needle's purposes. It is **not** an OpenVINO compatibility blocker.
 
-Do **not** refactor production `PoseObservation`, `CanonicalPoseFrame` or downstream runtime in the next proof. First prove the inference reuse path and later introduce schema adapters with deterministic parity against the current mapper.
+## 9. Gate B — MediaPipe/OpenVINO parity proof: scaffold implemented, USER run pending
 
-### Current next isolated proof
+Tracked proof location:
+`Tools/MediaPipeOpenVinoParity/`
 
-Gate A — cheap external detector compatibility:
-- new tool: `Tools/OpenVinoLandmarkBenchmark/detector_probe.py`;
-- fail-closed exact detector identity: size 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
-- direct OpenVINO 2026.3 `Core.read_model()` on the unchanged TFLite;
-- require `[1,224,224,3]` float32 -> `[1,2254,12]` + `[1,2254,1]` float32;
-- explicit CPU/GPU compile and one finite-output sanity inference;
-- no DENSIFY rewrite, conversion, substitute model, AUTO/HETERO/MULTI or hidden fallback;
-- it is a compatibility probe, not a performance benchmark.
+Starting source pins are fail-closed:
+- Homuler MediaPipeUnityPlugin `v0.16.3` -> commit `cf4c11d8eef724fe24111b7cd795d55ba490aeec`;
+- that workspace pins Google MediaPipe `v0.10.22` -> commit `c54c06dd8c4314a316c14da31493bcc38ed302e2`;
+- Bazel 6.5.0;
+- OpenVINO Runtime C++ 2026.3.0, official Windows toolkit archive/checksum.
 
-Run from repository root after pulling the branch:
+Read-only audit on the exact 0.10.22 generation confirmed the required seam: pose detector and pose landmark graphs isolate neural execution behind `AddInference(...)`, while MediaPipe calculators retain preprocessing, detector decode/NMS/ROI, tracking, landmark decode/refinement, pose presence, visibility/presence, world decode and projection.
+
+Three proof modes are implemented:
+1. `TASKS_REFERENCE` — official MediaPipe 0.10.22 PoseLandmarker CPU, exact production task bundle, one pose, 0.5/0.5/0.5, segmentation false, deterministic VIDEO mode;
+2. `GRAPH_TFLITE_CPU` — expanded current MediaPipe graph with standard TFLite CPU inference;
+3. `GRAPH_OPENVINO_CPU_FP32` — the same graph/calculators, with **both detector and landmark neural inference** replaced by an in-process OpenVINO CPU FP32 calculator.
+
+The OpenVINO bridge contract is `std::vector<mediapipe::Tensor> -> OpenVINO -> std::vector<mediapipe::Tensor>`. For this architecture proof it uses safe host copies and measures input/output bridge-copy cost separately. Model compilation occurs at graph open, not per frame; the infer request is reused and inference is synchronous to keep the VIDEO-mode comparison deterministic.
+
+The runner:
+- accepts a fixed recorded video or prepared frame sequence;
+- decodes a source video once and reuses the exact same ordered frames/timestamps for each backend;
+- keeps backend tracking state independent;
+- preserves full 33 normalized and world landmarks rather than prematurely mapping down to the current 20-joint canonical body;
+- records final landmark semantics, visibility/presence where available, auxiliary availability, next ROI, detector cadence where exposed, startup/first-frame/frame timing, and OpenVINO detector/landmark inference + bridge-copy timing;
+- labels VIDEO-mode timing as **offline graph-processing capacity**, not Unity LIVE_STREAM frame-to-result latency.
+
+The comparator reports A-vs-B, B-vs-C and A-vs-C:
+- pose presence agreement plus false-positive/false-negative frame indices;
+- normalized x/y/z MAE/RMS/p95/max, visibility/presence and per-landmark worst cases;
+- world x/y/z and 3D Euclidean error in meters;
+- ROI center/size/rotation comparisons where available;
+- detector-continuity/cadence comparisons where available;
+- startup, first-frame, steady-state mean/p50/p95/p99/min/max/population-stddev and processing rate;
+- OpenVINO detector/landmark inference and bridge-copy statistics.
+
+It intentionally applies **no arbitrary Golden Needle PASS/FAIL threshold**. The Orchestrator decides semantic acceptance from the evidence.
+
+USER video/frames, extracted models/sources, native build products, toolchain downloads and reports remain local/ignored.
+
+Builder-side validation completed:
+- Python helper syntax compilation: PASS;
+- synthetic parity-comparator self-test: PASS;
+- exact source/model/version/mode static gates: inspected;
+- native Windows MSVC/Bazel/OpenVINO build and actual recorded-sequence run: **NOT run in the Builder environment** and must not be claimed as successful before USER evidence.
+
+## 10. Current authoritative next step
+
+Keep Unity closed and run from repository root on the USER Windows machine:
 
 ```powershell
-.\Tools\OpenVinoLandmarkBenchmark\.venv\Scripts\python.exe .\Tools\OpenVinoLandmarkBenchmark\detector_probe.py --repo-root .
+.\Tools\MediaPipeOpenVinoParity\bootstrap.ps1
+.\Tools\MediaPipeOpenVinoParity\build.ps1
+.\Tools\MediaPipeOpenVinoParity\run.ps1 -InputVideo "C:\path\golden-needle-motion.mp4"
 ```
 
-If Gate A passes, Gate B is the decisive architecture proof:
-- standalone native build based on the MediaPipe 0.10.22 generation used by Homuler;
-- port a minimal direct OpenVINO inference calculator rather than adopting the old fork;
-- substitute detector + landmark inference only;
-- retain current MediaPipe preprocessing, detector decode/NMS, ROI/tracking, landmark/heatmap refinement, visibility/presence, world decode and projection;
-- run the same short recorded frame sequence through baseline MediaPipe Tasks CPU and the OpenVINO-substituted graph;
-- compare final 33 normalized landmarks, 33 world landmarks, visibility/presence, ROI continuity, full graph latency and fresh-result cadence;
-- no Unity avatar connection until semantic parity + end-to-end performance are strong.
+Recommended sequence:
+- ~8–20 seconds;
+- one person;
+- full body mostly visible;
+- normal movement plus deliberately fast arm/body motion;
+- some torso turn/leg motion if practical;
+- brief partial loss/occlusion is useful but optional.
 
-### Licensing / packaging
+If the result is close/suspicious and a second order check is useful:
 
-Project-level licenses audited are favorable: OpenVINO, MediaPipe, Intel's fork, OVMS, MMPose and MMDeploy are Apache-2.0; Homuler is MIT with third-party notices. A production native plugin still must preserve applicable notices and ship only redistributable runtime DLLs. Alternative downloaded model weights require separate model-card/dataset-license review; do not infer their terms solely from the repository license.
+```powershell
+.\Tools\MediaPipeOpenVinoParity\run.ps1 -InputVideo "C:\path\golden-needle-motion.mp4" -Order OpenVinoFirst
+```
 
-### Governance remains unchanged
+Return to the Orchestrator:
+1. newest `Tools/MediaPipeOpenVinoParity/results/parity-*.txt`;
+2. matching `parity-*.json`;
+3. console block from `=== GOLDEN NEEDLE MEDIAPIPE OPENVINO PARITY SUMMARY ===` through `=== END GOLDEN NEEDLE MEDIAPIPE OPENVINO PARITY SUMMARY ===`;
+4. any bootstrap/build/runtime error verbatim if the proof cannot complete.
 
-- no merge to `main` without explicit USER approval;
-- no Phase 5A acceptance;
-- no Phase 6;
-- no production provider integration yet;
-- no canonical runtime refactor yet;
+Do **not** declare Gate B semantic parity PASS until those reports are reviewed.
+
+## 11. Decision after USER Gate B evidence
+
+If semantic parity is strong and end-to-end offline graph capacity materially beats the current reference without hidden regressions, the Orchestrator may authorize the next isolated step: a Windows native-plugin/Unity coexistence proof with measured rendering contention and live frame-to-result behavior.
+
+If A-vs-B is poor, fix the custom graph/configuration before judging OpenVINO. If B-vs-C is poor while A-vs-B is strong, investigate the backend bridge/model output mapping/precision. If performance improvement disappears at full graph level, do not integrate merely because raw neural benchmarks were fast.
+
+Even a strong Gate B result does **not** itself approve production replacement.
+
+## 12. Hard stop list
+
+Until new evidence/USER approval:
+- no merge to `main`;
+- no Phase 5A acceptance claim;
+- no Phase 6 start;
+- no production OpenVINO/Sentis provider integration;
+- no canonical/provider runtime refactor;
 - no detector densification;
-- no removal of the current MediaPipe CPU fallback.
+- no duplicate CPU+GPU inference every frame;
+- no removal or weakening of current MediaPipe CPU fallback;
+- no global D3D12 production switch based on the Sentis spike;
+- no lowering model quality merely to hit an FPS number.
