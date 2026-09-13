@@ -21,8 +21,11 @@ cc_library(
         "//mediapipe/calculators/tensor:inference_calculator_cc_proto",
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/formats:tensor",
+        "//mediapipe/tasks/cc/core:mediapipe_builtin_op_resolver",
         "@com_google_absl//absl/status",
         "@openvino_gate_b//:openvino",
+        "@org_tensorflow//tensorflow/lite:framework_stable",
+        "@org_tensorflow//tensorflow/lite/kernels:builtin_ops",
     ],
     alwayslink = 1,
 )
