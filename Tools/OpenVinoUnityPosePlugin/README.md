@@ -1,33 +1,49 @@
 # Golden Needle OpenVINO Unity Pose Plugin
 
-This workspace is the additive Windows x86_64 native-plugin path approved for the Golden Needle OpenVINO Unity integration experiment. It is deliberately separate from Homuler's stock MediaPipe native library and from the existing production `MediaPipePoseProvider`.
+This workspace is the additive Windows x86_64 native-plugin path for the Golden Needle OpenVINO Unity experiment. It remains separate from Homuler's stock MediaPipe native library; stock MediaPipe/TFLite CPU remains the default/fallback backend.
 
-## U1 scope
+## Current scope
 
-U1 proves the native/managed packaging boundary before any vision code is exposed:
+The plugin now implements the U1/U2 native boundary and the managed U3 selection surface:
 
 - distinct DLL: `golden_needle_openvino_pose.dll`;
-- versioned C ABI (`1.0`) with an opaque context and thread-local last-error path;
-- exact OpenVINO `2026.3.0` pin, explicit `CPU` device only;
-- MediaPipe semantic-generation pin recorded as `0.10.22` / Homuler `0.16.3`;
-- MSVC x64 Release build using the dynamic non-debug CRT (`/MD`);
-- same-process `LoadLibraryExW -> ABI/version -> OpenVINO CPU self-test -> destroy -> FreeLibrary` proof;
-- additive packaging under `Assets/GoldenNeedle/Plugins/OpenVinoPose/x86_64/`;
-- no patch, rename, or replacement of `Mediapipe.Unity.dll` or the stock TFLite CPU path.
+- versioned C ABI **v1.1** with opaque context + pose engine and thread-local last-error path;
+- exact OpenVINO `2026.3.0`, explicit `CPU` only;
+- MediaPipe `0.10.22` / Homuler `0.16.3` semantic-generation pins;
+- exact MediaPipe `PoseLandmarkerGraph` preprocessing, detector decode/NMS, ROI/tracking, landmark refinement, visibility/presence and world-landmark projection semantics;
+- only detector + landmark neural execution replaced by in-process OpenVINO CPU FP32;
+- no Gate B shadow-TFLite neural inference in the practical runtime calculator; TFLite is metadata-only for tensor naming/order required by MediaPipe;
+- synchronous RGBA ABI result with exactly 33 normalized/world landmarks, presence/visibility flags, backend identity, detector-run state and timing telemetry;
+- MSVC/Bazel Windows x64 Release build with dynamic non-debug CRT;
+- additive packaging under `Assets/GoldenNeedle/Plugins/OpenVinoPose/x86_64/` plus exact generated detector/landmark staging under `Assets/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/`;
+- no patch, rename or replacement of Homuler's stock `mediapipe_c.dll` or managed package.
 
-The U1 plugin does **not** process images. U2 extends this ABI with the exact MediaPipe 0.10.22 pose graph semantics already proven by `Tools/MediaPipeOpenVinoParity`.
+The Unity provider exposes `MediaPipeTfliteCpu` as enum value `0` and serialized default. `OpenVinoCpuFp32` must be selected explicitly for A/B QA.
 
 ## Dependency pins
 
 - OpenVINO C++ toolkit: `2026.3.0`, official Intel Windows x86_64 archive. Bootstrap verifies Intel's adjacent SHA-256 sidecar before extraction.
-- MediaPipe semantic generation: `0.10.22`, commit `c54c06dd8c4314a316c14da31493bcc38ed302e2`.
+- MediaPipe: `0.10.22`, commit `c54c06dd8c4314a316c14da31493bcc38ed302e2`.
 - Homuler MediaPipeUnityPlugin: `0.16.3`, commit `cf4c11d8eef724fe24111b7cd795d55ba490aeec`.
+- Bazel: `6.5.0` through native Bazelisk.
 
-OpenVINO and MediaPipe are Apache-2.0. See `THIRD_PARTY_NOTICES.md`. No third-party binary is committed by this workspace; packaging is generated locally/CI from the verified official archive.
+OpenVINO and MediaPipe are Apache-2.0. See `THIRD_PARTY_NOTICES.md`. Generated third-party/runtime binaries are intentionally not committed.
 
-## Build
+## Local Windows preparation
 
-From repository root on Windows x64 with Visual Studio 2022 Desktop C++ tools and CMake:
+Keep Unity closed while the generated native package is being replaced. From repository root on Windows x64 with Visual Studio 2022 Desktop C++ tools, CMake, MSYS2 build utilities and native Bazelisk available:
+
+```powershell
+.\Tools\OpenVinoUnityPosePlugin\scripts\prepare_unity.ps1
+```
+
+For a clean regeneration:
+
+```powershell
+.\Tools\OpenVinoUnityPosePlugin\scripts\prepare_unity.ps1 -Recreate
+```
+
+The wrapper executes the same fail-closed stages individually available as:
 
 ```powershell
 .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
@@ -35,10 +51,14 @@ From repository root on Windows x64 with Visual Studio 2022 Desktop C++ tools an
 .\Tools\OpenVinoUnityPosePlugin\scripts\package_unity.ps1
 ```
 
-The build fails closed if the dependency state no longer matches the approved pins. `package_unity.ps1` copies generated files only into the dedicated OpenVINO plugin folder and then runs the dynamic-load smoke test against that packaged copy.
+Do not open Unity until the command reports `OPENVINO_UNITY_LOCAL_PREP=PASS`.
 
-## Runtime contract at U1
+## Runtime contract
 
-The ABI accepts only `device="CPU"`. It does not use `AUTO`, `GPU`, HETERO, or fallback device selection. `gnovpose_self_test` forces the CPU plugin to resolve and rejects an OpenVINO runtime whose build number does not contain `2026.3.0`.
+The native context accepts only `device="CPU"`. It does not use `AUTO`, `GPU`, `NPU`, HETERO or fallback device selection. Native pose-engine creation validates exact detector/landmark model identity and stream-mode processing requires strictly increasing timestamps.
 
-U2/U3 must preserve the exact current `PoseObservation` 33-landmark semantics and route both backends through the existing frozen 33→20 canonical mapper and downstream stack.
+The U3 managed provider keeps the existing webcam/orientation/downscale/readback/prepared-frame scheduler and `PoseObservation` trust/grace/world semantics. OpenVINO work runs behind the same one-inference/no-backlog gate and publishes through the same frozen 33→20 canonical mapper and downstream stabilization/calibration/retarget/locomotion stack.
+
+## Validation boundary
+
+Automated validation covers native lifecycle/package viability, the native real-frame semantic smoke once U2 completes, managed ABI layout and provider structural invariants. It does **not** replace USER Windows/Unity A/B QA. Production acceptance still requires comparable live tracking behavior plus meaningful end-to-end performance improvement without unacceptable render/CPU regressions.
