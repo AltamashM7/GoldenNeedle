@@ -13,8 +13,8 @@ The intelligent Web Builder must update this file whenever a durable checkpoint/
 - U0 plan/recovery scaffold: **COMPLETE**
 - U1 architecture resolution/native lifecycle skeleton: **COMPLETE**
 - U2 native OpenVINO backend: **IMPLEMENTED; WINDOWS BUILD/REAL-FRAME PROOF IN PROGRESS**
-- U3 Unity selection/telemetry: **IMPLEMENTED; MANAGED ABI/STATIC VALIDATION PASS; UNITY RUNTIME QA PENDING**
-- U4 USER A/B runtime QA: **NOT STARTED**
+- U3 Unity selection/telemetry: **IMPLEMENTED; MANAGED ABI/STATIC VALIDATION PASS; NATIVE PACKAGE PROOF + UNITY RUNTIME QA PENDING**
+- U4 USER A/B runtime QA: **READY PROCEDURE WRITTEN; NOT STARTED**
 - U5 cleanup/production recommendation: **NOT STARTED**
 
 ## Proven evidence entering Unity integration
@@ -75,10 +75,14 @@ These are offline VIDEO-mode measurements, not Unity LIVE_STREAM end-to-end resu
 
 1. Run `34767029284`, job `103749712693`: failed before C++ build because the hosted MSYS2 install lacked `git`, `patch`, `unzip`, `zip`; fixed in workflow.
 2. Run `34767075477`, job `103749841159`: bootstrap reached Bazel but hosted `bazelisk` resolved to a PowerShell shim incompatible with the native-process bootstrap; fixed by pinning native Bazelisk.
-3. Active authoritative run: `34767143321`, job `103750021491`, implementation head `fcb3ba53b1847afc6e1e5e3ffd36a5d8e61315f6`. Checkout, MSYS2 utilities, native Bazelisk and exact pinned source/OpenVINO bootstrap have passed. The actual Bazel build + lifecycle + real-frame semantic smoke remains in progress; additive packaging is pending.
+3. Run `34767143321`, job `103750021491`, head `fcb3ba53b1847afc6e1e5e3ffd36a5d8e61315f6`: checkout, MSYS2 utilities, native Bazelisk and exact pinned bootstrap all passed. The actual U2 build/smoke step was **cancelled by the workflow's 60-minute job limit** and packaging was skipped. The surfaced step evidence did not identify a compiler/link/runtime failure before cancellation, so this is treated as an insufficient CI budget, not a U2 PASS or backend failure.
+4. Later same-60-minute proof run `34769414654`, job `103756144884`, head `bf73a6b738f5d843e7c06fd5d9b4ac330dbb425a`: prerequisites passed and the native build/smoke entered `in_progress`. It is superseded as the final proof by the widened-budget recovery run below.
+5. Timeout-only recovery commit: `43e5a888b80874ace1643dcdcfc4cb5a35eb919e` (`ci: allow full U2 Windows native build`). The only workflow change is `timeout-minutes: 60` -> `120`; source, dependency pins, models, backend and build commands are unchanged.
+6. Current authoritative recovery run: `34770530769`, job `103759179464`, head `43e5a888b80874ace1643dcdcfc4cb5a35eb919e`. This must prove the actual native build, lifecycle smoke, real-frame 33-landmark semantic smoke and additive packaging before U2 can be marked COMPLETE.
 
 - U2 is **not COMPLETE** until the native build/real-frame smoke and package complete successfully.
-- If the active run fails, use its first actual compiler/runtime failure as the source of truth and make a narrow fix; do not change pins or backend.
+- If the 120-minute proof exposes a real compiler/link/runtime error, use that first actual failure as the source of truth and make a narrow fix; do not change pins, models or backend.
+- Do not classify timeout/cancellation as a semantic PASS.
 
 ## U3 — IMPLEMENTED; MANAGED VALIDATION PASS; UNITY RUNTIME QA PENDING
 
@@ -101,7 +105,7 @@ These are offline VIDEO-mode measurements, not Unity LIVE_STREAM end-to-end resu
 - The same prepared RGBA pixels are copied once into one reusable managed worker buffer; there is still at most one inference outstanding, so that buffer cannot race a subsequent launch.
 - Native worker failure is published back to the main-thread provider failure path; no automatic silent backend fallback is introduced during an explicitly selected OpenVINO session.
 - Restart/teardown waits any native inference/bootstrap work before disposing the native engine/context.
-- Telemetry now includes selected/effective backend, OpenVINO managed input-copy, graph, detector, landmark, bridge timings and detector-run state in addition to the existing camera/readback/request→result/frame→result/pressure diagnostics.
+- Telemetry includes selected/effective backend, OpenVINO managed input-copy, graph, detector, landmark, bridge timings and detector-run state in addition to existing camera/readback/request-to-result/frame-to-result/pressure diagnostics.
 
 ### U3 managed validation
 
@@ -109,23 +113,25 @@ These are offline VIDEO-mode measurements, not Unity LIVE_STREAM end-to-end resu
 - Clean authoritative validation run: `34769239438` completed success.
 - ABI smoke output: `GNOVPOSE_MANAGED_ABI_SMOKE=PASS`.
 - Managed ABI = `65537` / v1.1; landmark count = 33; native result layout = **1280 bytes**.
-- Test also asserts key field offsets, inline 33-landmark array initialization, Cdecl entry points, library name, and stock/default backend enum value `0`.
+- Test asserts key field offsets, inline 33-landmark array initialization, Cdecl entry points, library name, and stock/default backend enum value `0`.
 - Provider static integration invariants passed.
 - This is not a substitute for Unity Editor/Windows hardware runtime validation.
 
-### U3 commits after provider wiring
+### U3/U4 preparation
 
-- ABI smoke project: `1bd7c85ae945845ebbcee53cb8b819c5155eab8f`.
-- ABI assertions: `3647e59aec555cfb63c26ee20f38624ba702c013`, corrected enum-safe test `192646ad6225aa68a953cc18bf1505b8770854f4`.
-- Managed validation workflow: `f10bd788da13d6638d7986aae8271a0822fe7d93`; noise-free workflow fix: `63cd710a404452802e454480ddfbe2c1ba5da6a9`.
+- One-command local additive preparation: `Tools/OpenVinoUnityPosePlugin/scripts/prepare_unity.ps1` (commit `588ef5df0f3d812b53d95d976e7e8b9bad87c105`). It bootstraps/builds/packages, checks stock MediaPipe files are not replaced, checks exact extracted model identities, and prints `OPENVINO_UNITY_LOCAL_PREP=PASS` only after successful preparation.
+- Updated tool documentation: `bf73a6b738f5d843e7c06fd5d9b4ac330dbb425a`.
+- USER A/B procedure: `Docs/openvino-unity-ab-qa.md`, commit `17d9aced86e17a1dca757a6ee549e3bbb1571057`.
+- The A/B procedure preserves the stock backend/default, requires identical camera/readback/320x240/downstream settings, captures F7 backend/result-rate/latency/pressure telemetry, OpenVINO internal timings, fast-motion fidelity, partial-body recovery and restart/teardown behavior.
+- Generated `.dll`, `.tflite`, `plugins.xml`, generated `.meta`, build and bootstrap artifacts remain ignored/untracked.
 
 Primary handoff: `Docs/worker-briefs/openvino-unity-integration-handoff.md`.
 Execution plan: `Docs/openvino-unity-integration-checkpoints.md`.
 
 ## Exact next action
 
-1. Continue checking U2 run `34767143321`, job `103750021491` until definitive success/failure.
-2. On U2 failure, fix the first real compiler/runtime issue narrowly. On success, record U2 COMPLETE with exact native build/smoke/package evidence.
-3. Before USER U4, perform final read-only audit of the U3 provider diff and generated package/run instructions; do not modify the USER scene merely to select a backend.
-4. Prepare a minimal USER A/B procedure that preserves stock TFLite as baseline and explicitly selects OpenVINO for the second run, gathering backend identity, result rate, request→result, frame→result, readback, render and OpenVINO internal timings.
-5. Stop at the genuine USER Windows/Unity runtime QA boundary; do not claim OpenVINO production acceptance before that evidence.
+1. Follow current authoritative U2 recovery run `34770530769`, job `103759179464`, to a definitive result.
+2. If it fails with a real compiler/link/runtime error, fix the first actual error narrowly; if it succeeds, record U2 COMPLETE with exact native build/smoke/package evidence.
+3. On U2 native/package success, classify U3 as COMPLETE for implementation/pre-USER validation and stop at the genuine U4 USER Windows/Unity A/B boundary.
+4. USER U4 must follow `Docs/openvino-unity-ab-qa.md`; do not claim runtime/production acceptance before USER evidence.
+5. Do not start U5 recommendation/cleanup decisions from CI alone, do not merge to `main`, and do not start Phase 6.
