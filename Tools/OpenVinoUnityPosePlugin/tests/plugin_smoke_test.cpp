@@ -1,4 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 
 #include "golden_needle_openvino_pose.h"
@@ -6,6 +5,7 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 template <typename T>
@@ -22,31 +22,55 @@ std::string LastErrorText(int32_t (GNOVPOSE_CALL *get_last_error)(char*, uint32_
   if (get_last_error(buffer, sizeof(buffer)) == GNOVPOSE_OK) return buffer;
   return "<last-error unavailable>";
 }
+
+void RemoveSearchDirectories(std::vector<DLL_DIRECTORY_COOKIE>* cookies) {
+  for (auto it = cookies->rbegin(); it != cookies->rend(); ++it) {
+    if (*it != nullptr) RemoveDllDirectory(*it);
+  }
+  cookies->clear();
 }
+}  // namespace
 
 int wmain(int argc, wchar_t** argv) {
-  if (argc != 2) {
-    std::wcerr << L"usage: gnovpose_smoke.exe <absolute-path-to-golden_needle_openvino_pose.dll>\n";
+  if (argc < 2) {
+    std::wcerr << L"usage: gnovpose_smoke.exe <absolute-path-to-golden_needle_openvino_pose.dll> [dependency-dir ...]\n";
     return 64;
   }
   const std::filesystem::path dll_path = std::filesystem::absolute(argv[1]);
-  const std::wstring dir = dll_path.parent_path().wstring();
 
   if (!SetDefaultDllDirectories(LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_USER_DIRS)) {
     std::cerr << "SetDefaultDllDirectories failed: " << GetLastError() << "\n";
     return 2;
   }
-  DLL_DIRECTORY_COOKIE cookie = AddDllDirectory(dir.c_str());
-  if (cookie == nullptr) {
-    std::cerr << "AddDllDirectory failed: " << GetLastError() << "\n";
+
+  std::vector<DLL_DIRECTORY_COOKIE> cookies;
+  auto add_search_directory = [&](const std::filesystem::path& path) -> bool {
+    const std::filesystem::path absolute = std::filesystem::absolute(path);
+    DLL_DIRECTORY_COOKIE cookie = AddDllDirectory(absolute.c_str());
+    if (cookie == nullptr) {
+      std::wcerr << L"AddDllDirectory failed for '" << absolute.c_str()
+                 << L"': " << GetLastError() << L"\n";
+      return false;
+    }
+    cookies.push_back(cookie);
+    return true;
+  };
+
+  if (!add_search_directory(dll_path.parent_path())) {
     return 3;
+  }
+  for (int i = 2; i < argc; ++i) {
+    if (!add_search_directory(argv[i])) {
+      RemoveSearchDirectories(&cookies);
+      return 3;
+    }
   }
 
   HMODULE module = LoadLibraryExW(
       dll_path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS);
   if (module == nullptr) {
     std::cerr << "LoadLibraryExW failed: " << GetLastError() << "\n";
-    RemoveDllDirectory(cookie);
+    RemoveSearchDirectories(&cookies);
     return 4;
   }
 
@@ -68,20 +92,28 @@ int wmain(int argc, wchar_t** argv) {
   if (!get_abi || !get_version || !get_build || !get_last_error || !create || !destroy ||
       !self_test || !get_runtime) {
     FreeLibrary(module);
-    RemoveDllDirectory(cookie);
+    RemoveSearchDirectories(&cookies);
     return 5;
   }
   if (get_abi() != GNOVPOSE_ABI_VERSION) {
     std::cerr << "ABI mismatch: " << get_abi() << " != " << GNOVPOSE_ABI_VERSION << "\n";
     FreeLibrary(module);
-    RemoveDllDirectory(cookie);
+    RemoveSearchDirectories(&cookies);
     return 6;
   }
 
   char text[2048] = {};
-  if (get_version(text, sizeof(text)) != GNOVPOSE_OK) return 7;
+  if (get_version(text, sizeof(text)) != GNOVPOSE_OK) {
+    FreeLibrary(module);
+    RemoveSearchDirectories(&cookies);
+    return 7;
+  }
   std::cout << "plugin_version=" << text << "\n";
-  if (get_build(text, sizeof(text)) != GNOVPOSE_OK) return 8;
+  if (get_build(text, sizeof(text)) != GNOVPOSE_OK) {
+    FreeLibrary(module);
+    RemoveSearchDirectories(&cookies);
+    return 8;
+  }
   std::cout << "build_info=" << text << "\n";
 
   gnovpose_config config{};
@@ -94,7 +126,7 @@ int wmain(int argc, wchar_t** argv) {
   if (result != GNOVPOSE_OK || context == nullptr) {
     std::cerr << "create failed result=" << result << " error=" << LastErrorText(get_last_error) << "\n";
     FreeLibrary(module);
-    RemoveDllDirectory(cookie);
+    RemoveSearchDirectories(&cookies);
     return 9;
   }
   result = self_test(context);
@@ -102,14 +134,14 @@ int wmain(int argc, wchar_t** argv) {
     std::cerr << "self_test failed result=" << result << " error=" << LastErrorText(get_last_error) << "\n";
     destroy(context);
     FreeLibrary(module);
-    RemoveDllDirectory(cookie);
+    RemoveSearchDirectories(&cookies);
     return 10;
   }
   if (get_runtime(context, text, sizeof(text)) != GNOVPOSE_OK) {
     std::cerr << "runtime_info failed: " << LastErrorText(get_last_error) << "\n";
     destroy(context);
     FreeLibrary(module);
-    RemoveDllDirectory(cookie);
+    RemoveSearchDirectories(&cookies);
     return 11;
   }
   std::cout << "runtime_info=" << text << "\n";
@@ -117,10 +149,10 @@ int wmain(int argc, wchar_t** argv) {
 
   if (!FreeLibrary(module)) {
     std::cerr << "FreeLibrary failed: " << GetLastError() << "\n";
-    RemoveDllDirectory(cookie);
+    RemoveSearchDirectories(&cookies);
     return 12;
   }
-  RemoveDllDirectory(cookie);
+  RemoveSearchDirectories(&cookies);
   std::cout << "GNOVPOSE_LOAD_VERSION_SELFTEST_UNLOAD=PASS\n";
   return 0;
 }

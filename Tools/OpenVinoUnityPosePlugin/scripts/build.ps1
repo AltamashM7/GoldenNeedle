@@ -37,15 +37,28 @@ foreach ($debugRuntime in @("VCRUNTIME140D.dll", "MSVCP140D.dll", "ucrtbased.dll
     }
 }
 
-$runtimeBin = Join-Path $OpenVinoRoot "runtime\bin\intel64\Release"
-$oldPath = $env:PATH
-try {
-    $env:PATH = "$runtimeBin;$oldPath"
-    & $Smoke $Plugin
-    if ($LASTEXITCODE -ne 0) { throw "U1 build-directory Load/Version/SelfTest/Unload smoke failed." }
-} finally {
-    $env:PATH = $oldPath
+$SetupVars = Join-Path $OpenVinoRoot "setupvars.bat"
+if (-not (Test-Path $SetupVars)) { throw "OpenVINO setupvars.bat missing: $SetupVars" }
+$envLines = & cmd.exe /d /s /c "call `"$SetupVars`" >nul && set"
+if ($LASTEXITCODE -ne 0) { throw "OpenVINO setupvars.bat failed while resolving smoke-test dependencies." }
+$ovPath = $null
+foreach ($line in $envLines) {
+    $eq = $line.IndexOf("=")
+    if ($eq -le 0) { continue }
+    $name = $line.Substring(0, $eq)
+    $value = $line.Substring($eq + 1)
+    if ($name -ieq "PATH") { $ovPath = $value }
 }
+if (-not $ovPath) { throw "OpenVINO setupvars.bat did not produce PATH." }
+$rootNormalized = [IO.Path]::GetFullPath($OpenVinoRoot).TrimEnd('\') + '\'
+$runtimeDirs = @($ovPath -split ';' | Where-Object {
+    $_ -and (Test-Path $_) -and
+    [IO.Path]::GetFullPath($_).StartsWith($rootNormalized, [StringComparison]::OrdinalIgnoreCase)
+} | ForEach-Object { [IO.Path]::GetFullPath($_) } | Select-Object -Unique)
+if ($runtimeDirs.Count -eq 0) { throw "No verified OpenVINO runtime dependency directories were discovered." }
+
+& $Smoke $Plugin @runtimeDirs
+if ($LASTEXITCODE -ne 0) { throw "U1 build-directory Load/Version/SelfTest/Unload smoke failed." }
 
 Write-Host "[U1] build PASS: $Plugin"
 Write-Host "[U1] debug CRT guard PASS"
