@@ -23,6 +23,13 @@ jobs:
         shell: pwsh
         run: C:\msys64\usr\bin\bash.exe -lc "pacman -Sy --noconfirm --needed git patch unzip zip"
 
+      - name: Pin native Bazelisk launcher
+        shell: pwsh
+        run: |
+          $bazelisk = Join-Path $env:RUNNER_TEMP "bazelisk.exe"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/bazelbuild/bazelisk/releases/download/v1.28.1/bazelisk-windows-amd64.exe" -OutFile $bazelisk
+          $env:RUNNER_TEMP | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
       - name: Bootstrap exact pinned native sources and OpenVINO runtime
         shell: pwsh
         run: .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
