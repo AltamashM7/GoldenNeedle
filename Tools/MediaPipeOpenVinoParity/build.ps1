@@ -29,6 +29,24 @@ if (-not (Select-String -Path $ModelTaskGraph -Pattern "GOLDEN_NEEDLE_GATE_B_BAC
     throw "Gate B inference seams are missing from the ignored MediaPipe workspace. Rerun bootstrap.ps1 -Recreate."
 }
 
+# Refresh only the isolated inference source and its BUILD metadata from the
+# tracked overlay. Do not recopy the whole overlay here because parity_runner.cc
+# receives deterministic local build-time patches below.
+$OverlayGateB = Join-Path $ToolRoot "overlay\mediapipe\tasks\cc\vision\pose_landmarker\golden_needle_gate_b"
+$WorkspaceGateB = Join-Path $MediaPipe "mediapipe\tasks\cc\vision\pose_landmarker\golden_needle_gate_b"
+foreach ($name in @("openvino_inference_calculator.cc", "BUILD")) {
+    $source = Join-Path $OverlayGateB $name
+    $destination = Join-Path $WorkspaceGateB $name
+    if (-not (Test-Path $source) -or -not (Test-Path $destination)) {
+        throw "Gate B isolated overlay file is missing: $name. Rerun bootstrap.ps1 -Recreate."
+    }
+    Copy-Item -Force $source $destination
+}
+if (-not (Select-String -Path (Join-Path $WorkspaceGateB "openvino_inference_calculator.cc") -Pattern "Gate B raw parity" -Quiet)) {
+    throw "FAIL CLOSED: Gate B raw-parity diagnostic source did not refresh into the ignored MediaPipe workspace."
+}
+Write-Host "[Gate B] refreshed OpenVINO raw-parity diagnostic source"
+
 # TaskRunner always installs ModelResourcesCache. The custom GRAPH modes must
 # therefore provide the same MediaPipeBuiltinOpResolver that BaseOptions uses
 # by default; passing nullptr leaves the cache empty and makes the stock TFLite
