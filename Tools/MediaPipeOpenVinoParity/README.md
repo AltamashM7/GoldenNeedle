@@ -28,7 +28,14 @@ No fallback MediaPipe/OpenVINO version is permitted.
 
 The exact MediaPipe 0.10.22 Tasks graphs remain responsible for ImageToTensor preprocessing/letterbox handling, detector anchors/decode/NMS/detection-to-ROI, ROI transform/rotation and previous-landmark tracking, landmark tensor split/39-landmark decode/heatmap refinement/33 public split, presence/visibility, world-landmark decode/projection, auxiliary landmarks, next-frame ROI, and stream-mode smoothing/tracking.
 
-The isolated patch changes only `InferenceSubgraph` node construction when `GOLDEN_NEEDLE_GATE_B_BACKEND=OPENVINO_CPU_FP32`. Standard TFLite remains the unchanged branch otherwise. No detector/ROI/postprocessing math is manually reimplemented.
+The isolated patch changes only the inference plumbing when `GOLDEN_NEEDLE_GATE_B_BACKEND=OPENVINO_CPU_FP32`. The normal Tasks/TFLite path stays unchanged.
+
+MediaPipe's `TaskRunner` normally installs `ModelResourcesCacheService`, and `ModelTaskGraph::AddInference` may therefore pass a model-resource tag rather than a filename into `InferenceSubgraph`. The OpenVINO calculator needs the exact file-backed TFLite. Gate B consequently makes two narrow, OpenVINO-only changes in the ignored external MediaPipe checkout:
+
+1. `ModelTaskGraph::AddInference` passes `model_resources.GetModelFile()` into the inference subgraph only when the Gate B OpenVINO backend is selected;
+2. `InferenceSubgraph` replaces only its inference node with `GoldenNeedleOpenVinoInferenceCalculator` in that mode.
+
+Every other mode retains MediaPipe's stock resource/inference path. No detector/ROI/postprocessing math is manually reimplemented.
 
 ## Three modes
 
@@ -40,7 +47,7 @@ Official MediaPipe 0.10.22 C++ `PoseLandmarker` in VIDEO mode using the exact pr
 
 ### `GRAPH_TFLITE_CPU`
 
-An expanded `PoseLandmarkerGraph` using the exact extracted detector/landmark TFLites and standard MediaPipe/TFLite CPU inference. Extra outputs expose auxiliary landmarks, next-frame ROI and detector cadence.
+An expanded `PoseLandmarkerGraph` using the exact extracted detector/landmark TFLites and standard MediaPipe/TFLite CPU inference. Extra outputs expose auxiliary landmarks, next-frame ROI and detector-output cadence.
 
 ### `GRAPH_OPENVINO_CPU_FP32`
 
@@ -62,17 +69,41 @@ Before any run `scripts/prepare_models.py` verifies:
 
 No conversion, densification, quantization change, alternate model or hidden fallback is allowed.
 
-## Prerequisites
+## Windows prerequisites
 
-Keep Unity closed while building/running. Required locally: Windows 10/11 x64, Git for Windows, 64-bit Python 3.10+ (stdlib only), Visual Studio 2022 Build Tools with Desktop development with C++/MSVC v143/Windows SDK, and Bazelisk on PATH. Homuler pins Bazel 6.5.0. No Administrator rights are intended and global Python packages are not modified.
+Keep Unity closed while building/running.
+
+Gate B deliberately follows the Homuler v0.16.3 Windows build generation rather than the Python 3.14 environment used by the earlier external OpenVINO benchmark. Required locally:
+
+- Windows 10/11 x64;
+- Git for Windows;
+- **64-bit Python 3.12**. Homuler's MediaPipe 0.10.22 workspace carries hermetic Python locks only through 3.12 and its Windows CI uses 3.12; Python 3.14 alone is not accepted for this native proof;
+- Visual Studio 2022 Build Tools with **Desktop development with C++**, MSVC v143 and a Windows SDK;
+- CMake on `PATH` (Gate B uses Homuler's OpenCV CMake source-build path);
+- MSYS2, normally `C:\msys64`, with `git`, `patch`, `unzip` and `zip` installed;
+- Bazelisk on `PATH` (recommended), or Bazel itself, resolving to exactly Bazel 6.5.0 from Homuler's `.bazelversion`.
+
+No Administrator rights are intended and no global Python package is modified. `bootstrap.ps1` checks these prerequisites and stops with a targeted message instead of silently changing toolchain generations.
+
+The build uses Homuler's Windows conventions: `MEDIAPIPE_DISABLE_GPU=1`, OpenCV `cmake`, Python 3.12 repository/action environment, the exact Homuler MediaPipe patches, MSYS2 `BAZEL_SH`, and a low-end-safe `--jobs=2` override instead of Homuler's default 128 jobs.
 
 ## Commands
 
-From repo root:
+From repo root, run one stage at a time:
 
 ```powershell
 .\Tools\MediaPipeOpenVinoParity\bootstrap.ps1
+```
+
+Only after that prints `[Gate B] bootstrap PASS`:
+
+```powershell
 .\Tools\MediaPipeOpenVinoParity\build.ps1
+```
+
+Only after the build passes:
+
+```powershell
 .\Tools\MediaPipeOpenVinoParity\run.ps1 -InputVideo "C:\path\golden-needle-motion.mp4"
 ```
 
@@ -88,7 +119,7 @@ For an order-reversal confirmation pass:
 .\Tools\MediaPipeOpenVinoParity\run.ps1 -InputVideo "C:\path\golden-needle-motion.mp4" -Order OpenVinoFirst
 ```
 
-`bootstrap.ps1 -Recreate` recreates only the ignored Gate B workspaces and does not touch the Unity package.
+`bootstrap.ps1 -Recreate` resets/recreates only the ignored Gate B Homuler/MediaPipe/OpenVINO workspaces. It does not touch the Unity package or production source.
 
 ## Input/timing semantics
 
@@ -100,13 +131,13 @@ Gate B uses synchronous VIDEO-mode temporal processing. Reported timing is **off
 
 `scripts/compare.py` compares Tasks↔TFLite, TFLite↔OpenVINO and Tasks↔OpenVINO. It reports pose-present agreement/disagreement frames; normalized x/y/z MAE/RMS/p95/max; overall xyz error; visibility/presence differences; world-coordinate errors and 3D Euclidean errors in meters; per-landmark worst cases; ROI center/size/rotation error where available; detector-cadence disagreement; startup/first/steady timing; mean/p50/p95/p99/min/max/population stddev/rate; and OpenVINO inference/bridge timings.
 
-`TASKS_REFERENCE` does not expose internal ROI/detector packets through its public API, so those fields are unavailable rather than invented. No arbitrary Golden Needle PASS/FAIL tolerance is applied.
+`TASKS_REFERENCE` does not expose internal ROI/detector packets through its public API, so those fields are unavailable rather than invented.
 
-Comparator self-test:
+For `GRAPH_OPENVINO_CPU_FP32`, `detector_calls` and `landmark_calls` come from the Gate B OpenVINO calculator telemetry and are exact inference-node invocation counts. In the current `GRAPH_TFLITE_CPU` raw footer, the legacy `detector_calls` label is only a **detector output-packet/frame proxy**, not an instrumented exact TFLite inference count; interpret it accordingly. Per-frame `detector_ran` is likewise output-observability evidence. This limitation does not affect the final landmark/world semantic comparison.
 
-```powershell
-python .\Tools\MediaPipeOpenVinoParity\scripts\compare.py --self-test
-```
+No arbitrary Golden Needle PASS/FAIL tolerance is applied.
+
+Comparator self-test can be run with the Python 3.12 path recorded by bootstrap; it does not require external Python packages.
 
 ## Reports to return
 
@@ -121,6 +152,6 @@ Return both plus the console block between `=== GOLDEN NEEDLE MEDIAPIPE OPENVINO
 
 `.work/`, downloads, external clones, extracted models, Bazel/build outputs, inputs/decoded frames/raw runs/results are ignored. No third-party binary is committed.
 
-No MediaPipe pose graph-builder source is copied into Golden Needle. Bootstrap checks out exact MediaPipe 0.10.22, applies Homuler v0.16.3's own patches, then `scripts/apply_overlay.py` makes one narrow external-workspace adaptation to `mediapipe/tasks/cc/core/model_task_graph.cc`: the standard inference branch remains intact; the optional OpenVINO branch replaces only the `InferenceSubgraph` inference node and requires a file-backed exact TFLite. If the expected seam changes, patching fails instead of guessing.
+No MediaPipe pose graph-builder source is copied into Golden Needle. Bootstrap checks out exact MediaPipe 0.10.22, applies the exact five patches referenced by Homuler v0.16.3 (`mediapipe_opencv.diff`, `mediapipe_visibility.diff`, `mediapipe_model_path.diff`, `mediapipe_extension.diff`, `mediapipe_workaround.diff`), then `scripts/apply_overlay.py` makes the two narrow OpenVINO-only adaptations described above and copies the research calculator/runner into the ignored MediaPipe tree. If any expected source seam changes, patching fails instead of guessing.
 
 See `THIRD_PARTY_NOTICES.md`. Gate B does not mean OpenVINO is production-ready.
