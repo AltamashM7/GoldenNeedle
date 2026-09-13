@@ -500,3 +500,41 @@ Current authoritative next proof:
 1. run the isolated `Tools/OpenVinoLandmarkBenchmark/detector_probe.py` against the exact unchanged `pose_detector.tflite`; it verifies exact identity, direct OpenVINO read/contract, explicit CPU/GPU compile and one finite-output sanity inference with **no** conversion/densification/fallback;
 2. if that passes, build a standalone current-MediaPipe-0.10.22-generation graph proof with a minimal direct OpenVINO inference calculator and compare final 33 normalized landmarks, 33 world landmarks, visibility/presence, ROI continuity and complete graph latency against baseline MediaPipe Tasks on the same recorded frames;
 3. do not connect the proof to the Unity avatar until semantic parity and end-to-end latency are demonstrated.
+
+## Gate A complete / Gate B implemented-for-user-proof — 2026-09-13
+
+The preceding "Current authoritative next proof" list is now historical. Gate A has been completed successfully and the isolated Gate B scaffold is implemented under `Tools/MediaPipeOpenVinoParity/`.
+
+Gate A exact-detector result: **COMPLETE / PASS**.
+- exact detector identity PASS: `pose_detector.tflite`, 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
+- OpenVINO 2026.3 direct `read_model()` on the unchanged TFLite: SUCCESS;
+- exact contract `[1,224,224,3]` float32 -> `[1,2254,12]` + `[1,2254,1]` float32: TRUE;
+- explicit CPU compile/inference: SUCCESS;
+- explicit Intel GPU compile/inference: SUCCESS;
+- outputs finite;
+- no conversion, densification, alternate model or hidden fallback was used.
+
+Conclusion: the detector's DENSIFY failure is a Sentis importer limitation for this model; it is **not** an OpenVINO compatibility blocker.
+
+Gate B scaffold status: **IMPLEMENTED / USER WINDOWS BUILD + RECORDED-SEQUENCE RUN PENDING**.
+- exact source base is Homuler `v0.16.3` commit `cf4c11d8eef724fe24111b7cd795d55ba490aeec`, which pins MediaPipe `v0.10.22` commit `c54c06dd8c4314a316c14da31493bcc38ed302e2` and Bazel 6.5.0;
+- source audit on that exact MediaPipe generation confirmed detector and landmark neural execution remain behind the inference seam while MediaPipe retains preprocessing, detector decode/NMS/ROI, tracking, landmark decode/refinement, presence/visibility, world-landmark and projection semantics;
+- `TASKS_REFERENCE` runs the official 0.10.22 PoseLandmarker CPU path on the exact task bundle;
+- `GRAPH_TFLITE_CPU` runs the expanded/current MediaPipe graph with standard TFLite CPU inference;
+- `GRAPH_OPENVINO_CPU_FP32` runs that same graph while replacing **both** detector and landmark inference with a local OpenVINO CPU FP32 calculator;
+- exact production bundle/detector/landmark hashes are fail-closed before execution;
+- the OpenVINO bridge uses safe host copies for this proof and measures input/output bridge-copy cost separately rather than hiding it;
+- the proof accepts one fixed recorded human-motion sequence, preserves independent temporal/tracking state per backend, records final 33 normalized/world landmarks plus ROI/cadence/timing where exposed, and compares A-vs-B, B-vs-C and A-vs-C without inventing Golden Needle acceptance thresholds;
+- VIDEO-mode rates are explicitly offline graph-processing capacity, not Unity LIVE_STREAM frame-to-result latency;
+- USER inputs, extracted sources/models, native build products and reports remain ignored/local.
+
+Current authoritative next step is now to run the Gate B Windows proof on the USER machine. Do **not** declare semantic parity or approve production OpenVINO integration until the generated TXT/JSON evidence has been reviewed by the Orchestrator.
+
+Production governance is unchanged:
+- MediaPipe CPU fallback remains intact;
+- Phase 5A remains **NOT USER ACCEPTED**;
+- Phase 6 remains **NOT STARTED**;
+- modular provider/canonical work remains **DESIGN-ONLY**; `CanonicalBodyV1` remains exactly today's accepted 20-joint semantics;
+- no detector densification;
+- no Unity avatar/provider integration;
+- no merge to `main` without explicit USER approval.
