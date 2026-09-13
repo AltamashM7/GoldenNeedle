@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0.
 // Research-only Gate B calculator: surrounding pose semantics stay MediaPipe 0.10.22.
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstring>
