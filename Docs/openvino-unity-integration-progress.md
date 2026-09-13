@@ -11,7 +11,7 @@ The intelligent Web Builder must update this file whenever a durable checkpoint/
 - Gate A: **PASS**
 - Gate B: **PASS WITH NOTES**
 - U0 plan/recovery scaffold: **COMPLETE**
-- U1 architecture resolution/native lifecycle skeleton: **IMPLEMENTED; WINDOWS CI PROOF PENDING**
+- U1 architecture resolution/native lifecycle skeleton: **COMPLETE**
 - U2 native OpenVINO backend: **NOT STARTED**
 - U3 Unity selection/telemetry: **NOT STARTED**
 - U4 USER A/B runtime QA: **NOT STARTED**
@@ -48,12 +48,12 @@ These are offline VIDEO-mode measurements, not Unity LIVE_STREAM end-to-end resu
 
 ## U1 architecture decision
 
-The least-invasive coexistence boundary is now resolved and implemented as a recovery skeleton:
+The least-invasive coexistence boundary is resolved and verified:
 
 - Keep Homuler's stock MediaPipe native/managed package untouched and available as the current TFLite CPU fallback.
 - Add a distinct Windows x86_64 native library named `golden_needle_openvino_pose.dll`.
 - Use a versioned C ABI rather than exposing C++ types to Unity. ABI v1.0 currently exposes version/build/runtime info, an opaque context, explicit create/destroy, self-test, and a thread-local last-error path.
-- Pin OpenVINO `2026.3.0`, explicit `CPU` only; do not use AUTO/GPU/HETERO fallback.
+- Pin OpenVINO `2026.3.0`, explicit `CPU` only; do not use AUTO/GPU/NPU/HETERO fallback.
 - Record the semantic-generation pins MediaPipe `0.10.22` and Homuler `0.16.3`; U2 will reuse the already-proven Gate B MediaPipe graph/inference seam rather than reimplementing pose semantics.
 - Package generated DLLs only under `Assets/GoldenNeedle/Plugins/OpenVinoPose/x86_64/`. No stock MediaPipe DLL is patched, replaced, or renamed.
 - Keep third-party binaries generated/untracked. Bootstrap verifies Intel's official adjacent SHA-256 sidecar before extraction.
@@ -64,16 +64,18 @@ Automated Windows recovery proof: `.github/workflows/openvino-unity-plugin.yml`.
 
 ## Recovery / handoff state
 
-### U1 implementation sub-step
-- Status: **IMPLEMENTED; automated Windows x64 proof pending after this push**
+### U1 — COMPLETE
+- Status: **COMPLETE**
 - Starting SHA: `07dc8e6d0a1f634e88b4b59459fb9094bc0aab43`
-- Ending SHA: this recovery commit; verify current remote branch HEAD before continuing.
-- Files changed: new isolated native workspace under `Tools/OpenVinoUnityPosePlugin/`; additive Unity staging layout under `Assets/GoldenNeedle/Plugins/OpenVinoPose/`; Windows recovery workflow; this progress file.
-- What was implemented/audited: exact dependency pins, C ABI v1.0, opaque OpenVINO context, last-error route, CPU-only lifecycle self-test, x64 Release CMake build, debug-CRT import guard, additive runtime packaging, packaged-DLL lifecycle smoke, and third-party notice boundary.
-- Verification performed before push: read-only audit confirmed no existing U1 implementation and identified `Tools/MediaPipeOpenVinoParity` as the U2 reuse source. Source/build scripts were reviewed against the exact Gate B pins. The authoritative Windows compile/load proof is intentionally delegated to the branch GitHub Actions recovery workflow because this Builder environment is not Windows/MSVC.
+- Implementation ending SHA before this documentation checkpoint: `271d4855a00a391e817e062a98d2a335546d6717`
+- Files changed: isolated native workspace under `Tools/OpenVinoUnityPosePlugin/`; additive Unity staging layout under `Assets/GoldenNeedle/Plugins/OpenVinoPose/`; Windows recovery workflow; this progress file.
+- What was implemented/audited: exact dependency pins, C ABI v1.0, opaque OpenVINO context, last-error route, CPU-only lifecycle self-test, x64 Release CMake build, debug-CRT import guard, additive runtime packaging, packaged-DLL lifecycle smoke, CPU-only `plugins.xml`, and third-party notice boundary.
+- Authoritative verification: GitHub Actions workflow run `34765719400`, job `103746202060`, on `windows-2022` completed **success**. Bootstrap verified OpenVINO archive SHA-256 `4b26374eb342c3e0e4488b230cf8a16b6327e22b1ef12e45e5533cead06a66e3`. The x64 Release DLL built with MSVC 2022 and both build-directory and packaged `Load/Version/SelfTest/Unload` smoke tests passed. Runtime identity reported OpenVINO build `2026.3.0-22451-8a17657b995-releases/2026/3`, `device=CPU`.
+- Verified packaged runtime set: `golden_needle_openvino_pose.dll`, `openvino.dll`, `openvino_intel_cpu_plugin.dll`, `openvino_tensorflow_lite_frontend.dll`, `tbb12.dll`, `tbbbind_2_5.dll`, `tbbmalloc.dll`; GPU/NPU/AUTO/HETERO exclusion guard passed.
+- Stock fallback verification: workflow explicitly confirmed stock MediaPipe/TFLite plugin files were not replaced or renamed.
 - Local/generated artifacts not committed: official OpenVINO archive/extraction, build outputs, runtime DLL staging, PDBs.
-- Risks/blockers: U1 is not COMPLETE until the Windows workflow builds and the packaged DLL smoke passes. No USER hardware is required for this lifecycle proof.
-- Exact next action: inspect the workflow run for this push. Fix U1 until Windows x64 Release + packaged Load/Version/SelfTest/Unload passes; then update this file to **U1 COMPLETE** and continue directly into U2 single-frame exact 33-landmark semantics.
+- Remaining risk: U1 proves native lifecycle/package viability only; it does not yet prove MediaPipe pose graph execution inside the dedicated DLL or Unity end-to-end behavior.
+- Exact next action: continue immediately into U2 by adapting the existing Gate B MediaPipe 0.10.22/OpenVINO inference seam behind the native ABI, first for one real frame and exact 33 normalized/world landmark output, with shadow-TFLite raw-parity inference removed from the practical runtime path.
 
 Primary handoff:
 `Docs/worker-briefs/openvino-unity-integration-handoff.md`
@@ -83,11 +85,13 @@ Execution plan:
 
 ## Next concrete action
 
-1. Inspect the automated Windows U1 workflow generated by the U1 implementation push.
-2. If it fails, diagnose the exact compile/package/load failure and commit a focused U1 fix; do not guess around pins or fall back to another backend.
-3. Once it passes, record the workflow evidence and mark U1 complete.
-4. Continue immediately into U2 by adapting the existing Gate B MediaPipe 0.10.22/OpenVINO inference seam behind the native ABI, first for one real frame and exact 33 normalized/world landmark output.
-5. Preserve the stock MediaPipe/TFLite CPU path throughout.
+1. Treat U1 as complete; do not repeat the lifecycle/package investigation.
+2. Implement U2 inside the dedicated native plugin by reusing MediaPipe 0.10.22 `PoseLandmarkerGraph` and the proven optional OpenVINO `InferenceCalculatorNodeImpl` seam.
+3. Preserve MediaPipe preprocessing, detector decode/NMS, ROI/tracking, landmark decode/refinement, visibility/presence, world-landmark and projection semantics.
+4. Extend the versioned C ABI with fail-closed pose-engine creation/destruction and a single-frame inference result carrying all 33 normalized landmarks, world landmarks, visibility/presence and explicit backend identity/timings.
+5. Remove Gate B shadow-TFLite inference/raw-parity work from the practical runtime calculator. A metadata-only mechanism may be used only if required to preserve exact tensor names/order without executing TFLite inference.
+6. Build and smoke-test the U2 native artifact on Windows CI, then checkpoint the result and continue into U3 when feasible.
+7. Preserve the stock MediaPipe/TFLite CPU path throughout.
 
 ## Builder update template
 
