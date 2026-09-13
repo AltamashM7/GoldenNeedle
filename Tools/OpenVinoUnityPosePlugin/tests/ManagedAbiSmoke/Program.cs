@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
@@ -49,7 +50,7 @@ internal static class Program
 
     private static void AssertOffset<T>(string field, int expected)
     {
-        AssertEqual(expected, checked((int)Marshal.OffsetOf<T>(field)), $"offsetof({typeof(T).Name}.{field})");
+        AssertEqual(expected, Marshal.OffsetOf<T>(field).ToInt32(), $"offsetof({typeof(T).Name}.{field})");
     }
 
     private static void AssertDllImport(string methodName, string expectedEntryPoint)
@@ -69,9 +70,9 @@ internal static class Program
         AssertEqual(CallingConvention.Cdecl, attribute.CallingConvention, $"{methodName} calling convention");
     }
 
-    private static void AssertEqual<T>(T expected, T actual, string label) where T : IEquatable<T>
+    private static void AssertEqual<T>(T expected, T actual, string label)
     {
-        if (!expected.Equals(actual))
+        if (!EqualityComparer<T>.Default.Equals(expected, actual))
         {
             throw new InvalidOperationException($"{label}: expected={expected} actual={actual}");
         }
