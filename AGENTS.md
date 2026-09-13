@@ -61,7 +61,8 @@ Gate B evidence on the USER's 363-frame recorded motion sequence:
 - Do not force D3D12 globally.
 - Explicit benchmark requests for OpenVINO must not silently fall back while reporting themselves as OpenVINO; backend identity/failure must be visible in diagnostics.
 - Windows x86_64 native dependencies must be packaged narrowly and documented, including third-party/license implications.
-- Follow `Docs/openvino-unity-integration-checkpoints.md` checkpoint by checkpoint. **Stop after each checkpoint and report; do not roll directly into the next checkpoint.**
+- Follow `Docs/openvino-unity-integration-checkpoints.md` as **durable recovery markers**, not as mandatory stop-and-wait gates. Continue from one checkpoint into the next in the same worker run whenever possible. Pause only for genuine blockers, required USER hardware/visual QA, or execution-limit risk.
+- Maintain `Docs/openvino-unity-integration-progress.md` as the rolling handoff. Update it at every checkpoint and before any anticipated execution-limit stop so another Web Builder can resume from the latest durable state without reconstructing the whole session.
 
 ## Unity development tooling
 
@@ -82,7 +83,7 @@ Gate B evidence on the USER's 363-frame recorded motion sequence:
 - GitHub Desktop is normally used by the USER for Git mutations.
 - Future Codex tasks may explicitly authorize Git operations, but agents must follow the governance of the current Orchestrator brief rather than assuming permission.
 - Core Motion Engine work remains on the long-lived `engine/pose-tracking-spike` branch. Do not merge intermediate checkpoints into `main`, and do not assume a merge is appropriate without explicit USER approval.
-- Do not create commits, amend, push, pull/rebase/reset, merge, or create PRs unless the current brief explicitly authorizes that operation.
+- The current OpenVINO Unity integration handoff explicitly authorizes checkpoint commits and pushes to `engine/pose-tracking-spike`; it does **not** authorize merges to `main`, force-pushes, rebases/resets, or PR merges.
 - Preserve valid Git LFS configuration. Do not disable LFS or perform Git LFS history migration unless explicitly directed.
 - Do not invent large sets of speculative LFS patterns.
 
@@ -94,4 +95,4 @@ Gate B evidence on the USER's 363-frame recorded motion sequence:
 - Distinguish implementation completion from USER acceptance.
 - Distinguish offline graph capacity from Unity LIVE_STREAM end-to-end performance.
 - Never merge a PR without explicit USER approval.
-- For the current OpenVINO Unity experiment, every worker assignment must end at its checkpoint boundary with: exact starting SHA, exact ending SHA, files changed, implementation/audit summary, verification performed, unresolved risks, and explicit statement that the next checkpoint was not started.
+- For the current OpenVINO Unity experiment, each durable checkpoint should record in the rolling progress file: exact starting/ending SHA, files changed, work completed, verification, remaining work, blockers/risks, and the next concrete action. The worker should then continue immediately when feasible rather than waiting for a new Orchestrator assignment.
