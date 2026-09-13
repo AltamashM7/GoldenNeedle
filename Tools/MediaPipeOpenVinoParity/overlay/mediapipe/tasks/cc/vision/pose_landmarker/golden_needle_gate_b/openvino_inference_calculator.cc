@@ -12,25 +12,32 @@
 #include <limits>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <openvino/openvino.hpp>
 #include <openvino/runtime/properties.hpp>
 
 #include "absl/status/status.h"
+#include "absl/status/statusor.h"
+#include "mediapipe/calculators/tensor/inference_calculator.h"
 #include "mediapipe/calculators/tensor/inference_calculator.pb.h"
+#include "mediapipe/calculators/tensor/inference_io_mapper.h"
+#include "mediapipe/calculators/tensor/tensor_span.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/tensor.h"
+#include "mediapipe/framework/port/ret_check.h"
+#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/tasks/cc/core/mediapipe_builtin_op_resolver.h"
 #include "mediapipe/tasks/cc/vision/pose_landmarker/golden_needle_gate_b/gate_b_telemetry.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/interpreter_builder.h"
 #include "tensorflow/lite/model_builder.h"
+#include "tensorflow/lite/util.h"
 
 namespace mediapipe {
+namespace api2 {
 namespace {
-
-constexpr char kTensorsTag[] = "TENSORS";
 
 double Ms(std::chrono::steady_clock::time_point start) {
   return std::chrono::duration<double, std::milli>(
@@ -58,6 +65,23 @@ bool SameShape(const TfLiteIntArray* dims, const ov::Shape& shape) {
   return true;
 }
 
+ov::Shape TfLiteShape(const TfLiteTensor& tensor) {
+  ov::Shape result;
+  if (tensor.dims == nullptr) return result;
+  result.reserve(tensor.dims->size);
+  for (int i = 0; i < tensor.dims->size; ++i) {
+    result.push_back(static_cast<size_t>(tensor.dims->data[i]));
+  }
+  return result;
+}
+
+Tensor::Shape MediaPipeShape(const ov::Shape& shape) {
+  std::vector<int> dims;
+  dims.reserve(shape.size());
+  for (size_t dim : shape) dims.push_back(static_cast<int>(dim));
+  return Tensor::Shape(dims);
+}
+
 absl::Status RequireF32(const ov::Output<const ov::Node>& port,
                         const char* label) {
   return port.get_element_type() == ov::element::f32
@@ -66,9 +90,9 @@ absl::Status RequireF32(const ov::Output<const ov::Node>& port,
                                           " must be float32 for Gate B.");
 }
 
-void PrintRawParity(const std::string& kind, size_t output_index,
-                    const float* ov_data, const float* tflite_data,
-                    size_t count) {
+void PrintRawParity(const std::string& kind, size_t output_ordinal,
+                    int openvino_port, const float* ov_data,
+                    const float* tflite_data, size_t count) {
   size_t finite_pairs = 0;
   size_t nonfinite_pairs = 0;
   double abs_sum = 0.0;
@@ -101,7 +125,8 @@ void PrintRawParity(const std::string& kind, size_t output_index,
   const double rmse = finite_pairs ? std::sqrt(sq_sum / finite_pairs) : 0.0;
   std::cerr << std::setprecision(9)
             << "[Gate B raw parity] model=" << kind
-            << " output=" << output_index
+            << " output=" << output_ordinal
+            << " ov_port=" << openvino_port
             << " elements=" << count
             << " finite_pairs=" << finite_pairs
             << " nonfinite_pairs=" << nonfinite_pairs
@@ -116,33 +141,41 @@ void PrintRawParity(const std::string& kind, size_t output_index,
 
 }  // namespace
 
-class GoldenNeedleOpenVinoInferenceCalculator : public CalculatorBase {
+// Reuse MediaPipe's own InferenceCalculator interface instead of emulating a
+// generic CalculatorBase. This preserves the stock node's zero timestamp
+// offset, tensor I/O mapping, empty-input behavior, and typed output dispatch.
+struct GoldenNeedleOpenVinoInferenceCalculator : public InferenceCalculator {
+  static constexpr char kCalculatorName[] =
+      "GoldenNeedleOpenVinoInferenceCalculator";
+};
+
+class GoldenNeedleOpenVinoInferenceCalculatorImpl
+    : public InferenceCalculatorNodeImpl<
+          GoldenNeedleOpenVinoInferenceCalculator,
+          GoldenNeedleOpenVinoInferenceCalculatorImpl> {
  public:
-  static absl::Status GetContract(CalculatorContract* cc) {
-    cc->Inputs().Tag(kTensorsTag).Set<std::vector<Tensor>>();
-    cc->Outputs().Tag(kTensorsTag).Set<std::vector<Tensor>>();
+  static absl::Status UpdateContract(CalculatorContract* cc) {
+    const auto& options = cc->Options<InferenceCalculatorOptions>();
+    RET_CHECK(!options.model_path().empty())
+        << "Gate B OpenVINO calculator requires model_path.";
+    MP_RETURN_IF_ERROR(TensorContractCheck(cc));
     return absl::OkStatus();
   }
 
   absl::Status Open(CalculatorContext* cc) override {
     const auto& options = cc->Options<InferenceCalculatorOptions>();
-    if (!options.has_model_path() || options.model_path().empty()) {
-      return absl::InvalidArgumentError(
-          "Gate B OpenVINO calculator requires model_path.");
-    }
-
     model_path_ = options.model_path();
     const std::string filename =
         std::filesystem::path(model_path_).filename().string();
     if (filename == "pose_detector.tflite") {
       kind_ = "detector";
-      input_ = {1, 224, 224, 3};
-      outputs_ = {{1, 2254, 12}, {1, 2254, 1}};
+      input_shape_ = {1, 224, 224, 3};
+      expected_output_shapes_ = {{1, 2254, 12}, {1, 2254, 1}};
     } else if (filename == "pose_landmarks_detector.tflite") {
       kind_ = "landmark";
-      input_ = {1, 256, 256, 3};
-      outputs_ = {{1, 195}, {1, 1}, {1, 256, 256, 1},
-                  {1, 64, 64, 39}, {1, 117}};
+      input_shape_ = {1, 256, 256, 3};
+      expected_output_shapes_ = {{1, 195}, {1, 1}, {1, 256, 256, 1},
+                                 {1, 64, 64, 39}, {1, 117}};
     } else {
       return absl::InvalidArgumentError(
           "Gate B refuses unexpected model filename: " + filename);
@@ -150,54 +183,20 @@ class GoldenNeedleOpenVinoInferenceCalculator : public CalculatorBase {
 
     try {
       model_ = core_.read_model(model_path_);
-      const Tensor::Shape expected_input(
-          std::vector<int>{static_cast<int>(input_[0]),
-                           static_cast<int>(input_[1]),
-                           static_cast<int>(input_[2]),
-                           static_cast<int>(input_[3])});
       if (model_->inputs().size() != 1 ||
-          !SameShape(expected_input, model_->input().get_shape())) {
+          !SameShape(MediaPipeShape(input_shape_), model_->input().get_shape())) {
         return absl::InvalidArgumentError(
             "Gate B model input contract mismatch.");
       }
-      auto input_status = RequireF32(model_->input(), "model input");
-      if (!input_status.ok()) return input_status;
-      if (model_->outputs().size() != outputs_.size()) {
+      MP_RETURN_IF_ERROR(RequireF32(model_->input(), "model input"));
+      if (model_->outputs().size() != expected_output_shapes_.size()) {
         return absl::InvalidArgumentError(
             "Gate B model output count mismatch.");
       }
 
-      indices_.assign(outputs_.size(), -1);
-      for (size_t expected = 0; expected < outputs_.size(); ++expected) {
-        for (size_t actual = 0; actual < model_->outputs().size(); ++actual) {
-          if (!SameShape(model_->output(actual).get_shape(),
-                         outputs_[expected])) {
-            continue;
-          }
-          if (indices_[expected] != -1) {
-            return absl::InvalidArgumentError("Ambiguous output shape.");
-          }
-          auto output_status = RequireF32(model_->output(actual), "model output");
-          if (!output_status.ok()) return output_status;
-          indices_[expected] = static_cast<int>(actual);
-        }
-        if (indices_[expected] < 0) {
-          return absl::InvalidArgumentError("Expected output shape missing.");
-        }
-      }
-
-      ov::AnyMap config = {
-          {ov::hint::performance_mode.name(), ov::hint::PerformanceMode::LATENCY},
-          {ov::hint::inference_precision.name(), ov::element::f32}};
-      compiled_ = core_.compile_model(model_, "CPU", config);
-      request_ = compiled_.create_infer_request();
-      input_tensor_ = ov::Tensor(ov::element::f32, input_);
-      request_.set_input_tensor(input_tensor_);
-
-      // Diagnostic only: build a one-thread TFLite shadow interpreter for the
-      // same file. It runs only on the first input handled by each calculator
-      // instance and never supplies data to the MediaPipe graph. This gives us
-      // a direct raw-output comparison before any pose postprocessing.
+      // Diagnostic/reference interpreter. Besides the first-frame raw parity
+      // check, its native output order is the authority for the tensor vector
+      // returned to MediaPipe. This avoids re-inventing model output ordering.
       shadow_model_ = tflite::FlatBufferModel::BuildFromFile(model_path_.c_str());
       if (!shadow_model_) {
         return absl::InternalError(
@@ -221,32 +220,76 @@ class GoldenNeedleOpenVinoInferenceCalculator : public CalculatorBase {
       const TfLiteTensor* shadow_input = shadow_interpreter_->tensor(
           shadow_interpreter_->inputs()[0]);
       if (shadow_input == nullptr || shadow_input->type != kTfLiteFloat32 ||
-          !SameShape(shadow_input->dims, input_)) {
+          !SameShape(shadow_input->dims, input_shape_)) {
         return absl::InternalError(
             "Gate B raw-parity shadow input contract mismatch.");
       }
+      if (shadow_interpreter_->outputs().size() !=
+          expected_output_shapes_.size()) {
+        return absl::InternalError(
+            "Gate B raw-parity shadow output count mismatch.");
+      }
 
-      shadow_output_ordinals_.assign(outputs_.size(), -1);
-      for (size_t expected = 0; expected < outputs_.size(); ++expected) {
-        for (size_t ordinal = 0;
-             ordinal < shadow_interpreter_->outputs().size(); ++ordinal) {
-          const TfLiteTensor* tensor = shadow_interpreter_->tensor(
-              shadow_interpreter_->outputs()[ordinal]);
-          if (tensor == nullptr || tensor->type != kTfLiteFloat32 ||
-              !SameShape(tensor->dims, outputs_[expected])) {
-            continue;
-          }
-          if (shadow_output_ordinals_[expected] != -1) {
-            return absl::InternalError(
-                "Gate B raw-parity shadow found ambiguous output shapes.");
-          }
-          shadow_output_ordinals_[expected] = static_cast<int>(ordinal);
+      openvino_port_by_tflite_ordinal_.assign(
+          shadow_interpreter_->outputs().size(), -1);
+      output_shapes_in_tflite_order_.clear();
+      output_shapes_in_tflite_order_.reserve(shadow_interpreter_->outputs().size());
+      for (size_t ordinal = 0;
+           ordinal < shadow_interpreter_->outputs().size(); ++ordinal) {
+        const TfLiteTensor* tensor = shadow_interpreter_->tensor(
+            shadow_interpreter_->outputs()[ordinal]);
+        if (tensor == nullptr || tensor->type != kTfLiteFloat32) {
+          return absl::InternalError(
+              "Gate B raw-parity shadow output type mismatch.");
         }
-        if (shadow_output_ordinals_[expected] < 0) {
+        const ov::Shape tflite_shape = TfLiteShape(*tensor);
+        int expected_match = -1;
+        for (size_t expected = 0; expected < expected_output_shapes_.size();
+             ++expected) {
+          if (SameShape(tflite_shape, expected_output_shapes_[expected])) {
+            if (expected_match != -1) {
+              return absl::InternalError(
+                  "Gate B raw-parity shadow found ambiguous output shapes.");
+            }
+            expected_match = static_cast<int>(expected);
+          }
+        }
+        if (expected_match < 0) {
           return absl::InternalError(
               "Gate B raw-parity shadow expected output shape missing.");
         }
+
+        int openvino_port = -1;
+        for (size_t port = 0; port < model_->outputs().size(); ++port) {
+          if (SameShape(model_->output(port).get_shape(), tflite_shape)) {
+            if (openvino_port != -1) {
+              return absl::InvalidArgumentError("Ambiguous OpenVINO output shape.");
+            }
+            MP_RETURN_IF_ERROR(RequireF32(model_->output(port), "model output"));
+            openvino_port = static_cast<int>(port);
+          }
+        }
+        if (openvino_port < 0) {
+          return absl::InvalidArgumentError(
+              "Expected OpenVINO output shape missing.");
+        }
+        openvino_port_by_tflite_ordinal_[ordinal] = openvino_port;
+        output_shapes_in_tflite_order_.push_back(tflite_shape);
       }
+
+      ov::AnyMap config = {
+          {ov::hint::performance_mode.name(), ov::hint::PerformanceMode::LATENCY},
+          {ov::hint::inference_precision.name(), ov::element::f32}};
+      compiled_ = core_.compile_model(model_, "CPU", config);
+      request_ = compiled_.create_infer_request();
+      input_tensor_ = ov::Tensor(ov::element::f32, input_shape_);
+      request_.set_input_tensor(input_tensor_);
+
+      MP_ASSIGN_OR_RETURN(
+          auto tensor_names,
+          InferenceIoMapper::GetInputOutputTensorNamesFromInterpreter(
+              *shadow_interpreter_));
+      MP_RETURN_IF_ERROR(UpdateIoMapping(cc, tensor_names));
     } catch (const std::exception& e) {
       return absl::InternalError(
           std::string("OpenVINO Gate B initialization failed: ") + e.what());
@@ -254,16 +297,15 @@ class GoldenNeedleOpenVinoInferenceCalculator : public CalculatorBase {
     return absl::OkStatus();
   }
 
-  absl::Status Process(CalculatorContext* cc) override {
-    if (cc->Inputs().Tag(kTensorsTag).IsEmpty()) return absl::OkStatus();
-    const auto& inputs =
-        cc->Inputs().Tag(kTensorsTag).Get<std::vector<Tensor>>();
-    if (inputs.size() != 1) {
+ private:
+  absl::StatusOr<std::vector<Tensor>> Process(
+      CalculatorContext* cc, const TensorSpan& tensor_span) override {
+    if (tensor_span.size() != 1) {
       return absl::InvalidArgumentError("Gate B expects one input tensor.");
     }
-    const Tensor& input = inputs[0];
+    const Tensor& input = tensor_span[0];
     if (input.element_type() != Tensor::ElementType::kFloat32 ||
-        !SameShape(input.shape(), input_)) {
+        !SameShape(input.shape(), input_shape_)) {
       return absl::InvalidArgumentError(
           "Gate B MediaPipe input contract mismatch.");
     }
@@ -274,7 +316,7 @@ class GoldenNeedleOpenVinoInferenceCalculator : public CalculatorBase {
     try {
       auto start = std::chrono::steady_clock::now();
       auto input_view = input.GetCpuReadView();
-      const size_t input_bytes = ov::shape_size(input_) * sizeof(float);
+      const size_t input_bytes = ov::shape_size(input_shape_) * sizeof(float);
       const float* input_data = input_view.buffer<float>();
       std::memcpy(input_tensor_.data<float>(), input_data, input_bytes);
       sample.input_copy_ms = Ms(start);
@@ -297,70 +339,67 @@ class GoldenNeedleOpenVinoInferenceCalculator : public CalculatorBase {
       sample.inference_ms = Ms(start);
 
       if (!shadow_compared_) {
-        for (size_t i = 0; i < outputs_.size(); ++i) {
-          const auto ov_output = request_.get_output_tensor(indices_[i]);
-          if (ov_output.get_element_type() != ov::element::f32 ||
-              !SameShape(ov_output.get_shape(), outputs_[i])) {
-            return absl::InternalError(
-                "Gate B compiled OpenVINO output contract mismatch.");
-          }
+        for (size_t ordinal = 0;
+             ordinal < output_shapes_in_tflite_order_.size(); ++ordinal) {
+          const int port = openvino_port_by_tflite_ordinal_[ordinal];
+          const auto ov_output = request_.get_output_tensor(port);
           const float* shadow_output =
-              shadow_interpreter_->typed_output_tensor<float>(
-                  shadow_output_ordinals_[i]);
+              shadow_interpreter_->typed_output_tensor<float>(ordinal);
           if (shadow_output == nullptr) {
             return absl::InternalError(
                 "Gate B raw-parity shadow output tensor is unavailable.");
           }
-          PrintRawParity(kind_, i, ov_output.data<const float>(), shadow_output,
-                         ov::shape_size(outputs_[i]));
+          PrintRawParity(kind_, ordinal, port,
+                         ov_output.data<const float>(), shadow_output,
+                         ov::shape_size(output_shapes_in_tflite_order_[ordinal]));
         }
         shadow_compared_ = true;
       }
 
       start = std::chrono::steady_clock::now();
-      auto outputs = std::make_unique<std::vector<Tensor>>();
-      outputs->reserve(outputs_.size());
-      for (size_t i = 0; i < outputs_.size(); ++i) {
-        const auto ov_output = request_.get_output_tensor(indices_[i]);
+      std::vector<Tensor> outputs;
+      outputs.reserve(output_shapes_in_tflite_order_.size());
+      for (size_t ordinal = 0;
+           ordinal < output_shapes_in_tflite_order_.size(); ++ordinal) {
+        const int port = openvino_port_by_tflite_ordinal_[ordinal];
+        const auto ov_output = request_.get_output_tensor(port);
+        const ov::Shape& expected_shape =
+            output_shapes_in_tflite_order_[ordinal];
         const size_t expected_bytes =
-            ov::shape_size(outputs_[i]) * sizeof(float);
+            ov::shape_size(expected_shape) * sizeof(float);
         if (ov_output.get_element_type() != ov::element::f32 ||
-            !SameShape(ov_output.get_shape(), outputs_[i]) ||
+            !SameShape(ov_output.get_shape(), expected_shape) ||
             ov_output.get_byte_size() != expected_bytes) {
           return absl::InternalError(
               "Gate B runtime OpenVINO output type/shape/size mismatch.");
         }
 
-        std::vector<int> dims;
-        dims.reserve(outputs_[i].size());
-        for (size_t dim : outputs_[i]) dims.push_back(static_cast<int>(dim));
-        Tensor mp_tensor(Tensor::ElementType::kFloat32, Tensor::Shape(dims));
+        Tensor mp_tensor(Tensor::ElementType::kFloat32,
+                         MediaPipeShape(expected_shape),
+                         /*memory_manager=*/nullptr,
+                         tflite::kDefaultTensorAlignment);
         {
-          // Release the write view before moving the Tensor into its output
-          // vector. Tensor::Move transfers storage but not the view mutex.
           auto write_view = mp_tensor.GetCpuWriteView();
           std::memcpy(write_view.buffer<float>(),
                       ov_output.data<const float>(), expected_bytes);
         }
-        outputs->push_back(std::move(mp_tensor));
+        outputs.push_back(std::move(mp_tensor));
       }
       sample.output_copy_ms = Ms(start);
       golden_needle_gate_b::AddInferenceSample(sample);
-      cc->Outputs().Tag(kTensorsTag).Add(outputs.release(),
-                                        cc->InputTimestamp());
+      return outputs;
     } catch (const std::exception& e) {
       return absl::InternalError(
           std::string("OpenVINO Gate B inference failed: ") + e.what());
     }
-    return absl::OkStatus();
   }
 
- private:
   std::string model_path_;
   std::string kind_;
-  ov::Shape input_;
-  std::vector<ov::Shape> outputs_;
-  std::vector<int> indices_;
+  ov::Shape input_shape_;
+  std::vector<ov::Shape> expected_output_shapes_;
+  std::vector<ov::Shape> output_shapes_in_tflite_order_;
+  std::vector<int> openvino_port_by_tflite_ordinal_;
   ov::Core core_;
   std::shared_ptr<ov::Model> model_;
   ov::CompiledModel compiled_;
@@ -369,10 +408,8 @@ class GoldenNeedleOpenVinoInferenceCalculator : public CalculatorBase {
 
   std::unique_ptr<tflite::FlatBufferModel> shadow_model_;
   std::unique_ptr<tflite::Interpreter> shadow_interpreter_;
-  std::vector<int> shadow_output_ordinals_;
   bool shadow_compared_ = false;
 };
 
-REGISTER_CALCULATOR(GoldenNeedleOpenVinoInferenceCalculator);
-
+}  // namespace api2
 }  // namespace mediapipe
