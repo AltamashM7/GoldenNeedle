@@ -56,7 +56,7 @@ function Invoke-Python([string[]]$PythonArgs) {
 function Get-DirectoryDigest([string]$Directory) {
     $sha = [Security.Cryptography.SHA256]::Create()
     try {
-        $files = Get-ChildItem -File $Directory | Sort-Object Name
+        $files = @(Get-ChildItem -File $Directory | Sort-Object Name)
         if ($files.Count -eq 0) { throw "Input frame directory is empty." }
         foreach ($file in $files) {
             $nameBytes = [Text.Encoding]::UTF8.GetBytes($file.Name + "`n")
@@ -102,6 +102,7 @@ if ($InputVideo) {
     $InputSha = (Get-FileHash -Algorithm SHA256 $InputVideo).Hash.ToLowerInvariant()
 } else {
     $Frames = (Resolve-Path $InputFrames).Path
+    if (-not (Test-Path $Frames -PathType Container)) { throw "-InputFrames must be a directory." }
     if ($Fps -le 0) { throw "-Fps is required when using -InputFrames." }
     $InputLabel = Split-Path -Leaf $Frames
     $InputSha = Get-DirectoryDigest $Frames
@@ -118,16 +119,18 @@ $Outputs = @{}
 foreach ($Mode in $Modes) {
     $Output = Join-Path $RunDir "$Mode.jsonl"
     Write-Host "[Gate B] running full sequence: $Mode"
-    & $Exe \
-        --mode $Mode \
-        --task-bundle $Bundle \
-        --detector-model $Detector \
-        --landmark-model $Landmark \
-        --input-frames $Frames \
-        --fps ([string]::Format([Globalization.CultureInfo]::InvariantCulture, "{0:R}", $Fps)) \
-        --input-label $InputLabel \
-        --input-sha256 $InputSha \
-        --output $Output
+    $RunnerArgs = @(
+        "--mode", $Mode,
+        "--task-bundle", $Bundle,
+        "--detector-model", $Detector,
+        "--landmark-model", $Landmark,
+        "--input-frames", $Frames,
+        "--fps", ([string]::Format([Globalization.CultureInfo]::InvariantCulture, "{0:R}", $Fps)),
+        "--input-label", $InputLabel,
+        "--input-sha256", $InputSha,
+        "--output", $Output
+    )
+    & $Exe @RunnerArgs
     if ($LASTEXITCODE -ne 0) {
         throw "$Mode failed. Return the complete console output plus the ignored run directory: $RunDir"
     }
