@@ -62,9 +62,13 @@ def supported_names(core: Any, device: str) -> tuple[set[str], dict[str, Any]]:
     names: set[str] = set()
     if result.get("ok"):
         value = result.get("value") or []
-        if not isinstance(value, list):
-            value = [value]
-        names = {str(x).upper() for x in value}
+        if isinstance(value, dict):
+            items = value.keys()
+        elif isinstance(value, (list, tuple, set)):
+            items = value
+        else:
+            items = [value]
+        names = {str(x).upper() for x in items}
     return names, result
 
 
@@ -472,8 +476,8 @@ def self_test() -> int:
         write_reports({"status": "SELF_TEST", "profiles": {}, "pose_input": {"status": "NOT_USED"}}, directory / "r", "test")
 
     class FakeCore:
-        def __init__(self, supported: Sequence[str], compile_error: bool = False):
-            self.supported = list(supported)
+        def __init__(self, supported: Any, compile_error: bool = False):
+            self.supported = supported
             self.compile_error = compile_error
         def get_property(self, _device: str, name: str) -> Any:
             return self.supported if name == "SUPPORTED_PROPERTIES" else "fake"
@@ -481,6 +485,11 @@ def self_test() -> int:
             if self.compile_error:
                 raise RuntimeError("synthetic compile failure")
             raise AssertionError("compile_model should not be reached")
+
+    dict_supported = FakeCore({"PERFORMANCE_HINT": "RW", "EXECUTION_MODE_HINT": "RW", "INFERENCE_PRECISION_HINT": "RW"})
+    parsed, _ = supported_names(dict_supported, "GPU.0")
+    if parsed != {"PERFORMANCE_HINT", "EXECUTION_MODE_HINT", "INFERENCE_PRECISION_HINT"}:
+        failures.append("dictionary supported-properties parsing")
 
     contract = {"small_output_indices": [], "outputs": []}
     unsupported = run_profile(None, FakeCore(["PERFORMANCE_HINT"]), object(), "GPU_ACCURACY_FP32", ["GPU.0"], None, None, contract, 1, 1, 1)
