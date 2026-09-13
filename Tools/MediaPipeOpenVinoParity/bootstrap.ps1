@@ -28,26 +28,45 @@ function Require-Command([string]$Name, [string]$Help) {
 }
 
 function Invoke-NativeCapture([string]$FilePath, [string[]]$ArgumentList) {
-    $stdoutPath = [System.IO.Path]::GetTempFileName()
-    $stderrPath = [System.IO.Path]::GetTempFileName()
+    # Do not use Start-Process -Wait here. On Windows it waits for the whole
+    # descendant process tree; Bazel may leave its server process alive after
+    # the client exits, which can make a simple version probe hang forever.
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = $FilePath
+    $psi.WorkingDirectory = (Get-Location).Path
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+
+    $escaped = foreach ($arg in $ArgumentList) {
+        if ($arg -match '[\s"]') {
+            '"' + ($arg -replace '"', '\"') + '"'
+        } else {
+            $arg
+        }
+    }
+    $psi.Arguments = ($escaped -join ' ')
+
+    $process = New-Object System.Diagnostics.Process
+    $process.StartInfo = $psi
     try {
-        $process = Start-Process -FilePath $FilePath `
-            -ArgumentList $ArgumentList `
-            -WorkingDirectory (Get-Location).Path `
-            -NoNewWindow `
-            -Wait `
-            -PassThru `
-            -RedirectStandardOutput $stdoutPath `
-            -RedirectStandardError $stderrPath
-        $stdout = [string](Get-Content $stdoutPath -Raw -ErrorAction SilentlyContinue)
-        $stderr = [string](Get-Content $stderrPath -Raw -ErrorAction SilentlyContinue)
+        if (-not $process.Start()) {
+            throw "Failed to start native command: $FilePath"
+        }
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $process.WaitForExit()
+        $stdout = [string]$stdoutTask.GetAwaiter().GetResult()
+        $stderr = [string]$stderrTask.GetAwaiter().GetResult()
+        $exitCode = $process.ExitCode
         $combined = (($stdout.TrimEnd(), $stderr.TrimEnd()) | Where-Object { $_ }) -join [Environment]::NewLine
         return @{
-            ExitCode = $process.ExitCode
+            ExitCode = $exitCode
             Text = $combined.Trim()
         }
     } finally {
-        Remove-Item -Force -ErrorAction SilentlyContinue $stdoutPath, $stderrPath
+        $process.Dispose()
     }
 }
 
@@ -139,9 +158,8 @@ Reset-PinnedClone "https://github.com/google-ai-edge/mediapipe.git" $MediaPipe $
 Push-Location $Homuler
 try {
     # Running through the Homuler workspace makes Bazelisk honor its exact
-    # .bazelversion. Bazelisk writes first-download progress to stderr, so use
-    # an explicit native-process capture rather than letting Windows PowerShell
-    # turn normal stderr progress into a terminating NativeCommandError.
+    # .bazelversion. Capture stderr without PowerShell treating first-download
+    # progress as an error, and wait only for the Bazelisk client itself.
     $bazelVersionResult = Invoke-NativeCapture $Bazel @("version")
     $bazelVersionText = $bazelVersionResult.Text
     if ($bazelVersionResult.ExitCode -ne 0 -or
