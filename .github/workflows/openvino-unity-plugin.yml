@@ -19,6 +19,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Homuler MSYS2 build utilities
+        shell: pwsh
+        run: C:\msys64\usr\bin\bash.exe -lc "pacman -Sy --noconfirm --needed git patch unzip zip"
+
       - name: Bootstrap exact pinned native sources and OpenVINO runtime
         shell: pwsh
         run: .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
