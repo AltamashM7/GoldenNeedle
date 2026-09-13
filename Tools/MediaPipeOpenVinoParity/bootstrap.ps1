@@ -114,9 +114,13 @@ Reset-PinnedClone "https://github.com/google-ai-edge/mediapipe.git" $MediaPipe $
 
 Push-Location $Homuler
 try {
-    $bazelVersionText = (& $Bazel --version 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or $bazelVersionText -notmatch "(?m)\bbazel\s+6\.5\.0\b") {
-        throw "FAIL CLOSED: Gate B requires Bazel 6.5.0 from Homuler's .bazelversion. '$Bazel --version' returned: $bazelVersionText"
+    # Running through the Homuler workspace makes Bazelisk honor its exact
+    # .bazelversion. Plain Bazel also reports its build label here.
+    $bazelVersionText = (& $Bazel version 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or
+        ($bazelVersionText -notmatch "(?m)^Build label:\s*6\.5\.0\s*$" -and
+         $bazelVersionText -notmatch "(?m)\bbazel\s+6\.5\.0\b")) {
+        throw "FAIL CLOSED: Gate B requires Bazel 6.5.0 from Homuler's .bazelversion. '$Bazel version' returned: $bazelVersionText"
     }
 } finally {
     Pop-Location
