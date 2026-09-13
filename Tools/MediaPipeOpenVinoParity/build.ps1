@@ -29,6 +29,33 @@ if (-not (Select-String -Path $ModelTaskGraph -Pattern "GOLDEN_NEEDLE_GATE_B_BAC
     throw "Gate B inference seams are missing from the ignored MediaPipe workspace. Rerun bootstrap.ps1 -Recreate."
 }
 
+# TaskRunner always installs ModelResourcesCache. The custom GRAPH modes must
+# therefore provide the same MediaPipeBuiltinOpResolver that BaseOptions uses
+# by default; passing nullptr leaves the cache empty and makes the stock TFLite
+# graph fail before inference with MediaPipeTasksStatus 601. Patch only the
+# ignored generated MediaPipe workspace, deterministically and idempotently.
+$RunnerSource = Join-Path $MediaPipe "mediapipe\tasks\cc\vision\pose_landmarker\golden_needle_gate_b\parity_runner.cc"
+if (-not (Test-Path $RunnerSource)) {
+    throw "Gate B parity runner source is missing from the ignored MediaPipe workspace. Rerun bootstrap.ps1 -Recreate."
+}
+$RunnerText = Get-Content $RunnerSource -Raw
+$ResolverNeedle = "std::make_unique<core::MediaPipeBuiltinOpResolver>()"
+if ($RunnerText -notmatch [regex]::Escape($ResolverNeedle)) {
+    $NullResolverPattern = 'std::move\(config\),\s*nullptr,\s*nullptr,\s*nullptr,\s*std::nullopt,\s*std::nullopt,\s*\r?\n\s*/\*disable_default_service=\*/true\);'
+    $ResolverReplacement = "std::move(config), std::make_unique<core::MediaPipeBuiltinOpResolver>(),`n      nullptr, nullptr, std::nullopt, std::nullopt,`n      /*disable_default_service=*/true);"
+    $ResolverRegex = [regex]::new($NullResolverPattern)
+    $PatchedRunnerText = $ResolverRegex.Replace($RunnerText, $ResolverReplacement, 1)
+    if ($PatchedRunnerText -eq $RunnerText) {
+        throw "FAIL CLOSED: could not locate the expected null TaskRunner op-resolver call in parity_runner.cc. Return this error to the Orchestrator."
+    }
+    [IO.File]::WriteAllText($RunnerSource, $PatchedRunnerText, (New-Object Text.UTF8Encoding($false)))
+    $RunnerText = $PatchedRunnerText
+    Write-Host "[Gate B] installed MediaPipeBuiltinOpResolver for custom graph TaskRunner"
+}
+if ($RunnerText -notmatch [regex]::Escape($ResolverNeedle)) {
+    throw "FAIL CLOSED: custom graph TaskRunner op-resolver patch did not verify."
+}
+
 $Bazel = [string]$State.bazel_command
 if (-not (Test-Path $Bazel) -and -not (Get-Command $Bazel -ErrorAction SilentlyContinue)) {
     throw "Configured Bazel command '$Bazel' is no longer available. Restore Bazelisk/Bazel and rerun bootstrap."
