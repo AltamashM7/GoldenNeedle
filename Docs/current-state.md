@@ -448,3 +448,55 @@ After the USER runs this precision proof, the Orchestrator—not the harness—d
 ## Immediate next step
 
 Run the precision-controlled OpenVINO proof on the USER laptop, preferably with a representative centered/full-body pose image in addition to the seeded input. Return the generated TXT/JSON report and compact precision summary to the Orchestrator. Production-provider integration remains blocked until that evidence is reviewed.
+
+## Reuse-first architecture checkpoint — 2026-09-13
+
+The precision-controlled OpenVINO continuation is now complete; the preceding "Immediate next step" paragraph is historical and superseded by this section.
+
+Second USER OpenVINO result on the same low-end laptop:
+- `CPU_DEFAULT`: effective FP32 / PERFORMANCE, mean **10.355 ms**, p50 9.988 ms, p95 12.233 ms, p99 15.809 ms, **96.569/s**;
+- `GPU_DEFAULT`: explicit Intel HD 620 `GPU.0`, effective FP16 / PERFORMANCE, mean **8.793 ms**, p50 8.738 ms, p95 9.131 ms, p99 9.564 ms, **113.726/s**;
+- `GPU_ACCURACY_FP32`: explicit `GPU.0`, effective FP32 / ACCURACY, mean **12.858 ms**, p50 12.717 ms, p95 14.012 ms, p99 14.260 ms, **77.775/s**.
+
+Representative human-pose consistency:
+- CPU FP32 vs GPU default FP16: `[1,195]` normalized MAE/RMS ~0.00337486 / ~0.00376357; `[1,117]` ~0.0129529 / ~0.0145266;
+- CPU FP32 vs GPU forced FP32: `[1,195]` ~1.00341e-06 / ~1.50298e-06; `[1,117]` ~2.09536e-06 / ~2.38752e-06.
+
+Current interpretation:
+- OpenVINO raw landmark performance feasibility and HD620 compatibility are **PASS**;
+- default GPU differences are primarily reduced-precision behavior;
+- **OpenVINO CPU FP32 is the leading low-end inference candidate**;
+- GPU FP16 remains an optional accelerated profile for stronger hardware after semantic/end-to-end validation;
+- GPU FP32 is not worthwhile on this HD620 because it is slower than CPU FP32;
+- production integration is still **NOT APPROVED** because raw landmark inference is not the complete MediaPipe pose pipeline.
+
+The USER architecture rule is now explicit: **reuse mature components instead of manually recreating MediaPipe semantics when a practical reusable path exists, and make provider/canonical topology schema-driven so later joints/providers are additive.**
+
+Current source audit confirms:
+- `PoseObservation` is MediaPipe-specific and fixed at 33 landmarks;
+- `MediaPipeCanonicalPoseMapper` appropriately centralizes MediaPipe index knowledge;
+- `CanonicalPoseFrame` is fixed at the current 20-joint topology;
+- current production behavior must remain a stable compatibility definition, `CanonicalBodyV1`, before any topology refactor is attempted.
+
+Authoritative architecture audit:
+`Docs/inference-architecture-reuse-audit.md`.
+
+Leading reuse direction from current 2026 evidence:
+1. keep current MediaPipe graph/calculators for preprocessing, detector decode/NMS, ROI generation/tracking, landmark/heatmap refinement, visibility/presence, world-landmark processing and projection;
+2. replace only inference nodes with a current-compatible, in-process OpenVINO Runtime calculator where the parity proof supports it;
+3. do **not** adopt Intel's old MediaPipe fork wholesale: its reference fork is based on MediaPipe 0.10.3, while MediaPipeUnityPlugin 0.16.3 uses MediaPipe 0.10.22;
+4. prefer a selective port of the direct OpenVINO calculator concept into the current Homuler/MediaPipe native build;
+5. keep OVMS sidecar as a fallback/reference only because it adds process/IPC/startup/packaging overhead;
+6. reject the archived TFLite OpenVINO delegate as the primary production route;
+7. treat MediaPipe Holistic as the preferred future richer-MediaPipe provider to benchmark, and RTMPose WholeBody as a possible future rich-2D provider with a real world-coordinate migration cost;
+8. manual pipeline reconstruction is the last resort.
+
+The generic future motion-data design must separate:
+- provider landmark schema/frame: schema-driven count, semantic IDs, optional image/depth/world channels, visibility/presence/confidence and groups such as body/hands/face;
+- versioned canonical skeleton definitions: `CanonicalBodyV1` preserves the exact current 20-joint meaning; future definitions may add spine/neck/clavicle/finger joints without rewriting V1;
+- retarget/game consumer profiles: each consumer declares only the semantic joints it needs, so richer topologies do not force changes to existing torso/arm/leg retargeting or locomotion.
+
+Current authoritative next proof:
+1. run the isolated `Tools/OpenVinoLandmarkBenchmark/detector_probe.py` against the exact unchanged `pose_detector.tflite`; it verifies exact identity, direct OpenVINO read/contract, explicit CPU/GPU compile and one finite-output sanity inference with **no** conversion/densification/fallback;
+2. if that passes, build a standalone current-MediaPipe-0.10.22-generation graph proof with a minimal direct OpenVINO inference calculator and compare final 33 normalized landmarks, 33 world landmarks, visibility/presence, ROI continuity and complete graph latency against baseline MediaPipe Tasks on the same recorded frames;
+3. do not connect the proof to the Unity avatar until semantic parity and end-to-end latency are demonstrated.
