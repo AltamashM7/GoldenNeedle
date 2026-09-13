@@ -450,3 +450,153 @@ Immediate next step:
 - no lowering model quality just to hit an FPS target.
 
 The current priority is evidence-driven reduction of latency and improvement of fast-motion fidelity while preserving the accepted motion engine.
+
+## 18. Reuse-first architecture audit — authoritative continuation
+
+The precision/representative-pose experiment described in sections 15–16 has now completed. Treat those sections as historical context; the current next step is below.
+
+### Precision-controlled USER result
+
+Same USER machine and OpenVINO 2026.3.0:
+- `CPU_DEFAULT`: effective FP32 / PERFORMANCE; mean **10.355 ms**, p50 9.988, p95 12.233, p99 15.809, **96.569/s**;
+- `GPU_DEFAULT`: explicit Intel HD 620 `GPU.0`, effective FP16 / PERFORMANCE; mean **8.793 ms**, p50 8.738, p95 9.131, p99 9.564, **113.726/s**;
+- `GPU_ACCURACY_FP32`: explicit `GPU.0`, effective FP32 / ACCURACY; mean **12.858 ms**, p50 12.717, p95 14.012, p99 14.260, **77.775/s**.
+
+Representative human-image-derived consistency:
+- CPU FP32 vs GPU default FP16:
+  - `[1,195]` normalized MAE/RMS ~0.00337486 / ~0.00376357;
+  - `[1,117]` normalized MAE/RMS ~0.0129529 / ~0.0145266;
+- CPU FP32 vs GPU forced FP32:
+  - `[1,195]` ~1.00341e-06 / ~1.50298e-06;
+  - `[1,117]` ~2.09536e-06 / ~2.38752e-06.
+
+Interpretation approved for architecture work:
+- OpenVINO raw landmark performance feasibility: **PASS**;
+- Intel HD 620 OpenVINO compatibility: **PASS**;
+- GPU default differences are primarily reduced-precision behavior;
+- **OpenVINO CPU FP32 is the leading low-end inference candidate**;
+- GPU FP16 remains a possible accelerated profile for stronger hardware;
+- GPU FP32 is not worthwhile on this HD620 because it is slower than CPU FP32;
+- production integration remains **NOT APPROVED** because full detector/ROI/tracking/decode/world semantics and Unity coexistence are not proven.
+
+### USER architecture requirement
+
+The USER explicitly requires a reuse-first, modular architecture:
+- reuse mature MediaPipe calculators/framework components where they are a better fit;
+- do not manually reconstruct detector/ROI/tracking/decoding merely because it is possible;
+- preserve all provider landmarks until a semantic mapper decides what a canonical definition needs;
+- do not make generic engine code permanently assume provider count 33 or canonical count 20;
+- preserve current accepted Phase 4 behavior as a stable compatibility definition, `CanonicalBodyV1`;
+- future providers/topologies must be additive.
+
+Authoritative audit document:
+`Docs/inference-architecture-reuse-audit.md`.
+
+### Reuse decision
+
+Current 2026 source audit supports this leading route:
+
+```text
+Current MediaPipe graph/calculators
+  preprocessing + detector decode/NMS + ROI/tracking
+        |
+        v
+replaceable inference node
+  existing TFLite CPU fallback
+  OpenVINO CPU FP32 (first HD620 candidate)
+  optional future accelerated OpenVINO profile
+        |
+        v
+Current MediaPipe landmark/heatmap/presence/world/projection calculators
+        |
+        v
+schema-driven Provider Landmark Frame
+        |
+        v
+provider-specific semantic mapper
+        |
+        v
+versioned canonical definition (CanonicalBodyV1 first)
+        |
+        +--> stabilization/calibration
+        +--> retarget consumer profiles
+        +--> locomotion profiles
+        +--> gestures/future hand systems
+```
+
+Why this is credible:
+- current Google MediaPipe detector and landmark Tasks graphs still isolate neural execution behind `AddInference(...)` while keeping detector decode/NMS/ROI and landmark refinement/world projection in MediaPipe calculators;
+- Intel's OpenVINO MediaPipe references include an in-process direct `OpenVINOInferenceCalculator` using `ov::Core`, proving the integration shape exists;
+- the old Intel fork should **not** be adopted wholesale: it is based on MediaPipe 0.10.3 while Homuler 0.16.3 uses MediaPipe 0.10.22, and the direct calculator is an old prototype with hard-coded CPU/TODO configuration;
+- selectively porting/adapting the calculator concept into the current Homuler/MediaPipe native build is therefore preferred.
+
+Alternative status:
+- **OVMS sidecar:** technically viable on current Windows/MediaPipe graph tooling, but not preferred for this local latency-sensitive game because it adds process/IPC/startup/packaging complexity. Keep only as fallback/reference if in-process build proves impractical.
+- **TFLite/OpenVINO delegate:** Intel's repository is archived/read-only; no maintained HD620-target drop-in successor was found. Do not choose as primary route.
+- **official MediaPipe GPU on Windows:** still not a supported production route for this Homuler/desktop setup.
+- **RTMPose/WholeBody:** useful future rich-2D provider (133 keypoints; OpenVINO deployment documented), but it lacks the current MediaPipe world-landmark contract and has real tracking/3D/Windows-integration migration cost.
+- **MediaPipe Holistic:** preferred future rich-MediaPipe provider to benchmark for hands/fingers/face because it retains MediaPipe-style semantics and exposes pose/hand world outputs; low-end cost must be measured.
+- **manual pipeline reimplementation:** last resort only.
+
+### Modular data design to preserve
+
+Provider layer:
+- versioned provider/schema ID;
+- schema-driven landmark count;
+- semantic landmark IDs/names and groups (body/left hand/right hand/face/etc.);
+- optional normalized image position, optional model depth, optional world position;
+- visibility/presence/confidence and capability flags;
+- never force a 2D provider to invent world coordinates.
+
+Canonical layer:
+- versioned schema-driven `CanonicalSkeletonDefinition`;
+- `CanonicalBodyV1` is exactly the current 20-joint meaning, coordinate convention and derived pelvis/chest/spine behavior;
+- future `CanonicalBodyV2` / `CanonicalBodyHandsV1` can add joints without changing V1;
+- frame capacity comes from the active definition rather than a global `JointCount=20` assumption.
+
+Consumer layer:
+- retarget/locomotion/gesture systems declare the semantic joints they require;
+- current humanoid body profile continues to consume only the current body joints;
+- later fingers/gestures consume richer joints independently.
+
+Do **not** refactor production `PoseObservation`, `CanonicalPoseFrame` or downstream runtime in the next proof. First prove the inference reuse path and later introduce schema adapters with deterministic parity against the current mapper.
+
+### Current next isolated proof
+
+Gate A — cheap external detector compatibility:
+- new tool: `Tools/OpenVinoLandmarkBenchmark/detector_probe.py`;
+- fail-closed exact detector identity: size 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
+- direct OpenVINO 2026.3 `Core.read_model()` on the unchanged TFLite;
+- require `[1,224,224,3]` float32 -> `[1,2254,12]` + `[1,2254,1]` float32;
+- explicit CPU/GPU compile and one finite-output sanity inference;
+- no DENSIFY rewrite, conversion, substitute model, AUTO/HETERO/MULTI or hidden fallback;
+- it is a compatibility probe, not a performance benchmark.
+
+Run from repository root after pulling the branch:
+
+```powershell
+.\Tools\OpenVinoLandmarkBenchmark\.venv\Scripts\python.exe .\Tools\OpenVinoLandmarkBenchmark\detector_probe.py --repo-root .
+```
+
+If Gate A passes, Gate B is the decisive architecture proof:
+- standalone native build based on the MediaPipe 0.10.22 generation used by Homuler;
+- port a minimal direct OpenVINO inference calculator rather than adopting the old fork;
+- substitute detector + landmark inference only;
+- retain current MediaPipe preprocessing, detector decode/NMS, ROI/tracking, landmark/heatmap refinement, visibility/presence, world decode and projection;
+- run the same short recorded frame sequence through baseline MediaPipe Tasks CPU and the OpenVINO-substituted graph;
+- compare final 33 normalized landmarks, 33 world landmarks, visibility/presence, ROI continuity, full graph latency and fresh-result cadence;
+- no Unity avatar connection until semantic parity + end-to-end performance are strong.
+
+### Licensing / packaging
+
+Project-level licenses audited are favorable: OpenVINO, MediaPipe, Intel's fork, OVMS, MMPose and MMDeploy are Apache-2.0; Homuler is MIT with third-party notices. A production native plugin still must preserve applicable notices and ship only redistributable runtime DLLs. Alternative downloaded model weights require separate model-card/dataset-license review; do not infer their terms solely from the repository license.
+
+### Governance remains unchanged
+
+- no merge to `main` without explicit USER approval;
+- no Phase 5A acceptance;
+- no Phase 6;
+- no production provider integration yet;
+- no canonical runtime refactor yet;
+- no detector densification;
+- no removal of the current MediaPipe CPU fallback.
