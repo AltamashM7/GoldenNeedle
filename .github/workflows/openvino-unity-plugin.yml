@@ -14,7 +14,7 @@ on:
 jobs:
   u2-native-backend:
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
