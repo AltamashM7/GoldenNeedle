@@ -1,0 +1,12 @@
+.work/
+.cache/
+third_party_downloads/
+build/
+bazel-*
+inputs/
+results/
+extracted_models/
+*.user
+*.local
+__pycache__/
+*.pyc
