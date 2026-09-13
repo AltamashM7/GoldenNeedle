@@ -32,56 +32,40 @@ Get-ChildItem $Destination -File | Where-Object {
 Copy-Item -Force $Plugin (Join-Path $Destination "golden_needle_openvino_pose.dll")
 
 $releaseBin = Join-Path $OpenVinoRoot "runtime\bin\intel64\Release"
-$requiredSeeds = @(
-    (Join-Path $releaseBin "openvino.dll"),
-    (Join-Path $releaseBin "openvino_intel_cpu_plugin.dll"),
-    (Join-Path $releaseBin "openvino_tensorflow_lite_frontend.dll")
-)
-foreach ($seed in $requiredSeeds) {
-    if (-not (Test-Path $seed)) { throw "Required CPU/TFLite runtime library missing: $seed" }
-}
-
-# Stage the explicit CPU/TFLite runtime plus its OpenVINO-owned transitive DLL
-# closure. This intentionally avoids copying every setupvars PATH DLL (GPU/NPU,
-# tools, duplicate loaders, etc.). PE import names are stored as ASCII strings;
-# only names that resolve inside this exact verified OpenVINO root are followed.
 $allOpenVinoDlls = @(Get-ChildItem $OpenVinoRoot -Recurse -Filter *.dll -File)
 function Resolve-OpenVinoDll([string]$Name) {
     $matches = @($allOpenVinoDlls | Where-Object { $_.Name -ieq $Name })
-    if ($matches.Count -eq 0) { return $null }
+    if ($matches.Count -eq 0) { throw "Required OpenVINO runtime dependency '$Name' was not found." }
     if ($matches.Count -eq 1) { return $matches[0] }
 
-    $preferred = @($matches | Where-Object {
-        $_.DirectoryName -ieq $releaseBin
-    })
+    $preferred = @($matches | Where-Object { $_.DirectoryName -ieq $releaseBin })
     if ($preferred.Count -eq 1) { return $preferred[0] }
 
-    $groups = @($matches | Group-Object { (Get-FileHash -Algorithm SHA256 $_.FullName).Hash })
-    if ($groups.Count -eq 1) { return $matches[0] }
+    $hashes = @($matches | ForEach-Object { (Get-FileHash -Algorithm SHA256 $_.FullName).Hash } | Select-Object -Unique)
+    if ($hashes.Count -eq 1) { return $matches[0] }
     throw "Ambiguous OpenVINO dependency '$Name' has multiple different binaries and no unique Release runtime candidate."
 }
 
-$queue = New-Object System.Collections.Generic.Queue[System.IO.FileInfo]
-$seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
-foreach ($seed in $requiredSeeds) { $queue.Enqueue((Get-Item $seed)) }
-while ($queue.Count -gt 0) {
-    $file = $queue.Dequeue()
-    if (-not $seen.Add($file.Name)) { continue }
-    Copy-Item -Force $file.FullName (Join-Path $Destination $file.Name)
-
-    $ascii = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($file.FullName))
-    $names = @([regex]::Matches($ascii, '(?i)\b[A-Za-z0-9_.-]+\.dll\b') |
-        ForEach-Object { $_.Value } | Select-Object -Unique)
-    foreach ($name in $names) {
-        if ($seen.Contains($name)) { continue }
-        $dependency = Resolve-OpenVinoDll $name
-        if ($null -ne $dependency) { $queue.Enqueue($dependency) }
-    }
+# Exact CPU/TFLite runtime set. U1 run #5 demonstrated these oneTBB names are
+# the runtime dependencies reached by OpenVINO 2026.3.0 on Windows. Do not use
+# a broad string scan here: OpenVINO core embeds names for optional GPU/NPU/AUTO
+# plugins even when those DLLs are not dependencies of this CPU-only package.
+$runtimeNames = @(
+    "openvino.dll",
+    "openvino_intel_cpu_plugin.dll",
+    "openvino_tensorflow_lite_frontend.dll",
+    "tbb12.dll",
+    "tbbbind_2_5.dll",
+    "tbbmalloc.dll"
+)
+foreach ($name in $runtimeNames) {
+    $source = Resolve-OpenVinoDll $name
+    Copy-Item -Force $source.FullName (Join-Path $Destination $source.Name)
 }
 
 # The dedicated runtime is CPU-only. OpenVINO's dynamic Core accepts a local
-# plugins.xml registry; generating the narrow registry here avoids pulling in
-# GPU/NPU plugins and makes backend identity deterministic for the Unity spike.
+# plugins.xml registry; generating the narrow registry here prevents accidental
+# GPU/NPU/AUTO/HETERO registration and makes backend identity deterministic.
 $pluginsXml = Join-Path $Destination "plugins.xml"
 @'
 <ie>
@@ -90,6 +74,19 @@ $pluginsXml = Join-Path $Destination "plugins.xml"
   </plugins>
 </ie>
 '@ | Set-Content -Encoding UTF8 $pluginsXml
+
+$forbidden = @(
+    "openvino_intel_gpu_plugin.dll",
+    "openvino_intel_npu_plugin.dll",
+    "openvino_auto_plugin.dll",
+    "openvino_auto_batch_plugin.dll",
+    "openvino_hetero_plugin.dll"
+)
+foreach ($name in $forbidden) {
+    if (Test-Path (Join-Path $Destination $name)) {
+        throw "FAIL CLOSED: CPU-only Unity package unexpectedly contains $name"
+    }
+}
 
 $PackagedPlugin = Join-Path $Destination "golden_needle_openvino_pose.dll"
 & $Smoke $PackagedPlugin
@@ -101,4 +98,5 @@ $staged = @(Get-ChildItem $Destination -Filter *.dll -File | Sort-Object Name | 
 Write-Host "[U1] Unity additive package PASS: $Destination"
 Write-Host "[U1] staged CPU/TFLite DLLs: $($staged -join ', ')"
 Write-Host "[U1] generated CPU-only plugins.xml PASS"
+Write-Host "[U1] GPU/NPU/AUTO/HETERO exclusion guard PASS"
 Write-Host "[U1] stock MediaPipe/TFLite plugin files were not replaced or renamed."
