@@ -1,0 +1,31 @@
+name: OpenVINO Unity plugin recovery proof
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Tools/OpenVinoUnityPosePlugin/**'
+      - 'Assets/GoldenNeedle/Plugins/OpenVinoPose/**'
+      - '.github/workflows/openvino-unity-plugin.yml'
+  workflow_dispatch:
+
+jobs:
+  u1-native-lifecycle:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Bootstrap exact OpenVINO runtime
+        shell: pwsh
+        run: .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
+
+      - name: Build x64 Release and run build-dir lifecycle smoke
+        shell: pwsh
+        run: .\Tools\OpenVinoUnityPosePlugin\scripts\build.ps1
+
+      - name: Package additively into Unity assets and smoke packaged DLL
+        shell: pwsh
+        run: .\Tools\OpenVinoUnityPosePlugin\scripts\package_unity.ps1 -RepoRoot $PWD
