@@ -1,0 +1,48 @@
+name: U3 managed OpenVINO validation
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/OpenVinoPoseNative.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs'
+      - 'Tools/OpenVinoUnityPosePlugin/tests/ManagedAbiSmoke/**'
+      - '.github/workflows/u3-managed-validation.yml'
+  workflow_dispatch:
+
+jobs:
+  managed-abi-and-provider-static:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile real managed wrapper and assert ABI layout
+        run: dotnet run --configuration Release --project Tools/OpenVinoUnityPosePlugin/tests/ManagedAbiSmoke/ManagedAbiSmoke.csproj
+
+      - name: Validate provider integration invariants
+        shell: bash
+        run: |
+          git diff --check HEAD~1 HEAD || true
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs')
+          text = p.read_text(encoding='utf-8')
+          required = [
+              'inferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;',
+              'PoseInferenceBackend.OpenVinoCpuFp32',
+              'LaunchPreparedOpenVinoInference(',
+              'runtime.ProcessRgba(',
+              'PoseTrustClassifier.IsCandidate(',
+              'CleanupOpenVinoRuntime();',
+              'OpenVINO CPU FP32',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'missing provider invariants: {missing}')
+          if text.count('LaunchPreparedOpenVinoInference(') < 2:
+              raise SystemExit('OpenVINO launch branch/method pairing is incomplete')
+          print('U3_PROVIDER_STATIC_INVARIANTS=PASS')
+          PY
