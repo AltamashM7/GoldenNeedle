@@ -49,8 +49,12 @@ $env:HERMETIC_PYTHON_VERSION = "3.12"
 $env:PYTHON_BIN_PATH = $PythonExe
 $env:ANDROID_NDK_HOME = ""
 
-$OutputUserRoot = [string]$State.output_user_root
+# Keep the Windows Bazel execution root deliberately short. The previous
+# LOCALAPPDATA-based root pushed generated MediaPipe proto object paths past
+# the MSVC path limit and produced C1083 "compiler generated file" failures.
+$OutputUserRoot = Join-Path $env:USERPROFILE "gb"
 New-Item -ItemType Directory -Force -Path $OutputUserRoot | Out-Null
+Write-Host "[Gate B] short Bazel output root: $OutputUserRoot"
 $PythonBazelPath = $PythonExe.Replace("\", "/")
 $MediaPipeBazelPath = $MediaPipe.Replace("\", "/")
 $Override = "--override_repository=mediapipe=$MediaPipeBazelPath"
@@ -69,6 +73,7 @@ $Startup = @("--output_user_root=$OutputUserRoot")
 $Configuration = @(
     "-c", "opt",
     "--jobs=2",
+    "--verbose_failures",
     "--define=MEDIAPIPE_DISABLE_GPU=1",
     "--@opencv//:switch=cmake",
     "--repo_env=HERMETIC_PYTHON_VERSION=3.12",
