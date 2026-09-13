@@ -3,6 +3,7 @@ using System.Collections;
 using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Mediapipe;
 using Mediapipe.Tasks.Core;
 using Mediapipe.Tasks.Vision.Core;
@@ -672,6 +673,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
     {
         private const string ModelFileName = "pose_landmarker_lite.bytes";
         private const string ModelDirectory = "GoldenNeedle/PoseTrackingSpike/Models";
+        private const string OpenVinoModelDirectory = "GoldenNeedle/OpenVinoPoseModels";
+        private const string OpenVinoDetectorModelFileName = "pose_detector.tflite";
+        private const string OpenVinoLandmarkModelFileName = "pose_landmarks_detector.tflite";
 
         [Header("Camera")]
         [SerializeField] private string preferredCameraName = string.Empty;
@@ -685,6 +689,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField] private bool mirrorFrontFacingDisplay;
 
         [Header("Pose Landmarker")]
+        [Tooltip("Stock MediaPipe/TFLite remains the default. OpenVINO CPU FP32 is experimental and must be selected explicitly for A/B QA.")]
+        [SerializeField] private PoseInferenceBackend inferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;
         [SerializeField] private float targetInferenceFps = 30f;
         [SerializeField] private float readbackTimeoutSeconds = 2f;
         [SerializeField] private PoseTrustSettings trustSettings = new PoseTrustSettings();
@@ -720,6 +726,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private bool _configuredBodyInferenceDownscale;
         private int _configuredBodyInferenceLongEdge;
         private PoseLandmarker _poseLandmarker;
+        private OpenVinoPoseRuntime _openVinoPoseRuntime;
+        private Task<OpenVinoPoseRuntime> _openVinoBootstrapTask;
+        private Task _openVinoInferenceTask;
+        private byte[] _openVinoRgbaBuffer;
+        private readonly object _openVinoWorkerFailureGate = new object();
+        private Exception _openVinoWorkerFailure;
+        private PoseInferenceBackend _activeInferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;
         private Coroutine _bootstrapCoroutine;
         private bool _readbackPending;
         private bool _freshCameraFramePending;
@@ -807,6 +820,19 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public int EffectiveRotationDegrees => _orientation.SensorRotationDegrees;
         public CameraRotationOverride ManualRotationOverride => manualRotationOverride;
         public float TargetInferenceFps => targetInferenceFps;
+        public PoseInferenceBackend RequestedInferenceBackend => inferenceBackend;
+        public PoseInferenceBackend ActiveInferenceBackend => _activeInferenceBackend;
+        public string ActiveInferenceBackendLabel => _activeInferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32
+            ? "OpenVINO CPU FP32"
+            : "MediaPipe TFLite CPU";
+        public string OpenVinoRuntimeInfo { get; private set; } = string.Empty;
+        public string OpenVinoEngineInfo { get; private set; } = string.Empty;
+        public float LastOpenVinoManagedInputCopyMilliseconds { get; private set; }
+        public float LastOpenVinoGraphProcessMilliseconds { get; private set; }
+        public float LastOpenVinoDetectorInferenceMilliseconds { get; private set; }
+        public float LastOpenVinoLandmarkInferenceMilliseconds { get; private set; }
+        public float LastOpenVinoBridgeCopyMilliseconds { get; private set; }
+        public bool LastOpenVinoDetectorRan { get; private set; }
         public bool CameraSwitchPending => _cameraSwitchPending;
         public string PendingCameraName => _pendingCameraName;
         public bool VideoVerticallyMirrored => _webCamTexture != null && _webCamTexture.videoVerticallyMirrored;
@@ -960,6 +986,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
 
             UpdateMetrics();
+            ConsumeOpenVinoWorkerFailure();
 
             if (HasReceivedResult && Interlocked.Exchange(ref _resultCallbackLogPublished, 1) == 0)
             {
@@ -979,7 +1006,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
-            if (Status != PoseProviderStatus.Ready || _webCamTexture == null || _poseLandmarker == null || _textureFramePool == null)
+            if (Status != PoseProviderStatus.Ready || _webCamTexture == null || !IsActiveBackendReady() || _textureFramePool == null)
             {
                 return;
             }
@@ -1060,6 +1087,17 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _preparedCoordinateConventionVersion = 0;
             _preparedFramePublishedAtSeconds = 0d;
             _preparedFramePublishedFrameCount = -1;
+
+            if (_activeInferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32)
+            {
+                LaunchPreparedOpenVinoInference(
+                    textureFrame,
+                    frameObservedAtSeconds,
+                    framePublishedAtSeconds,
+                    framePublishedFrameCount,
+                    origin);
+                return;
+            }
 
             var frameReleased = false;
             try
@@ -1144,6 +1182,280 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
         }
 
+
+        private bool IsActiveBackendReady()
+        {
+            return _activeInferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32
+                ? _openVinoPoseRuntime != null
+                : _poseLandmarker != null;
+        }
+
+        private void LaunchPreparedOpenVinoInference(
+            TextureFrame textureFrame,
+            double frameObservedAtSeconds,
+            double framePublishedAtSeconds,
+            int framePublishedFrameCount,
+            PreparedInferenceLaunchOrigin origin)
+        {
+            var frameReleased = false;
+            try
+            {
+                if (_openVinoPoseRuntime == null)
+                {
+                    throw new InvalidOperationException("OpenVINO pose runtime is not ready.");
+                }
+
+                var width = textureFrame.width;
+                var height = textureFrame.height;
+                var strideBytes = checked(width * 4);
+                var expectedByteCount = checked(strideBytes * height);
+                var rawData = textureFrame.GetRawTextureData<byte>();
+                if (rawData.Length != expectedByteCount)
+                {
+                    throw new InvalidOperationException(
+                        $"OpenVINO RGBA input size mismatch. expected={expectedByteCount} actual={rawData.Length}");
+                }
+
+                if (_openVinoRgbaBuffer == null || _openVinoRgbaBuffer.Length != expectedByteCount)
+                {
+                    _openVinoRgbaBuffer = new byte[expectedByteCount];
+                }
+
+                var copyStartedAtSeconds = NowSeconds();
+                rawData.CopyTo(_openVinoRgbaBuffer);
+                var managedCopyMilliseconds = (float)((NowSeconds() - copyStartedAtSeconds) * 1000d);
+                LastCpuImageBuildDurationMilliseconds = managedCopyMilliseconds;
+                LastOpenVinoManagedInputCopyMilliseconds = managedCopyMilliseconds;
+                textureFrame.Release();
+                frameReleased = true;
+
+                var timestampMillisec = _clock.ElapsedMilliseconds;
+                Interlocked.Exchange(ref _inferenceOutstanding, 1);
+                _inferenceStartedAtSeconds = NowSeconds();
+                _activeInferenceFrameObservedAtSeconds = frameObservedAtSeconds;
+
+                var priorCompletion = CapturePendingInferenceCompletion();
+                var diagnosticSessionId = Volatile.Read(ref _inferenceDiagnosticSessionId);
+                var diagnosticSerial = Interlocked.Increment(ref _nextInferenceDiagnosticSerial);
+                Interlocked.Exchange(ref _activeInferenceDiagnosticSessionId, diagnosticSessionId);
+                Interlocked.Exchange(ref _activeInferenceDiagnosticSerial, diagnosticSerial);
+                Interlocked.Exchange(ref _activeInferenceDiagnosticTimestampMilliseconds, timestampMillisec);
+                Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitReturnTicks, 0L);
+                Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
+                var diagnosticSubmitStartTicks = Stopwatch.GetTimestamp();
+                Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitStartTicks, diagnosticSubmitStartTicks);
+
+                var runtime = _openVinoPoseRuntime;
+                var rgba = _openVinoRgbaBuffer;
+                var rotationDegrees = _orientation.InferenceRotationDegrees;
+                _openVinoInferenceTask = Task.Run(() =>
+                        runtime.ProcessRgba(
+                            rgba,
+                            width,
+                            height,
+                            strideBytes,
+                            rotationDegrees,
+                            timestampMillisec))
+                    .ContinueWith(
+                        task =>
+                        {
+                            if (task.IsFaulted)
+                            {
+                                PublishOpenVinoWorkerFailure(task.Exception?.GetBaseException() ??
+                                    new InvalidOperationException("OpenVINO pose worker failed."));
+                                return;
+                            }
+                            if (task.IsCanceled)
+                            {
+                                PublishOpenVinoWorkerFailure(
+                                    new OperationCanceledException("OpenVINO pose worker was canceled."));
+                                return;
+                            }
+
+                            try
+                            {
+                                OnOpenVinoPoseResult(task.Result);
+                            }
+                            catch (Exception exception)
+                            {
+                                PublishOpenVinoWorkerFailure(exception);
+                            }
+                        },
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+
+                var diagnosticSubmitReturnTicks = Stopwatch.GetTimestamp();
+                Interlocked.Exchange(
+                    ref _activeInferenceDiagnosticSubmitReturnTicks,
+                    diagnosticSubmitReturnTicks);
+                Volatile.Write(ref _activeInferenceDiagnosticAccepted, 1);
+                RecordInferenceContinuationSample(
+                    priorCompletion,
+                    diagnosticSessionId,
+                    diagnosticSubmitStartTicks,
+                    origin);
+
+                var acceptedAtSeconds = NowSeconds();
+                _inferenceScheduler.MarkAccepted(acceptedAtSeconds);
+                LastPreparedToInferenceLaunchMilliseconds = framePublishedAtSeconds > 0d
+                    ? (float)((acceptedAtSeconds - framePublishedAtSeconds) * 1000d)
+                    : 0f;
+                LastPreparedToInferenceLaunchFrameDelta = framePublishedFrameCount >= 0
+                    ? Mathf.Max(0, Time.frameCount - framePublishedFrameCount)
+                    : 0;
+                _lastAcceptedLaunchOrigin = origin;
+                if (origin == PreparedInferenceLaunchOrigin.ReadbackContinuation)
+                {
+                    _immediateLaunchesInWindow++;
+                }
+                Interlocked.Increment(ref _totalInferenceRequests);
+                _requestsInWindow++;
+                if (!_inferenceRequestLogPublished)
+                {
+                    _inferenceRequestLogPublished = true;
+                    UnityEngine.Debug.Log("[PoseTrackingSpike] OpenVINO inference request accepted");
+                }
+            }
+            catch (Exception exception)
+            {
+                if (!frameReleased)
+                {
+                    textureFrame.Release();
+                }
+                Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
+                Interlocked.Exchange(ref _inferenceOutstanding, 0);
+                SetFailure(PoseProviderStatus.InferenceFailed, $"OpenVINO frame/inference launch failed: {exception.Message}");
+                UnityEngine.Debug.LogException(exception, this);
+            }
+        }
+
+        private void OnOpenVinoPoseResult(OpenVinoPoseFrameResult result)
+        {
+            if (_shuttingDown)
+            {
+                Interlocked.Exchange(ref _inferenceOutstanding, 0);
+                return;
+            }
+
+            var callbackEntryTicks = Stopwatch.GetTimestamp();
+            var preparedWaitingAtCallbackEntry = Volatile.Read(ref _preparedTextureFrameDiagnosticOccupied) != 0;
+            Interlocked.Exchange(ref _resultCallbackReceived, 1);
+            Interlocked.Increment(ref _totalResultCallbacks);
+            Interlocked.Increment(ref _callbacksInWindow);
+
+            var receivedAtSeconds = NowSeconds();
+            var hasPose = result.HasPose && result.Landmarks != null &&
+                result.Landmarks.Length == PoseObservation.LandmarkCount;
+
+            lock (_observationGate)
+            {
+                _pendingObservation.Begin(result.TimestampMillisec, receivedAtSeconds, hasPose);
+                if (hasPose)
+                {
+                    for (var i = 0; i < PoseObservation.LandmarkCount; i++)
+                    {
+                        var source = result.Landmarks[i];
+                        var candidate = PoseTrustClassifier.IsCandidate(
+                            source.X,
+                            source.Y,
+                            source.Z,
+                            source.Visibility,
+                            source.HasVisibility,
+                            source.Presence,
+                            source.HasPresence,
+                            trustSettings);
+                        var tracked = candidate || WasRecentlyTracked(i, receivedAtSeconds);
+                        var observation = new PoseLandmarkObservation
+                        {
+                            index = i,
+                            x = source.X,
+                            y = source.Y,
+                            z = source.Z,
+                            visibility = source.Visibility,
+                            presence = source.Presence,
+                            hasVisibility = source.HasVisibility,
+                            hasPresence = source.HasPresence,
+                            trust = tracked ? LandmarkTrust.Tracked : LandmarkTrust.Unavailable,
+                        };
+                        if (source.HasWorld)
+                        {
+                            observation.worldX = source.WorldX;
+                            observation.worldY = source.WorldY;
+                            observation.worldZ = source.WorldZ;
+                            observation.hasWorldCoordinates = true;
+                        }
+                        if (candidate)
+                        {
+                            _lastTrackedAtSeconds[i] = receivedAtSeconds;
+                        }
+                        _pendingObservation.SetLandmark(in observation);
+                    }
+                }
+
+                var swap = _latestObservation;
+                _latestObservation = _pendingObservation;
+                _pendingObservation = swap;
+            }
+
+            LastOpenVinoGraphProcessMilliseconds = (float)result.GraphProcessMilliseconds;
+            LastOpenVinoDetectorInferenceMilliseconds = (float)result.DetectorInferenceMilliseconds;
+            LastOpenVinoLandmarkInferenceMilliseconds = (float)result.LandmarkInferenceMilliseconds;
+            LastOpenVinoBridgeCopyMilliseconds = (float)result.BridgeCopyMilliseconds;
+            LastOpenVinoDetectorRan = result.DetectorRan;
+            LastInferenceDurationMilliseconds = (float)((receivedAtSeconds - _inferenceStartedAtSeconds) * 1000d);
+            LastApproxFrameToResultMilliseconds = _activeInferenceFrameObservedAtSeconds > 0d
+                ? (float)((receivedAtSeconds - _activeInferenceFrameObservedAtSeconds) * 1000d)
+                : 0f;
+
+            var completionTicks = Stopwatch.GetTimestamp();
+            var preparedWaitingAtCompletion = Volatile.Read(ref _preparedTextureFrameDiagnosticOccupied) != 0;
+            PublishInferenceCompletionDiagnostic(
+                callbackEntryTicks,
+                completionTicks,
+                preparedWaitingAtCallbackEntry || preparedWaitingAtCompletion,
+                result.TimestampMillisec);
+            Interlocked.Exchange(ref _inferenceOutstanding, 0);
+            if (hasPose)
+            {
+                Interlocked.Increment(ref _resultsInWindow);
+            }
+        }
+
+        private void PublishOpenVinoWorkerFailure(Exception exception)
+        {
+            Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
+            Interlocked.Increment(ref _inferenceDiagnosticMissingSamples);
+            if (!_shuttingDown)
+            {
+                lock (_openVinoWorkerFailureGate)
+                {
+                    _openVinoWorkerFailure = exception;
+                }
+            }
+            Interlocked.Exchange(ref _inferenceOutstanding, 0);
+        }
+
+        private void ConsumeOpenVinoWorkerFailure()
+        {
+            Exception failure = null;
+            lock (_openVinoWorkerFailureGate)
+            {
+                if (_openVinoWorkerFailure != null)
+                {
+                    failure = _openVinoWorkerFailure;
+                    _openVinoWorkerFailure = null;
+                }
+            }
+            if (failure == null || _shuttingDown)
+            {
+                return;
+            }
+
+            SetFailure(PoseProviderStatus.InferenceFailed, $"OpenVINO pose worker failed: {failure.Message}");
+            UnityEngine.Debug.LogException(failure, this);
+        }
+
         private void TryStartLatestReadback()
         {
             if (_readbackPending)
@@ -1208,10 +1520,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
 
             Status = PoseProviderStatus.PreparingModel;
-            StatusMessage = $"Preparing local CPU model: {ModelFileName}";
+            StatusMessage = inferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32
+                ? "Preparing experimental OpenVINO CPU FP32 pose backend"
+                : $"Preparing local CPU model: {ModelFileName}";
 
             var modelPath = Path.Combine(Application.streamingAssetsPath, ModelDirectory, ModelFileName);
-            if (!File.Exists(modelPath))
+            if (inferenceBackend == PoseInferenceBackend.MediaPipeTfliteCpu && !File.Exists(modelPath))
             {
                 SetFailure(PoseProviderStatus.ModelFailed, $"Local model was not found: {modelPath}");
                 CleanupRuntime();
@@ -1220,27 +1534,70 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
             try
             {
-                var options = new PoseLandmarkerOptions(
-                    baseOptions: new BaseOptions(BaseOptions.Delegate.CPU, modelAssetPath: modelPath),
-                    runningMode: RunningMode.LIVE_STREAM,
-                    numPoses: 1,
-                    minPoseDetectionConfidence: 0.5f,
-                    minPosePresenceConfidence: 0.5f,
-                    minTrackingConfidence: 0.5f,
-                    outputSegmentationMasks: false,
-                    resultCallback: OnPoseLandmarkerResult);
+                if (inferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32)
+                {
+                    var detectorPath = Path.Combine(
+                        Application.streamingAssetsPath,
+                        OpenVinoModelDirectory,
+                        OpenVinoDetectorModelFileName);
+                    var landmarkPath = Path.Combine(
+                        Application.streamingAssetsPath,
+                        OpenVinoModelDirectory,
+                        OpenVinoLandmarkModelFileName);
+                    if (!File.Exists(detectorPath) || !File.Exists(landmarkPath))
+                    {
+                        throw new FileNotFoundException(
+                            "Generated OpenVINO detector/landmark files are missing. Run Tools/OpenVinoUnityPosePlugin/scripts/package_unity.ps1 before selecting the experimental backend.");
+                    }
 
-                _poseLandmarker = PoseLandmarker.CreateFromOptions(options);
+                    var bootstrapTask = Task.Run(() => OpenVinoPoseRuntime.Create(detectorPath, landmarkPath));
+                    _openVinoBootstrapTask = bootstrapTask;
+                    while (!bootstrapTask.IsCompleted)
+                    {
+                        yield return null;
+                    }
+                    _openVinoBootstrapTask = null;
+                    if (bootstrapTask.IsCanceled)
+                    {
+                        throw new OperationCanceledException("OpenVINO pose runtime initialization was canceled.");
+                    }
+                    if (bootstrapTask.IsFaulted)
+                    {
+                        throw bootstrapTask.Exception?.GetBaseException() ??
+                            new InvalidOperationException("OpenVINO pose runtime initialization failed.");
+                    }
+
+                    _openVinoPoseRuntime = bootstrapTask.Result;
+                    _activeInferenceBackend = PoseInferenceBackend.OpenVinoCpuFp32;
+                    OpenVinoRuntimeInfo = _openVinoPoseRuntime.RuntimeInfo;
+                    OpenVinoEngineInfo = _openVinoPoseRuntime.EngineInfo;
+                }
+                else
+                {
+                    var options = new PoseLandmarkerOptions(
+                        baseOptions: new BaseOptions(BaseOptions.Delegate.CPU, modelAssetPath: modelPath),
+                        runningMode: RunningMode.LIVE_STREAM,
+                        numPoses: 1,
+                        minPoseDetectionConfidence: 0.5f,
+                        minPosePresenceConfidence: 0.5f,
+                        minTrackingConfidence: 0.5f,
+                        outputSegmentationMasks: false,
+                        resultCallback: OnPoseLandmarkerResult);
+
+                    _poseLandmarker = PoseLandmarker.CreateFromOptions(options);
+                    _activeInferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;
+                }
+
                 RebuildBodyInferenceResources();
                 UpdateInputTransform();
                 _inferenceScheduler.Reset();
                 Status = PoseProviderStatus.Ready;
-                StatusMessage = "Camera and CPU Pose Landmarker are ready";
-                UnityEngine.Debug.Log($"[PoseTrackingSpike] Ready: camera={SelectedCameraName}, resolution={ActualCameraWidth}x{ActualCameraHeight}, bodyInference={BodyInferenceWidth}x{BodyInferenceHeight}, bodyMode={(BodyInferenceUsesScaledTexture ? "scaled" : "native")}, requestedFps={requestedCameraFps}, model={ModelFileName}, delegate=CPU, poses=1, segmentation=false");
+                StatusMessage = $"Camera and {ActiveInferenceBackendLabel} pose backend are ready";
+                UnityEngine.Debug.Log($"[PoseTrackingSpike] Ready: camera={SelectedCameraName}, resolution={ActualCameraWidth}x{ActualCameraHeight}, bodyInference={BodyInferenceWidth}x{BodyInferenceHeight}, bodyMode={(BodyInferenceUsesScaledTexture ? "scaled" : "native")}, requestedFps={requestedCameraFps}, backend={ActiveInferenceBackendLabel}, poses=1, segmentation=false");
             }
             catch (Exception exception)
             {
-                SetFailure(PoseProviderStatus.ModelFailed, $"Pose Landmarker initialization failed: {exception.Message}");
+                SetFailure(PoseProviderStatus.ModelFailed, $"Pose backend initialization failed: {exception.Message}");
                 UnityEngine.Debug.LogException(exception, this);
                 CleanupRuntime();
             }
@@ -1790,7 +2147,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 yield break;
             }
 
-            if (_shuttingDown || coordinateConventionVersion != _coordinateConventionVersion || _poseLandmarker == null)
+            if (_shuttingDown || coordinateConventionVersion != _coordinateConventionVersion || !IsActiveBackendReady())
             {
                 if (directRequest)
                 {
@@ -1837,7 +2194,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 Status == PoseProviderStatus.Ready,
                 _shuttingDown,
                 _cameraSwitchPending,
-                _poseLandmarker != null,
+                IsActiveBackendReady(),
                 _preparedTextureFrame != null,
                 _preparedCoordinateConventionVersion == _coordinateConventionVersion,
                 BodyInferenceResourcesMatchCurrentIntent(),
@@ -2101,6 +2458,16 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _activeDirectReadbackStage = DirectReadbackStage.None;
             _directBodyCpuReadbackSessionAvailable = true;
             _directBodyCpuReadbackFallbackReason = string.Empty;
+            lock (_openVinoWorkerFailureGate)
+            {
+                _openVinoWorkerFailure = null;
+            }
+            LastOpenVinoManagedInputCopyMilliseconds = 0f;
+            LastOpenVinoGraphProcessMilliseconds = 0f;
+            LastOpenVinoDetectorInferenceMilliseconds = 0f;
+            LastOpenVinoLandmarkInferenceMilliseconds = 0f;
+            LastOpenVinoBridgeCopyMilliseconds = 0f;
+            LastOpenVinoDetectorRan = false;
             InferenceRequestsPerSecond = 0f;
             ResultCallbacksPerSecond = 0f;
             PoseResultsPerSecond = 0f;
@@ -2237,13 +2604,17 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     $"cb→next={FormatTimingPair(InferenceContinuationTimingPreparedResultToNextLaunchMedianMilliseconds, InferenceContinuationTimingPreparedResultToNextLaunchP95Milliseconds)}ms " +
                     $"U/RB={InferenceContinuationTimingUpdateLaunchCount}/{InferenceContinuationTimingReadbackLaunchCount} " +
                     $"missing={InferenceContinuationTimingMissingSampleCount}";
+                var openVinoTimingSummary = _activeInferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32
+                    ? $"\nOV ms managed/graph/det/lmk/bridge: {LastOpenVinoManagedInputCopyMilliseconds:0.0}/{LastOpenVinoGraphProcessMilliseconds:0.0}/{LastOpenVinoDetectorInferenceMilliseconds:0.0}/{LastOpenVinoLandmarkInferenceMilliseconds:0.0}/{LastOpenVinoBridgeCopyMilliseconds:0.0} detRan={(LastOpenVinoDetectorRan ? 1 : 0)}"
+                    : string.Empty;
                 StatusMessage =
-                    $"Camera/Pose ready | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
+                    $"Camera/Pose ready | Backend: {ActiveInferenceBackendLabel} | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
                     $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
                     $"Readback: {readbackPathSummary} H={(FlipInputHorizontally ? 1 : 0)} V={(FlipInputVertically ? 1 : 0)} direct={DirectReadbacksPerSecond:0.0}/s fail={DirectReadbackFailuresPerSecond:0.0}/s{fallbackSuffix}\n" +
                     $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s" +
                     inferenceContinuationTimingSummary +
-                    directTimingSummary;
+                    directTimingSummary +
+                    openVinoTimingSummary;
             }
 
             _requestsInWindow = 0;
@@ -2506,12 +2877,61 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
         }
 
+
+        private void CleanupOpenVinoRuntime()
+        {
+            var inferenceTask = _openVinoInferenceTask;
+            if (inferenceTask != null)
+            {
+                try
+                {
+                    inferenceTask.Wait();
+                }
+                catch (AggregateException)
+                {
+                    // Worker errors are surfaced through the provider failure channel while active.
+                }
+                _openVinoInferenceTask = null;
+            }
+
+            var bootstrapTask = _openVinoBootstrapTask;
+            if (bootstrapTask != null)
+            {
+                try
+                {
+                    bootstrapTask.Wait();
+                    if (bootstrapTask.Status == TaskStatus.RanToCompletion &&
+                        bootstrapTask.Result != null &&
+                        !ReferenceEquals(bootstrapTask.Result, _openVinoPoseRuntime))
+                    {
+                        bootstrapTask.Result.Dispose();
+                    }
+                }
+                catch (AggregateException)
+                {
+                    // Initialization failure is already represented by bootstrap/provider status.
+                }
+                _openVinoBootstrapTask = null;
+            }
+
+            _openVinoPoseRuntime?.Dispose();
+            _openVinoPoseRuntime = null;
+            _openVinoRgbaBuffer = null;
+            OpenVinoRuntimeInfo = string.Empty;
+            OpenVinoEngineInfo = string.Empty;
+            lock (_openVinoWorkerFailureGate)
+            {
+                _openVinoWorkerFailure = null;
+            }
+        }
+
         private bool CleanupRuntime()
         {
             _shuttingDown = true;
             _freshCameraFramePending = false;
             var directReadbackTeardownSafe = EnsureActiveDirectReadbackCompletedBeforeTeardown();
             ReleasePreparedFrame();
+            CleanupOpenVinoRuntime();
 
             if (_poseLandmarker != null)
             {
