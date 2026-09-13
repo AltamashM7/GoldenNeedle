@@ -15,20 +15,22 @@ $StatePath = Join-Path $ToolRoot ".work\bootstrap-state.json"
 $Build = Join-Path $ToolRoot "build\Release"
 if (-not (Test-Path $StatePath)) { throw "Run bootstrap.ps1 first." }
 $State = Get-Content $StatePath -Raw | ConvertFrom-Json
-if ([string]$State.openvino_version -ne "2026.3.0") {
-    throw "FAIL CLOSED: packaging requires the approved OpenVINO 2026.3.0 state."
+if ([string]$State.openvino_version -ne "2026.3.0" -or
+    [string]$State.mediapipe_version -ne "0.10.22") {
+    throw "FAIL CLOSED: packaging requires the approved OpenVINO 2026.3.0 / MediaPipe 0.10.22 state."
 }
 $OpenVinoRoot = [IO.Path]::GetFullPath([string]$State.openvino_root)
 $Plugin = Join-Path $Build "golden_needle_openvino_pose.dll"
 $Smoke = Join-Path $Build "gnovpose_smoke.exe"
-if (-not (Test-Path $Plugin) -or -not (Test-Path $Smoke)) { throw "Run build.ps1 before packaging." }
+if (-not (Test-Path $Plugin) -or -not (Test-Path $Smoke)) {
+    throw "Run build.ps1 before packaging."
+}
 
 $Destination = Join-Path $RepoRoot "Assets\GoldenNeedle\Plugins\OpenVinoPose\x86_64"
 New-Item -ItemType Directory -Force -Path $Destination | Out-Null
 Get-ChildItem $Destination -File | Where-Object {
     $_.Extension -in @(".dll", ".pdb") -or $_.Name -eq "plugins.xml"
 } | Remove-Item -Force
-
 Copy-Item -Force $Plugin (Join-Path $Destination "golden_needle_openvino_pose.dll")
 
 $releaseBin = Join-Path $OpenVinoRoot "runtime\bin\intel64\Release"
@@ -41,15 +43,13 @@ function Resolve-OpenVinoDll([string]$Name) {
     $preferred = @($matches | Where-Object { $_.DirectoryName -ieq $releaseBin })
     if ($preferred.Count -eq 1) { return $preferred[0] }
 
-    $hashes = @($matches | ForEach-Object { (Get-FileHash -Algorithm SHA256 $_.FullName).Hash } | Select-Object -Unique)
+    $hashes = @($matches | ForEach-Object {
+        (Get-FileHash -Algorithm SHA256 $_.FullName).Hash
+    } | Select-Object -Unique)
     if ($hashes.Count -eq 1) { return $matches[0] }
     throw "Ambiguous OpenVINO dependency '$Name' has multiple different binaries and no unique Release runtime candidate."
 }
 
-# Exact CPU/TFLite runtime set. U1 run #5 demonstrated these oneTBB names are
-# the runtime dependencies reached by OpenVINO 2026.3.0 on Windows. Do not use
-# a broad string scan here: OpenVINO core embeds names for optional GPU/NPU/AUTO
-# plugins even when those DLLs are not dependencies of this CPU-only package.
 $runtimeNames = @(
     "openvino.dll",
     "openvino_intel_cpu_plugin.dll",
@@ -63,9 +63,6 @@ foreach ($name in $runtimeNames) {
     Copy-Item -Force $source.FullName (Join-Path $Destination $source.Name)
 }
 
-# The dedicated runtime is CPU-only. OpenVINO's dynamic Core accepts a local
-# plugins.xml registry; generating the narrow registry here prevents accidental
-# GPU/NPU/AUTO/HETERO registration and makes backend identity deterministic.
 $pluginsXml = Join-Path $Destination "plugins.xml"
 @'
 <ie>
@@ -88,15 +85,30 @@ foreach ($name in $forbidden) {
     }
 }
 
+# Stage exact detector/landmark files derived from the already-versioned production
+# task bundle. They remain generated/ignored to avoid duplicating model binaries in Git.
+$GeneratedModels = Join-Path $ToolRoot ".work\models"
+$RuntimeModels = Join-Path $RepoRoot "Assets\StreamingAssets\GoldenNeedle\OpenVinoPoseModels"
+New-Item -ItemType Directory -Force -Path $RuntimeModels | Out-Null
+foreach ($name in @("pose_detector.tflite", "pose_landmarks_detector.tflite")) {
+    $source = Join-Path $GeneratedModels $name
+    if (-not (Test-Path $source)) {
+        throw "Exact generated model is missing: $source. Run build.ps1 first."
+    }
+    Copy-Item -Force $source (Join-Path $RuntimeModels $name)
+}
+
 $PackagedPlugin = Join-Path $Destination "golden_needle_openvino_pose.dll"
 & $Smoke $PackagedPlugin
 if ($LASTEXITCODE -ne 0) {
-    throw "Packaged U1 plugin failed same-process Load/Version/SelfTest/Unload. CPU runtime dependency set is incomplete."
+    throw "Packaged U2 plugin failed same-process Load/Version/SelfTest/Unload."
 }
 
-$staged = @(Get-ChildItem $Destination -Filter *.dll -File | Sort-Object Name | ForEach-Object { $_.Name })
-Write-Host "[U1] Unity additive package PASS: $Destination"
-Write-Host "[U1] staged CPU/TFLite DLLs: $($staged -join ', ')"
-Write-Host "[U1] generated CPU-only plugins.xml PASS"
-Write-Host "[U1] GPU/NPU/AUTO/HETERO exclusion guard PASS"
-Write-Host "[U1] stock MediaPipe/TFLite plugin files were not replaced or renamed."
+$staged = @(Get-ChildItem $Destination -Filter *.dll -File |
+    Sort-Object Name | ForEach-Object { $_.Name })
+Write-Host "[U2] Unity additive native package PASS: $Destination"
+Write-Host "[U2] staged CPU runtime DLLs: $($staged -join ', ')"
+Write-Host "[U2] generated CPU-only plugins.xml PASS"
+Write-Host "[U2] GPU/NPU/AUTO/HETERO exclusion guard PASS"
+Write-Host "[U2] exact detector/landmark runtime models staged: $RuntimeModels"
+Write-Host "[U2] stock MediaPipe/TFLite plugin files were not replaced or renamed."

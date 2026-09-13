@@ -7,22 +7,23 @@ on:
     paths:
       - 'Tools/OpenVinoUnityPosePlugin/**'
       - 'Assets/GoldenNeedle/Plugins/OpenVinoPose/**'
+      - 'Assets/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/**'
       - '.github/workflows/openvino-unity-plugin.yml'
   workflow_dispatch:
 
 jobs:
-  u1-native-lifecycle:
+  u2-native-backend:
     runs-on: windows-2022
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Bootstrap exact OpenVINO runtime
+      - name: Bootstrap exact pinned native sources and OpenVINO runtime
         shell: pwsh
         run: .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
 
-      - name: Build x64 Release and run build-dir lifecycle smoke
+      - name: Build U2 x64 Release and run lifecycle + real-frame semantic smoke
         shell: pwsh
         run: .\Tools\OpenVinoUnityPosePlugin\scripts\build.ps1
 

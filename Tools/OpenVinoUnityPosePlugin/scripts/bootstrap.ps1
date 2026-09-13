@@ -6,89 +6,98 @@ $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
 $ToolRoot = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
+$RepoRoot = Split-Path -Parent (Split-Path -Parent $ToolRoot)
 $Work = Join-Path $ToolRoot ".work"
-$Downloads = Join-Path $Work "downloads"
-$OpenVinoExtract = Join-Path $Work "openvino"
 $StatePath = Join-Path $Work "bootstrap-state.json"
+$GateBRoot = Join-Path $RepoRoot "Tools\MediaPipeOpenVinoParity"
+$GateBBootstrap = Join-Path $GateBRoot "bootstrap.ps1"
+$GateBStatePath = Join-Path $GateBRoot ".work\bootstrap-state.json"
 
-$OpenVinoVersion = "2026.3.0"
-$OpenVinoArchive = "openvino_toolkit_windows_2026.3.0.22451.bd8d6542e3c_x86_64.zip"
-$OpenVinoBase = "https://storage.openvinotoolkit.org/repositories/openvino/packages/2026.3/windows"
-$OpenVinoUrl = "$OpenVinoBase/$OpenVinoArchive"
-$OpenVinoShaUrl = "$OpenVinoUrl.sha256"
-$MediaPipeVersion = "0.10.22"
-$MediaPipeCommit = "c54c06dd8c4314a316c14da31493bcc38ed302e2"
-$HomulerVersion = "0.16.3"
-$HomulerCommit = "cf4c11d8eef724fe24111b7cd795d55ba490aeec"
-
-if (-not [Environment]::Is64BitOperatingSystem) { throw "U1 requires Windows x64." }
-if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
-    throw "cmake.exe is required. Install Visual Studio 2022 C++ CMake tools or CMake and reopen PowerShell."
+if (-not (Test-Path $GateBBootstrap)) {
+    throw "Gate B bootstrap is missing: $GateBBootstrap"
 }
-$VsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
-if (-not (Test-Path $VsWhere)) {
-    throw "Visual Studio 2022 Build Tools were not detected. Install Desktop development with C++ (MSVC v143 + Windows SDK)."
-}
-$VsInstall = & $VsWhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-if (-not $VsInstall) { throw "MSVC x64 tools were not detected. Install Visual Studio 2022 Desktop development with C++." }
+New-Item -ItemType Directory -Force -Path $Work | Out-Null
 
-New-Item -ItemType Directory -Force -Path $Work, $Downloads | Out-Null
+Write-Host "[U2] reusing the proven Gate B pinned native source bootstrap..."
 if ($Recreate) {
-    Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $OpenVinoExtract
-    Remove-Item -Force -ErrorAction SilentlyContinue $StatePath
+    & $GateBBootstrap -Recreate
+} else {
+    & $GateBBootstrap
+}
+if ($LASTEXITCODE -ne 0 -or -not (Test-Path $GateBStatePath)) {
+    throw "Gate B pinned source bootstrap failed."
 }
 
-$Zip = Join-Path $Downloads $OpenVinoArchive
-$ShaFile = "$Zip.sha256"
-if (-not (Test-Path $Zip)) {
-    Write-Host "[U1] downloading official OpenVINO $OpenVinoVersion Windows toolkit..."
-    Invoke-WebRequest -UseBasicParsing -Uri $OpenVinoUrl -OutFile $Zip
+$GateBState = Get-Content $GateBStatePath -Raw | ConvertFrom-Json
+$expectedMediaPipe = "c54c06dd8c4314a316c14da31493bcc38ed302e2"
+$expectedHomuler = "cf4c11d8eef724fe24111b7cd795d55ba490aeec"
+if ([string]$GateBState.mediapipe_commit -ne $expectedMediaPipe -or
+    [string]$GateBState.homuler_commit -ne $expectedHomuler -or
+    [string]$GateBState.openvino_version -ne "2026.3.0" -or
+    [string]$GateBState.bazel_version -ne "6.5.0") {
+    throw "FAIL CLOSED: Gate B bootstrap state no longer matches approved U2 pins."
 }
-if (-not (Test-Path $ShaFile)) { Invoke-WebRequest -UseBasicParsing -Uri $OpenVinoShaUrl -OutFile $ShaFile }
-$shaText = (Get-Content $ShaFile -Raw).Trim()
-$match = [regex]::Match($shaText, "(?i)\b[0-9a-f]{64}\b")
-if (-not $match.Success) { throw "Official OpenVINO checksum sidecar did not contain a SHA-256 digest." }
-$expectedSha = $match.Value.ToLowerInvariant()
-$actualSha = (Get-FileHash -Algorithm SHA256 $Zip).Hash.ToLowerInvariant()
-if ($actualSha -ne $expectedSha) {
-    throw "FAIL CLOSED: OpenVINO archive checksum mismatch. expected=$expectedSha actual=$actualSha"
-}
-Write-Host "[U1] OpenVINO archive checksum PASS: $actualSha"
 
-if (-not (Test-Path $OpenVinoExtract)) {
-    New-Item -ItemType Directory -Force -Path $OpenVinoExtract | Out-Null
-    Expand-Archive -Path $Zip -DestinationPath $OpenVinoExtract
-}
-$Setup = Get-ChildItem -Path $OpenVinoExtract -Recurse -Filter setupvars.bat | Select-Object -First 1
-if (-not $Setup) { throw "OpenVINO setupvars.bat not found after extraction." }
-$OpenVinoRoot = $Setup.Directory.FullName
-$required = @(
-    (Join-Path $OpenVinoRoot "runtime\include\openvino\openvino.hpp"),
-    (Join-Path $OpenVinoRoot "runtime\lib\intel64\Release\openvino.lib"),
+$Homuler = Join-Path $GateBRoot ".work\homuler"
+$MediaPipe = Join-Path $GateBRoot ".work\mediapipe"
+$OpenVinoRoot = [IO.Path]::GetFullPath([string]$GateBState.openvino_root)
+foreach ($required in @(
     (Join-Path $OpenVinoRoot "runtime\bin\intel64\Release\openvino.dll"),
     (Join-Path $OpenVinoRoot "runtime\bin\intel64\Release\openvino_intel_cpu_plugin.dll"),
-    (Join-Path $OpenVinoRoot "runtime\cmake\OpenVINOConfig.cmake")
-)
-foreach ($item in $required) {
-    if (-not (Test-Path $item)) { throw "Required OpenVINO 2026.3.0 artifact missing: $item" }
+    (Join-Path $OpenVinoRoot "runtime\bin\intel64\Release\openvino_tensorflow_lite_frontend.dll"),
+    (Join-Path $OpenVinoRoot "runtime\lib\intel64\Release\openvino.lib")
+)) {
+    if (-not (Test-Path $required)) {
+        throw "Required OpenVINO CPU runtime artifact missing: $required"
+    }
+}
+
+$PythonExe = [string]$GateBState.python_exe
+$OverlayScript = Join-Path $ToolRoot "scripts\apply_runtime_overlay.py"
+& $PythonExe $OverlayScript --tool-root $ToolRoot --mediapipe $MediaPipe
+if ($LASTEXITCODE -ne 0) {
+    throw "U2 runtime overlay installation failed."
+}
+
+$actualHomuler = (git -C $Homuler rev-parse HEAD).Trim()
+$actualMediaPipe = (git -C $MediaPipe rev-parse HEAD).Trim()
+if ($actualHomuler -ne $expectedHomuler -or $actualMediaPipe -ne $expectedMediaPipe) {
+    throw "FAIL CLOSED: pinned native source moved during U2 bootstrap."
+}
+
+$ModelTaskGraph = Join-Path $MediaPipe "mediapipe\tasks\cc\core\model_task_graph.cc"
+if (-not (Select-String -Path $ModelTaskGraph -Pattern "GOLDEN_NEEDLE_GATE_B_BACKEND" -Quiet) -or
+    -not (Select-String -Path $ModelTaskGraph -Pattern "GOLDEN_NEEDLE_GATE_B_MODEL_ASSET" -Quiet)) {
+    throw "FAIL CLOSED: proven ModelTaskGraph OpenVINO seam is missing."
 }
 
 $State = [ordered]@{
-    openvino_version = $OpenVinoVersion
-    openvino_archive = $OpenVinoArchive
-    openvino_sha256 = $actualSha
+    openvino_version = "2026.3.0"
+    openvino_sha256 = [string]$GateBState.openvino_sha256
     openvino_root = $OpenVinoRoot
-    mediapipe_version = $MediaPipeVersion
-    mediapipe_commit = $MediaPipeCommit
-    homuler_version = $HomulerVersion
-    homuler_commit = $HomulerCommit
-    vs_install = [string]$VsInstall
+    mediapipe_version = "0.10.22"
+    mediapipe_commit = $expectedMediaPipe
+    mediapipe_root = $MediaPipe
+    homuler_version = "0.16.3"
+    homuler_commit = $expectedHomuler
+    homuler_root = $Homuler
+    bazel_command = [string]$GateBState.bazel_command
+    bazel_version = "6.5.0"
+    python_exe = $PythonExe
+    python_version = "3.12"
+    msys_bash = [string]$GateBState.msys_bash
+    msys_bin = [string]$GateBState.msys_bin
+    vs_install = [string]$GateBState.vs_install
+    repo_root = $RepoRoot
+    gate_b_root = $GateBRoot
 }
 $State | ConvertTo-Json -Depth 4 | Set-Content -Encoding UTF8 $StatePath
 
 Write-Host ""
-Write-Host "[U1] bootstrap PASS"
-Write-Host "OpenVINO: $OpenVinoVersion / $actualSha"
-Write-Host "MediaPipe semantic generation pin: $MediaPipeVersion / $MediaPipeCommit"
-Write-Host "Homuler pin: $HomulerVersion / $HomulerCommit"
+Write-Host "[U2] bootstrap PASS"
+Write-Host "OpenVINO: 2026.3.0 / $($State.openvino_sha256)"
+Write-Host "MediaPipe: 0.10.22 / $expectedMediaPipe"
+Write-Host "Homuler: 0.16.3 / $expectedHomuler"
+Write-Host "Bazel: 6.5.0"
+Write-Host "Runtime overlay: golden_needle_unity_openvino"
 Write-Host "Next: .\Tools\OpenVinoUnityPosePlugin\scripts\build.ps1"
