@@ -56,6 +56,67 @@ if ($RunnerText -notmatch [regex]::Escape($ResolverNeedle)) {
     throw "FAIL CLOSED: custom graph TaskRunner op-resolver patch did not verify."
 }
 
+# MediaPipe 0.10.22 TaskRunner::Process may collapse a graph failure into an
+# unhelpful `UNKNOWN:` status after WaitUntilIdle(). Install a graph error
+# callback for this research runner so the original calculator/downstream status
+# is printed before TaskRunner returns. Also dump the already-recorded OpenVINO
+# inference telemetry when a frame fails; this tells us whether detector and/or
+# landmark inference completed before the downstream graph error.
+$GraphErrorNeedle = "[Gate B graph error]"
+if ($RunnerText -notmatch [regex]::Escape($GraphErrorNeedle)) {
+    $CreatePattern = 'std::move\(config\),\s*std::make_unique<core::MediaPipeBuiltinOpResolver>\(\),\s*\r?\n\s*nullptr,\s*nullptr,\s*std::nullopt,\s*std::nullopt,\s*\r?\n\s*/\*disable_default_service=\*/true\);'
+    $CreateReplacement = @'
+std::move(config), std::make_unique<core::MediaPipeBuiltinOpResolver>(),
+      nullptr, nullptr, std::nullopt,
+      core::ErrorFn([](absl::Status status) {
+        std::cerr << "[Gate B graph error] " << status << "\n";
+      }),
+      /*disable_default_service=*/true);
+'@
+    $CreateRegex = [regex]::new($CreatePattern)
+    $PatchedRunnerText = $CreateRegex.Replace($RunnerText, $CreateReplacement.TrimEnd(), 1)
+    if ($PatchedRunnerText -eq $RunnerText) {
+        throw "FAIL CLOSED: could not install Gate B graph error callback in parity_runner.cc. Return this error to the Orchestrator."
+    }
+    $RunnerText = $PatchedRunnerText
+
+    $FailureNeedle = @'
+      if (!result.ok()) {
+        std::cerr << args.mode << " failed at frame " << index << ": "
+                  << result.status() << "\n";
+        return 2;
+      }
+'@
+    $FailureReplacement = @'
+      if (!result.ok()) {
+        std::cerr << args.mode << " failed at frame " << index << ": "
+                  << result.status() << "\n";
+        if (args.mode == "GRAPH_OPENVINO_CPU_FP32") {
+          const auto samples = golden_needle_gate_b::SnapshotTelemetry();
+          std::cerr << "[Gate B OpenVINO failure telemetry] samples="
+                    << samples.size();
+          for (const auto& sample : samples) {
+            std::cerr << " " << sample.model_kind
+                      << "(infer_ms=" << sample.inference_ms
+                      << ",input_copy_ms=" << sample.input_copy_ms
+                      << ",output_copy_ms=" << sample.output_copy_ms << ")";
+          }
+          std::cerr << "\n";
+        }
+        return 2;
+      }
+'@
+    if (-not $RunnerText.Contains($FailureNeedle.Trim())) {
+        throw "FAIL CLOSED: could not locate the custom graph frame-failure block for diagnostics. Return this error to the Orchestrator."
+    }
+    $RunnerText = $RunnerText.Replace($FailureNeedle.Trim(), $FailureReplacement.Trim())
+    [IO.File]::WriteAllText($RunnerSource, $RunnerText, (New-Object Text.UTF8Encoding($false)))
+    Write-Host "[Gate B] installed graph-error and OpenVINO failure diagnostics"
+}
+if ($RunnerText -notmatch [regex]::Escape($GraphErrorNeedle)) {
+    throw "FAIL CLOSED: Gate B graph error diagnostic patch did not verify."
+}
+
 $Bazel = [string]$State.bazel_command
 if (-not (Test-Path $Bazel) -and -not (Get-Command $Bazel -ErrorAction SilentlyContinue)) {
     throw "Configured Bazel command '$Bazel' is no longer available. Restore Bazelisk/Bazel and rerun bootstrap."
