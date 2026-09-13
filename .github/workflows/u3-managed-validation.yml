@@ -25,7 +25,6 @@ jobs:
       - name: Validate provider integration invariants
         shell: bash
         run: |
-          git diff --check HEAD~1 HEAD || true
           python3 - <<'PY'
           from pathlib import Path
           p = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs')
