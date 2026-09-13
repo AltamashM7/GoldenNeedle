@@ -79,12 +79,17 @@ while ($queue.Count -gt 0) {
     }
 }
 
-$pluginsXml = Join-Path $releaseBin "plugins.xml"
-if (-not (Test-Path $pluginsXml)) {
-    $pluginsXml = (Get-ChildItem $OpenVinoRoot -Recurse -Filter plugins.xml -File | Select-Object -First 1).FullName
-}
-if (-not $pluginsXml -or -not (Test-Path $pluginsXml)) { throw "OpenVINO plugins.xml was not found." }
-Copy-Item -Force $pluginsXml (Join-Path $Destination "plugins.xml")
+# The dedicated runtime is CPU-only. OpenVINO's dynamic Core accepts a local
+# plugins.xml registry; generating the narrow registry here avoids pulling in
+# GPU/NPU plugins and makes backend identity deterministic for the Unity spike.
+$pluginsXml = Join-Path $Destination "plugins.xml"
+@'
+<ie>
+  <plugins>
+    <plugin name="CPU" location="openvino_intel_cpu_plugin.dll"/>
+  </plugins>
+</ie>
+'@ | Set-Content -Encoding UTF8 $pluginsXml
 
 $PackagedPlugin = Join-Path $Destination "golden_needle_openvino_pose.dll"
 & $Smoke $PackagedPlugin
@@ -95,4 +100,5 @@ if ($LASTEXITCODE -ne 0) {
 $staged = @(Get-ChildItem $Destination -Filter *.dll -File | Sort-Object Name | ForEach-Object { $_.Name })
 Write-Host "[U1] Unity additive package PASS: $Destination"
 Write-Host "[U1] staged CPU/TFLite DLLs: $($staged -join ', ')"
+Write-Host "[U1] generated CPU-only plugins.xml PASS"
 Write-Host "[U1] stock MediaPipe/TFLite plugin files were not replaced or renamed."
