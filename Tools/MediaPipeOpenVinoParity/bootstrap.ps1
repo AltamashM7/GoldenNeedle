@@ -27,6 +27,30 @@ function Require-Command([string]$Name, [string]$Help) {
     return $command.Source
 }
 
+function Invoke-NativeCapture([string]$FilePath, [string[]]$ArgumentList) {
+    $stdoutPath = [System.IO.Path]::GetTempFileName()
+    $stderrPath = [System.IO.Path]::GetTempFileName()
+    try {
+        $process = Start-Process -FilePath $FilePath `
+            -ArgumentList $ArgumentList `
+            -WorkingDirectory (Get-Location).Path `
+            -NoNewWindow `
+            -Wait `
+            -PassThru `
+            -RedirectStandardOutput $stdoutPath `
+            -RedirectStandardError $stderrPath
+        $stdout = [string](Get-Content $stdoutPath -Raw -ErrorAction SilentlyContinue)
+        $stderr = [string](Get-Content $stderrPath -Raw -ErrorAction SilentlyContinue)
+        $combined = (($stdout.TrimEnd(), $stderr.TrimEnd()) | Where-Object { $_ }) -join [Environment]::NewLine
+        return @{
+            ExitCode = $process.ExitCode
+            Text = $combined.Trim()
+        }
+    } finally {
+        Remove-Item -Force -ErrorAction SilentlyContinue $stdoutPath, $stderrPath
+    }
+}
+
 function Find-Python312 {
     $candidates = @(
         @{ Exe = "py"; Prefix = "-3.12" },
@@ -115,13 +139,17 @@ Reset-PinnedClone "https://github.com/google-ai-edge/mediapipe.git" $MediaPipe $
 Push-Location $Homuler
 try {
     # Running through the Homuler workspace makes Bazelisk honor its exact
-    # .bazelversion. Plain Bazel also reports its build label here.
-    $bazelVersionText = (& $Bazel version 2>&1 | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0 -or
+    # .bazelversion. Bazelisk writes first-download progress to stderr, so use
+    # an explicit native-process capture rather than letting Windows PowerShell
+    # turn normal stderr progress into a terminating NativeCommandError.
+    $bazelVersionResult = Invoke-NativeCapture $Bazel @("version")
+    $bazelVersionText = $bazelVersionResult.Text
+    if ($bazelVersionResult.ExitCode -ne 0 -or
         ($bazelVersionText -notmatch "(?m)^Build label:\s*6\.5\.0\s*$" -and
          $bazelVersionText -notmatch "(?m)\bbazel\s+6\.5\.0\b")) {
-        throw "FAIL CLOSED: Gate B requires Bazel 6.5.0 from Homuler's .bazelversion. '$Bazel version' returned: $bazelVersionText"
+        throw "FAIL CLOSED: Gate B requires Bazel 6.5.0 from Homuler's .bazelversion. '$Bazel version' returned exit=$($bazelVersionResult.ExitCode): $bazelVersionText"
     }
+    Write-Host "[Gate B] Bazel version PASS: 6.5.0"
 } finally {
     Pop-Location
 }
