@@ -42,10 +42,13 @@ foreach ($name in @("openvino_inference_calculator.cc", "BUILD")) {
     }
     Copy-Item -Force $source $destination
 }
-if (-not (Select-String -Path (Join-Path $WorkspaceGateB "openvino_inference_calculator.cc") -Pattern "Gate B raw parity" -Quiet)) {
-    throw "FAIL CLOSED: Gate B raw-parity diagnostic source did not refresh into the ignored MediaPipe workspace."
+$OpenVinoSource = Join-Path $WorkspaceGateB "openvino_inference_calculator.cc"
+if (-not (Select-String -Path $OpenVinoSource -Pattern "Gate B raw parity" -Quiet) -or
+    -not (Select-String -Path $OpenVinoSource -Pattern "InferenceCalculatorNodeImpl" -Quiet) -or
+    -not (Select-String -Path $OpenVinoSource -Pattern "kDefaultTensorAlignment" -Quiet)) {
+    throw "FAIL CLOSED: Gate B OpenVINO source did not refresh with the MediaPipe inference-adapter semantics."
 }
-Write-Host "[Gate B] refreshed OpenVINO raw-parity diagnostic source"
+Write-Host "[Gate B] refreshed OpenVINO source using MediaPipe InferenceCalculatorNodeImpl semantics"
 
 # TaskRunner always installs ModelResourcesCache. The custom GRAPH modes must
 # therefore provide the same MediaPipeBuiltinOpResolver that BaseOptions uses
