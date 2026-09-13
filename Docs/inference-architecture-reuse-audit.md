@@ -402,43 +402,48 @@ MediaPipe Pose 33
 
 The architecture work changes where counts live, not what the current 20 joints mean.
 
-## 12. Exact next isolated proof
+## 12. Gate sequence and current execution status
 
-Two gates are recommended, in order.
+### Gate A — exact detector OpenVINO direct compatibility: COMPLETE / PASS
 
-### Gate A — exact detector OpenVINO direct compatibility (cheap, external)
+The planned cheap detector gate has now completed successfully on the exact unchanged production detector:
 
-Use the new isolated `Tools/OpenVinoLandmarkBenchmark/detector_probe.py` with the production bundle. It must:
+- exact identity: `pose_detector.tflite`, 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9` — PASS;
+- OpenVINO 2026.3 `Core.read_model()` direct read — SUCCESS;
+- contract float32 `[1,224,224,3]` -> `[1,2254,12]` + `[1,2254,1]` — TRUE;
+- explicit CPU compile + finite-output sanity inference — SUCCESS;
+- explicit GPU compile + finite-output sanity inference — SUCCESS;
+- no densification, conversion, alternate model, AUTO/HETERO/MULTI or hidden fallback.
 
-- verify exact bundle identity;
-- extract exactly `pose_detector.tflite`;
-- verify detector size 2,959,078 bytes and SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
-- call OpenVINO 2026.3 `Core.read_model()` directly on the unchanged TFLite;
-- require input `[1,224,224,3]` float32 and outputs `[1,2254,12]`, `[1,2254,1]` float32;
-- compile explicit CPU and GPU when available and perform one finite-output sanity inference;
-- never densify, convert, download a substitute, or hide failure behind AUTO/HETERO/MULTI/fallback.
+Therefore the exact detector's DENSIFY import failure is a Sentis limitation for this project, **not** an OpenVINO compatibility blocker.
 
-This is a compatibility probe, not a performance benchmark. If `read_model` succeeds, the Sentis DENSIFY import blocker is confirmed to be Sentis-specific for this exact detector.
+### Gate B — current-MediaPipe standalone graph parity proof: IMPLEMENTED / USER RUN PENDING
 
-Run:
+Tracked proof:
+`Tools/MediaPipeOpenVinoParity/`
 
-```powershell
-.\Tools\OpenVinoLandmarkBenchmark\.venv\Scripts\python.exe .\Tools\OpenVinoLandmarkBenchmark\detector_probe.py --repo-root .
-```
+The implementation deliberately uses the exact current generation rather than current master for the build proof:
+- Homuler `v0.16.3` -> commit `cf4c11d8eef724fe24111b7cd795d55ba490aeec`;
+- Homuler pins MediaPipe `v0.10.22` -> commit `c54c06dd8c4314a316c14da31493bcc38ed302e2`;
+- Bazel 6.5.0;
+- official OpenVINO Runtime C++ 2026.3.0 Windows toolkit.
 
-### Gate B — current-MediaPipe standalone graph parity proof (decisive architecture gate)
+The exact 0.10.22 audit confirms the same desired seam exists there: detector and landmark graphs route neural execution through `AddInference(...)`, while the surrounding MediaPipe calculators retain preprocessing, detector anchors/decode/NMS/ROI, previous-landmark tracking, landmark tensor split/decode, heatmap refinement, 33-landmark public output, presence/visibility, world-landmark processing, projection and auxiliary semantics.
 
-If Gate A passes, build a small **standalone** native proof based on the same MediaPipe 0.10.22 generation used by Homuler, not the old 0.10.3 Intel fork wholesale:
+Three deterministic comparison modes are implemented:
+1. `TASKS_REFERENCE` — official 0.10.22 PoseLandmarker CPU on the exact production task bundle;
+2. `GRAPH_TFLITE_CPU` — expanded current MediaPipe graph with standard TFLite CPU inference;
+3. `GRAPH_OPENVINO_CPU_FP32` — the same graph/calculators with **both detector and landmark inference nodes** switched to an in-process OpenVINO CPU FP32 calculator.
 
-1. port a minimal direct `OpenVINOInferenceCalculator` using OpenVINO Runtime 2026.x;
-2. make device/precision selectable, with CPU FP32 the first HD620 profile;
-3. substitute inference in both current pose detector and landmark graph while retaining current MediaPipe preprocessing, detector decode/NMS, ROI/tracking, landmark/heatmap refinement, visibility/presence, world decode and projection;
-4. feed a fixed short recorded frame sequence to both baseline MediaPipe Tasks CPU and the OpenVINO-substituted graph;
-5. compare final 33 normalized landmarks, final 33 world landmarks, visibility/presence and ROI continuity—not raw tensors only;
-6. record complete per-frame end-to-end graph latency/fresh-result cadence;
-7. do **not** connect either proof to the Unity avatar yet.
+Gate B preserves the exact production task settings: one pose, thresholds 0.5 / 0.5 / 0.5, segmentation false. VIDEO mode is used only for deterministic offline sequence parity; its timing is labelled offline graph-processing capacity, not Unity LIVE_STREAM frame-to-result latency.
 
-Only a strong semantic-parity + end-to-end-latency result should authorize Unity/native-plugin integration work.
+The OpenVINO calculator keeps the MediaPipe tensor boundary, compiles once, reuses its request, preserves expected output order/shapes, uses safe host copies for this first proof, and measures bridge-copy time separately. No model conversion, detector densification, quantization change or alternate model family is used.
+
+The runner processes the same fixed decoded frames and deterministic timestamps independently through all backends, retaining each backend's temporal/tracking state. It captures full 33 normalized/world landmarks plus pose presence, visibility/presence, auxiliary availability, ROI/detector continuity where available, startup/first-frame/steady-state timing, and OpenVINO detector/landmark inference/bridge-copy telemetry.
+
+The comparator reports A-vs-B, B-vs-C and A-vs-C semantic/numerical evidence and intentionally does not invent a Golden Needle acceptance tolerance. Final acceptance remains an Orchestrator decision.
+
+The next action is a USER Windows build/run with a short recorded human-motion sequence. Gate B must not be called PASS until those reports exist and have been reviewed.
 
 ## 13. Licensing and redistribution notes
 
@@ -458,50 +463,40 @@ Avoid copying the whole Intel MediaPipe fork. If calculator code is reused, pres
 
 ## 14. Risks and blockers
 
-1. **MediaPipe version gap:** Intel fork baseline 0.10.3 vs Golden Needle/Homuler MediaPipe 0.10.22. This is the largest reuse-engineering risk and is why selective porting is preferred.
-2. **Native Windows build/link packaging:** Homuler's plugin must be rebuilt with OpenVINO headers/libs/runtime DLLs; ABI/runtime-loading details need a standalone proof before Unity integration.
-3. **Current Tasks graph substitution:** current graph builders call `AddInference(...)`; injecting OpenVINO may require a small custom graph/subgraph copy rather than a purely declarative option. That is acceptable if surrounding calculators remain reused.
-4. **Exact detector compatibility:** not yet USER-run through OpenVINO. Gate A exists specifically to close this question without DENSIFY surgery.
-5. **Full-pipeline performance unknown:** raw landmark latency is excellent, but detector cadence, graph calculators, camera prep and Unity coexistence still need measurement.
-6. **GPU contention:** HD 620 is shared with rendering. Even if GPU FP16 is faster in isolation, game/render contention may erase the win. CPU FP32 is the first low-end profile.
-7. **Semantic parity:** raw network consistency is insufficient. Gate B must compare final MediaPipe semantics on real frame sequences.
-8. **Richer-provider cost:** Holistic and WholeBody add substantial landmark/model work; extensibility architecture does not imply they are free on low-end hardware.
-9. **Topology migration risk:** genericizing `33`/`20` too early could destabilize accepted Phase 4 behavior. Runtime refactor remains blocked until explicit parity tests/profile adapters exist.
-10. **No production approval yet:** no architecture proof in this document authorizes replacing MediaPipe Tasks in the game.
+1. **Native Windows build/link packaging remains unproven in this Builder environment.** Gate B supplies bootstrap/build scripts, but the actual MSVC/Bazel/OpenVINO build must run on the USER Windows machine.
+2. **Full-pipeline performance remains unknown until Gate B runs.** Raw neural speed is excellent, but detector cadence and retained MediaPipe calculators may materially change the full result.
+3. **Semantic parity is the decisive gate.** Raw tensor consistency is insufficient; Gate B compares final MediaPipe pose/world outputs on real frame sequences.
+4. **GPU contention remains a later question.** HD620 is shared with rendering. Gate B intentionally starts with OpenVINO CPU FP32.
+5. **Richer-provider cost remains unknown.** Holistic and WholeBody extensibility does not mean they are free on low-end hardware.
+6. **Topology migration risk remains.** Genericizing 33/20 too early could destabilize accepted Phase 4 behavior, so the provider/canonical refactor remains design-only until later explicit parity work.
+7. **No production approval yet.** Neither Gate A nor the Gate B scaffold authorizes replacing MediaPipe Tasks in Unity.
 
-## Sources checked (2026-09-13)
+## 15. Sources checked / provenance
 
-Repository/source claims above were checked against current sources rather than inherited assumptions:
+Architecture alternatives were originally audited against current 2026 sources including Google MediaPipe, OpenVINO/OVMS, Intel's MediaPipe reference fork, MediaPipeUnityPlugin v0.16.3, the archived OpenVINO TFLite delegate, MMPose/MMDeploy, and MediaPipe Holistic.
 
-- Golden Needle production source at required audit start `98a2d25663758640bba83112f422e35f89cf9bfb`:
-  - `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/PoseObservation.cs`
-  - `Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs`
-  - `Assets/GoldenNeedle/Core/Motion/Canonical/MediaPipeCanonicalPoseMapper.cs`
-  - `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs`
-  - `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs`
-- Google MediaPipe current master checked at commit `d4f197be5af7c0db497a9eea6ee07d1d4710d2be` (2026-09-11):
+Gate B additionally pinned the executable proof to the exact relevant source generation:
+- Homuler MediaPipeUnityPlugin v0.16.3 commit `cf4c11d8eef724fe24111b7cd795d55ba490aeec`;
+- Google MediaPipe v0.10.22 commit `c54c06dd8c4314a316c14da31493bcc38ed302e2`;
+- OpenVINO Runtime 2026.3.0 official Windows C++ toolkit;
+- production task bundle and exact detector/landmark hashes listed above.
+
+Reference URLs retained from the architecture audit:
+- Google MediaPipe:
+  - https://github.com/google-ai-edge/mediapipe
   - https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/tasks/cc/vision/pose_detector/pose_detector_graph.cc
   - https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/tasks/cc/vision/pose_landmarker/pose_landmarks_detector_graph.cc
-  - https://github.com/google-ai-edge/mediapipe
-- OpenVINO 2026 MediaPipe integration docs:
+- OpenVINO MediaPipe / OVMS:
   - https://docs.openvino.ai/2026/model-server/ovms_docs_mediapipe.html
   - https://docs.openvino.ai/2026/model-server/ovms_docs_mediapipe_inference.html
   - https://docs.openvino.ai/2026/model-server/ovms_docs_mediapipe_how_to.html
-- Intel OpenVINO MediaPipe reference fork, checked default-branch head `b27f0ca7d4fe36175a9f725844cb64b3d3e18959`:
   - https://github.com/openvinotoolkit/mediapipe
-  - https://github.com/openvinotoolkit/mediapipe/blob/main/mediapipe/calculators/openvino/openvino_inference_calculator.cc
-  - https://github.com/openvinotoolkit/mediapipe/blob/main/mediapipe/calculators/ovms/calculators.md
-  - https://github.com/openvinotoolkit/mediapipe/blob/main/mediapipe/modules/pose_landmark/pose_landmark_by_roi_cpu.pbtxt
-- Current Intel discussion explicitly referencing the MediaPipe/OpenVINO fork/calculator in 2026:
-  - https://github.com/openvinotoolkit/openvino/discussions/34766
-- MediaPipeUnityPlugin v0.16.3 / MediaPipe 0.10.22 / Windows support notes:
+  - https://github.com/openvinotoolkit/model_server
+- MediaPipeUnityPlugin:
   - https://github.com/homuler/MediaPipeUnityPlugin
   - https://github.com/homuler/MediaPipeUnityPlugin/releases/tag/v0.16.3
 - Archived OpenVINO TFLite delegate:
   - https://github.com/openvinotoolkit/tflite_openvino_delegate
-- OVMS Windows/reference path:
-  - https://github.com/openvinotoolkit/model_server
-  - https://docs.openvino.ai/2026/model-server/ovms_what_is_openvino_model_server.html
 - MMPose/RTMPose/MMDeploy:
   - https://github.com/open-mmlab/mmpose
   - https://mmpose.readthedocs.io/en/latest/user_guides/how_to_deploy.html
@@ -510,3 +505,13 @@ Repository/source claims above were checked against current sources rather than 
 - MediaPipe Holistic:
   - https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/tasks/cc/vision/holistic_landmarker/holistic_landmarker_result.h
   - https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/tasks/cc/vision/holistic_landmarker/holistic_landmarker_graph.cc
+
+## 16. Governance remains unchanged
+
+- no merge to `main` without explicit USER approval;
+- no Phase 5A acceptance;
+- no Phase 6;
+- no production provider integration yet;
+- no canonical runtime refactor yet;
+- no detector densification;
+- no removal of the current MediaPipe CPU fallback.
