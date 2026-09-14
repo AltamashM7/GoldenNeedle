@@ -8,11 +8,40 @@ This procedure compares the accepted stock MediaPipe/TFLite CPU backend against 
 
 1. Use GitHub Desktop to update `engine/pose-tracking-spike` to the latest remote checkpoint.
 2. Close Unity before preparing the native package.
-3. From the repository root in PowerShell, run:
+3. Prefer the preserved native artifact path so the USER does **not** repeat the expensive MediaPipe/OpenVINO native build.
+
+### Recommended fast path — reuse the proven CI native artifact
+
+Use GitHub Actions to download artifact `golden-needle-u2-native` from successful workflow run `34805228184` (`OpenVINO Unity native build artifact`). The expected artifact ID is `10334182410` and its archive SHA-256 is `c8a5dfd7e50885f78ac9f8f0e7d935dce663b211d2a62e1562e709fd1d1b9af7`.
+
+Extract the artifact to a simple local folder, for example:
+
+```text
+C:\Users\user\Downloads\golden-needle-u2-native
+```
+
+The extracted folder must directly contain:
+- `golden_needle_openvino_pose.dll`
+- `runtime_pose_smoke.exe`
+- `native-build-manifest.json`
+
+Then from the repository root in PowerShell run:
+
+```powershell
+.\Tools\OpenVinoUnityPosePlugin\scripts\prepare_unity.ps1 -ArtifactDir "C:\Users\user\Downloads\golden-needle-u2-native"
+```
+
+This still bootstraps/verifies the exact pinned runtime, checks the immutable artifact manifest/hashes/source ancestry, runs lifecycle + real-frame regression locally, extracts the exact production detector/landmark models, and stages the additive Unity package. It avoids the hour-scale native Bazel rebuild.
+
+### Full local rebuild fallback
+
+If the preserved artifact is unavailable/expired, or if native-impacting source has changed and the script rejects the artifact, run:
 
 ```powershell
 .\Tools\OpenVinoUnityPosePlugin\scripts\prepare_unity.ps1
 ```
+
+Without `-ArtifactDir`, the script performs the complete local native build plus regression before packaging. This is substantially slower and should not be the normal U4 path while the preserved artifact is valid.
 
 Do not open Unity until the script prints:
 
