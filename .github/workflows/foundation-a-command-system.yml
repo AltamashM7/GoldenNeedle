@@ -9,31 +9,25 @@ on:
       - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs'
       - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/WindowsKeywordSpeechProvider.cs'
       - 'Assets/GoldenNeedle/Tests/Editor/FoundationACommandSystemTests.cs'
-      - 'Tools/FoundationACommandSystem/**'
       - 'Tools/FoundationACommandSmoke/**'
       - '.github/workflows/foundation-a-command-system.yml'
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  verify-and-apply:
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - name: Checkout exact branch head
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply fail-closed presenter command migration
-        run: python3 Tools/FoundationACommandSystem/apply_presenter_command_migration.py
 
       - name: Run pure command and speech policy smoke
         run: dotnet run --configuration Release --project Tools/FoundationACommandSmoke/FoundationACommandSmoke.csproj
 
-      - name: Validate Foundation A invariants
+      - name: Validate permanent Foundation A invariants
         shell: bash
         run: |
           git diff --check
@@ -72,7 +66,6 @@ jobs:
               'SelectCameraViewPreset,',
               'public string parameter;',
               'public sealed class GoldenNeedleCommandRouter',
-              'Foundation B and is not implemented in Foundation A',
           ], 'command model/router')
 
           require(policy, [
@@ -93,9 +86,6 @@ jobs:
               'new SpeechCommandMapping("game view", GoldenNeedleCommand.SetGamePresentation)',
               'new SpeechCommandMapping("lab view", GoldenNeedleCommand.SetLabPresentation)',
           ], 'speech configuration/resolution')
-          default_block = policy[policy.index('public static SpeechCommandConfiguration CreateDefault()'):]
-          if 'GoldenNeedleCommand.SelectCameraViewPreset' in default_block:
-              raise SystemExit('Foundation B preset command must not have a default speech mapping')
 
           require(speech_input, [
               'public interface ISpeechInputProvider : IDisposable',
@@ -110,7 +100,9 @@ jobs:
               'provider.Dispose();',
           ], 'speech provider boundary/input')
           if 'UnityEngine' in policy or 'UnityEngine' in speech_input or 'UnityEngine' in command:
-              raise SystemExit('core command/speech policy must not depend on Unity platform speech APIs')
+              raise SystemExit('core command/speech policy must remain platform-neutral')
+          if 'Keyboard.current' in speech_input or 'InputSystem' in speech_input:
+              raise SystemExit('speech input must not simulate or depend on keyboard input')
 
           require(windows, [
               '#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN || UNITY_WSA',
@@ -198,7 +190,6 @@ jobs:
               'PerMappingConfidenceRejectsBelowThreshold',
               'SpeechCooldownBlocksDuplicateSpeechButDoesNotBelongToRouter',
               'CommandParameterIsPreservedThroughResolutionAndRouting',
-              'ReservedFoundationBPresetCommandFailsSafely',
               'RouterUsesSharedTargetsAndReportsMissingTargetsSafely',
               'UnsupportedProviderDisablesGracefullyWithoutDispatch',
           ]
@@ -208,43 +199,12 @@ jobs:
           print('SHARED_COMMAND_ROUTING=PASS')
           print('KEYBOARD_MIGRATION_F1_F12_R_V_C_X_K=PASS')
           print('SPEECH_POLICY_AND_PROVIDER_BOUNDARY=PASS')
-          print('FOUNDATION_B_RESERVED_UNSUPPORTED=PASS')
           print('EXISTING_RUNTIME_AUTHORITIES_PRESERVED=PASS')
           PY
 
-      - name: Validate scoped diff
+      - name: Assert verification is read-only
         shell: bash
         run: |
-          base='9920e5f327bf0cfbea8894c7fcbb3a35a0f97970'
-          allowed='^(Assets/GoldenNeedle/Core/Commands(\.meta|/.*)|Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter\.cs|Assets/GoldenNeedle/Debug/PoseTrackingSpike/WindowsKeywordSpeechProvider\.cs(\.meta)?|Assets/GoldenNeedle/Tests/Editor/FoundationACommandSystemTests\.cs(\.meta)?|Tools/FoundationACommandSystem/.*|Tools/FoundationACommandSmoke/.*|\.github/workflows/foundation-a-command-system\.yml)$'
-          changed="$({ git diff --name-only "$base"..HEAD; git diff --name-only; } | sort -u)"
-          bad="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
-          if [ -n "$bad" ]; then
-            echo 'Unexpected Foundation A files changed:'
-            echo "$bad"
-            exit 1
-          fi
-          if printf '%s\n' "$changed" | grep -Eq '(^|/)PoseTrackingSpike\.unity$|^Packages/|^ProjectSettings/|OpenVino|WebCamCpu|MediaPipePoseProvider\.cs$|MotionEngineRuntime\.cs$|EmbodiedLocomotionController\.cs$|HumanoidRetarget'; then
-            echo 'Forbidden Foundation A scope change detected'
-            exit 1
-          fi
-          echo 'FOUNDATION_A_DIFF_SCOPE=PASS'
-
-      - name: Show focused diff
-        shell: bash
-        run: |
-          git diff --stat
-          git diff -- Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs
-
-      - name: Commit generated presenter migration
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo 'Foundation A presenter migration already applied; nothing to commit.'
-            exit 0
-          fi
-          git config user.name 'Golden Needle Builder'
-          git config user.email 'actions@users.noreply.github.com'
-          git add Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs
-          git commit -m 'refactor: route lab controls through shared commands'
-          git push origin HEAD:engine/pose-tracking-spike
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+          echo 'FOUNDATION_A_WORKFLOW_READ_ONLY=PASS'
