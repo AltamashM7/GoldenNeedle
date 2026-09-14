@@ -1,0 +1,56 @@
+name: OpenVINO Unity native build artifact
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Tools/OpenVinoUnityPosePlugin/overlay/**'
+      - 'Tools/OpenVinoUnityPosePlugin/include/**'
+      - 'Tools/OpenVinoUnityPosePlugin/src/**'
+      - 'Tools/OpenVinoUnityPosePlugin/tests/runtime_pose_smoke.cc'
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/apply_runtime_overlay.py'
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/bootstrap.ps1'
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/build_native.ps1'
+      - 'Tools/MediaPipeOpenVinoParity/bootstrap.ps1'
+      - 'Tools/MediaPipeOpenVinoParity/overlay/**'
+      - '.github/workflows/openvino-unity-native-build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  u2-native-build:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Homuler MSYS2 build utilities
+        shell: pwsh
+        run: C:\msys64\usr\bin\bash.exe -lc "pacman -Sy --noconfirm --needed git patch unzip zip"
+
+      - name: Pin native Bazelisk launcher
+        shell: pwsh
+        run: |
+          $bazelisk = Join-Path $env:RUNNER_TEMP "bazelisk.exe"
+          Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/bazelbuild/bazelisk/releases/download/v1.28.1/bazelisk-windows-amd64.exe" -OutFile $bazelisk
+          $env:RUNNER_TEMP | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Bootstrap exact pinned native sources and OpenVINO runtime
+        shell: pwsh
+        run: .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
+
+      - name: Build immutable U2 x64 Release artifact
+        shell: pwsh
+        run: .\Tools\OpenVinoUnityPosePlugin\scripts\build_native.ps1 -ArtifactDir .\Tools\OpenVinoUnityPosePlugin\.work\native-artifact
+
+      - name: Upload immutable U2 native build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-needle-u2-native
+          path: Tools/OpenVinoUnityPosePlugin/.work/native-artifact
+          if-no-files-found: error
+          retention-days: 14
