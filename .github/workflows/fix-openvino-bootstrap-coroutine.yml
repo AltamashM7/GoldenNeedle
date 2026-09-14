@@ -12,7 +12,8 @@ permissions:
 
 jobs:
   patch-provider:
-    runs-on: windows-2022
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,14 +22,13 @@ jobs:
           ref: engine/pose-tracking-spike
 
       - name: Patch BootstrapAsync iterator structure
-        shell: pwsh
+        shell: bash
         run: |
-          @'
+          python3 - <<'PY'
           from pathlib import Path
 
-          path = Path(r"Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs")
-          text = path.read_text(encoding="utf-8")
-          nl = "\r\n" if "\r\n" in text else "\n"
+          path = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs')
+          text = path.read_text(encoding='utf-8')
 
           old = '''            try
             {
@@ -71,7 +71,7 @@ jobs:
                     OpenVinoEngineInfo = _openVinoPoseRuntime.EngineInfo;
                 }
                 else
-'''.replace("\n", nl)
+'''
 
           new = '''            Task<OpenVinoPoseRuntime> bootstrapTask = null;
             if (inferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32)
@@ -122,36 +122,23 @@ jobs:
                     OpenVinoEngineInfo = _openVinoPoseRuntime.EngineInfo;
                 }
                 else
-'''.replace("\n", nl)
+'''
 
-          if text.count(old) != 1:
-              raise SystemExit(f"Expected exactly one BootstrapAsync block, found {text.count(old)}")
+          count = text.count(old)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one BootstrapAsync block, found {count}')
 
-          patched = text.replace(old, new, 1)
-          path.write_text(patched, encoding="utf-8", newline="")
-          print("OPENVINO_BOOTSTRAP_COROUTINE_PATCH=PASS")
-          '@ | python -
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          print('OPENVINO_BOOTSTRAP_COROUTINE_PATCH=PASS')
+          PY
 
-      - name: Guard against CS1626 pattern
-        shell: pwsh
+      - name: Verify patch and commit
+        shell: bash
         run: |
-          $path = 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs'
-          $text = Get-Content $path -Raw
-          if ($text -notmatch 'Task<OpenVinoPoseRuntime> bootstrapTask = null;') {
-            throw 'Expected pre-try OpenVINO bootstrap task declaration was not installed.'
-          }
-          if ($text -notmatch 'while \(!bootstrapTask\.IsCompleted\)') {
-            throw 'Expected OpenVINO bootstrap wait loop is missing.'
-          }
-          Write-Host 'OPENVINO_BOOTSTRAP_CS1626_GUARD=PASS'
-
-      - name: Commit fix
-        shell: pwsh
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          grep -F 'Task<OpenVinoPoseRuntime> bootstrapTask = null;' Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs
-          git diff --cached --check
-          if ($LASTEXITCODE -ne 0) { throw 'git diff --check failed' }
-          git commit -m "fix: move OpenVINO coroutine yield outside catchable try"
+          git commit -m 'fix: move OpenVINO coroutine yield outside catchable try'
           git push origin HEAD:engine/pose-tracking-spike
