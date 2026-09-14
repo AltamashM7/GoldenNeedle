@@ -43,7 +43,7 @@ For a clean regeneration:
 .\Tools\OpenVinoUnityPosePlugin\scripts\prepare_unity.ps1 -Recreate
 ```
 
-The wrapper executes the same fail-closed stages individually available as:
+The compatibility wrapper still performs the full local sequence:
 
 ```powershell
 .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
@@ -51,7 +51,24 @@ The wrapper executes the same fail-closed stages individually available as:
 .\Tools\OpenVinoUnityPosePlugin\scripts\package_unity.ps1
 ```
 
+`build.ps1` now composes two explicit stages:
+
+```powershell
+.\Tools\OpenVinoUnityPosePlugin\scripts\build_native.ps1
+.\Tools\OpenVinoUnityPosePlugin\scripts\run_regression.ps1
+```
+
 Do not open Unity until the command reports `OPENVINO_UNITY_LOCAL_PREP=PASS`.
+
+## CI recovery split
+
+The expensive Bazel build and the post-build smoke/package proof are deliberately separated in CI.
+
+`OpenVINO Unity native build artifact` runs only when native-impacting inputs change. It builds the MediaPipe/OpenVINO DLL and `runtime_pose_smoke.exe`, then uploads `golden-needle-u2-native` with a manifest containing the source SHA, exact dependency pins and SHA-256 hashes.
+
+`OpenVINO Unity regression proof` is for loader, lifecycle, real-frame and packaging work. It downloads the latest successful native artifact, verifies the manifest/hashes and verifies that no native-impacting files changed after that build. It rebuilds only the small independent `gnovpose_smoke.exe` host, prints direct DLL import diagnostics, then runs lifecycle, model-identity, real-frame and packaged-DLL checks.
+
+This allows loader/test/package fixes to iterate without repeating the roughly hour-long Bazel compilation. A fresh native artifact is still mandatory whenever native source, overlay, ABI/runtime source, native smoke target, dependency bootstrap or native-build configuration changes.
 
 ## Runtime contract
 
