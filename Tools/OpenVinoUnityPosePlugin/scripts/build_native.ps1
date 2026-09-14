@@ -53,8 +53,56 @@ if ($env:GITHUB_ACTIONS -eq "true") {
 New-Item -ItemType Directory -Force -Path $OutputUserRoot | Out-Null
 Write-Host "[U2 native] Bazel output root: $OutputUserRoot"
 
+# Homuler's pinned WORKSPACE still points zlib 1.2.13 at an old zlib.net HTTP URL.
+# Hosted runners can receive non-archive bytes from that endpoint, which Bazel
+# correctly rejects against the pinned SHA. Supply the exact same upstream archive
+# through Bazel's distdir so dependency identity remains unchanged and fail-closed.
+$DistDir = Join-Path $ToolRoot ".work\distdir"
+$ZlibArchive = Join-Path $DistDir "zlib-1.2.13.tar.gz"
+$ZlibExpectedSha256 = "b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30"
+$ZlibUrl = "https://github.com/madler/zlib/releases/download/v1.2.13/zlib-1.2.13.tar.gz"
+New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
+
+$haveValidZlib = $false
+if (Test-Path $ZlibArchive) {
+    $existingHash = (Get-FileHash -Algorithm SHA256 $ZlibArchive).Hash.ToLowerInvariant()
+    if ($existingHash -eq $ZlibExpectedSha256) {
+        $haveValidZlib = $true
+    } else {
+        Remove-Item -Force $ZlibArchive
+    }
+}
+if (-not $haveValidZlib) {
+    $tempArchive = "$ZlibArchive.download"
+    Remove-Item -Force $tempArchive -ErrorAction SilentlyContinue
+    $downloaded = $false
+    for ($attempt = 1; $attempt -le 3 -and -not $downloaded; $attempt++) {
+        try {
+            Write-Host "[U2 native] downloading exact zlib 1.2.13 archive (attempt $attempt/3)..."
+            Invoke-WebRequest -UseBasicParsing -Uri $ZlibUrl -OutFile $tempArchive
+            $downloaded = $true
+        } catch {
+            Remove-Item -Force $tempArchive -ErrorAction SilentlyContinue
+            if ($attempt -eq 3) { throw }
+            Start-Sleep -Seconds 2
+        }
+    }
+    $downloadHash = (Get-FileHash -Algorithm SHA256 $tempArchive).Hash.ToLowerInvariant()
+    if ($downloadHash -ne $ZlibExpectedSha256) {
+        Remove-Item -Force $tempArchive -ErrorAction SilentlyContinue
+        throw "FAIL CLOSED: official zlib 1.2.13 archive hash mismatch: expected $ZlibExpectedSha256, got $downloadHash"
+    }
+    Move-Item -Force $tempArchive $ZlibArchive
+}
+$ZlibHash = (Get-FileHash -Algorithm SHA256 $ZlibArchive).Hash.ToLowerInvariant()
+if ($ZlibHash -ne $ZlibExpectedSha256) {
+    throw "FAIL CLOSED: zlib distdir verification failed."
+}
+Write-Host "[U2 native] zlib 1.2.13 distdir checksum PASS: $ZlibHash"
+
 $PythonBazelPath = $PythonExe.Replace("\", "/")
 $MediaPipeBazelPath = $MediaPipe.Replace("\", "/")
+$DistDirBazelPath = $DistDir.Replace("\", "/")
 $Override = "--override_repository=mediapipe=$MediaPipeBazelPath"
 $ActionEnv = @("--action_env=PYTHON_BIN_PATH=$PythonBazelPath")
 foreach ($name in @("ProgramData", "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION")) {
@@ -68,6 +116,7 @@ $Configuration = @(
     "-c", "opt",
     "--jobs=2",
     "--verbose_failures",
+    "--distdir=$DistDirBazelPath",
     "--define=MEDIAPIPE_DISABLE_GPU=1",
     "--@opencv//:switch=cmake",
     "--repo_env=HERMETIC_PYTHON_VERSION=3.12",
@@ -91,6 +140,7 @@ try {
     function Resolve-BazelOutput([string]$Target, [string]$Suffix) {
         $QueryConfiguration = @(
             "-c", "opt",
+            "--distdir=$DistDirBazelPath",
             "--define=MEDIAPIPE_DISABLE_GPU=1",
             "--@opencv//:switch=cmake",
             "--repo_env=HERMETIC_PYTHON_VERSION=3.12",
@@ -141,7 +191,9 @@ $manifest = [ordered]@{
     homuler_version = [string]$State.homuler_version
     homuler_commit = [string]$State.homuler_commit
     bazel_version = [string]$State.bazel_version
-    configuration = "opt; jobs=2; MEDIAPIPE_DISABLE_GPU=1; OpenCV CMake"
+    zlib_version = "1.2.13"
+    zlib_sha256 = $ZlibExpectedSha256
+    configuration = "opt; jobs=2; MEDIAPIPE_DISABLE_GPU=1; OpenCV CMake; verified distdir"
     plugin_file = "golden_needle_openvino_pose.dll"
     plugin_sha256 = (Get-FileHash -Algorithm SHA256 $Plugin).Hash.ToLowerInvariant()
     runtime_smoke_file = "runtime_pose_smoke.exe"
