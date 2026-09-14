@@ -142,7 +142,10 @@ $ovPath = $null
 foreach ($line in $envLines) {
     $eq = $line.IndexOf("=")
     if ($eq -le 0) { continue }
-    if ($line.Substring(0, $eq) -ieq "PATH") { $ovPath = $line.Substring($eq + 1) }
+    $name = $line.Substring(0, $eq)
+    $value = $line.Substring($eq + 1)
+    [Environment]::SetEnvironmentVariable($name, $value, "Process")
+    if ($name -ieq "PATH") { $ovPath = $value }
 }
 if (-not $ovPath) { throw "OpenVINO setupvars.bat did not produce PATH." }
 $rootNormalized = [IO.Path]::GetFullPath($OpenVinoRoot).TrimEnd('\') + '\'
