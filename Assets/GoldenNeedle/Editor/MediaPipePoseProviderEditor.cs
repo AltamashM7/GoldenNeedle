@@ -26,6 +26,7 @@ namespace GoldenNeedle.Editor
         private SerializedProperty _enableBodyInferenceDownscale;
         private SerializedProperty _bodyInferenceLongEdge;
         private SerializedProperty _enableImmediateInferenceLaunchAfterReadback;
+        private SerializedProperty _bodyFrameAcquisitionMode;
         private SerializedProperty _enableDirectBodyCpuReadback;
 
         private void OnEnable()
@@ -58,6 +59,8 @@ namespace GoldenNeedle.Editor
                 serializedObject.FindProperty("bodyInferenceLongEdge");
             _enableImmediateInferenceLaunchAfterReadback =
                 serializedObject.FindProperty("enableImmediateInferenceLaunchAfterReadback");
+            _bodyFrameAcquisitionMode =
+                serializedObject.FindProperty("bodyFrameAcquisitionMode");
             _enableDirectBodyCpuReadback =
                 serializedObject.FindProperty("enableDirectBodyCpuReadback");
         }
@@ -193,10 +196,15 @@ namespace GoldenNeedle.Editor
                     "Immediate Launch After Readback",
                     "Attempts body-pose inference immediately when readback finishes. If unsafe or ineligible, the frame remains prepared for the normal Update path; no extra queue or concurrent inference is created."));
             EditorGUILayout.PropertyField(
+                _bodyFrameAcquisitionMode,
+                new GUIContent(
+                    "Frame Acquisition",
+                    "ExistingReadback preserves the current RenderTexture/DirectCPU/Homuler A/B baseline. WebCamCpuPixels is the authorized OpenVINO-only GetPixels32 experiment and falls back explicitly to ExistingReadback if unavailable."));
+            EditorGUILayout.PropertyField(
                 _enableDirectBodyCpuReadback,
                 new GUIContent(
                     "Direct Body CPU Readback",
-                    "Experimental body-pose-only path. Eligible H/V-flipped inputs use one persistent Golden Needle staging RenderTexture with the same scale/offset convention as Homuler, then read GPU data directly into the pooled TextureFrame CPU buffer without LoadRawTextureData/Apply. CPU pose inference, CameraTexture and Lab display semantics remain unchanged."));
+                    "ExistingReadback-only optimization. Eligible H/V-flipped inputs use one persistent Golden Needle staging RenderTexture with the same scale/offset convention as Homuler, then read GPU data directly into the pooled TextureFrame CPU buffer. It remains the R2 fallback/A-B baseline."));
 
             serializedObject.ApplyModifiedProperties();
 
@@ -235,10 +243,27 @@ namespace GoldenNeedle.Editor
                     "Immediate Launch",
                     provider.ImmediateInferenceLaunchAfterReadbackEnabled ? "On" : "Off");
                 EditorGUILayout.LabelField(
+                    "Acquisition",
+                    $"{provider.ActiveBodyFrameAcquisitionModeLabel} (requested {provider.RequestedBodyFrameAcquisitionModeLabel})");
+                if (provider.RequestedBodyFrameAcquisitionMode == BodyFrameAcquisitionMode.WebCamCpuPixels)
+                {
+                    EditorGUILayout.LabelField(
+                        "CPU Get/Prep/Total",
+                        $"{provider.LastWebCamCpuGetPixelsMilliseconds:0.0}/{provider.LastWebCamCpuPreparationMilliseconds:0.0}/{provider.LastWebCamCpuTotalMilliseconds:0.0} ms");
+                }
+                if (!string.IsNullOrEmpty(provider.WebCamCpuAcquisitionFallbackReason))
+                {
+                    EditorGUILayout.LabelField(
+                        "Acquisition Fallback",
+                        provider.WebCamCpuAcquisitionFallbackReason);
+                }
+                EditorGUILayout.LabelField(
                     "Readback Path",
-                    provider.ActiveBodyReadbackPath == BodyReadbackPath.DirectCPU
-                        ? $"DirectCPU stage={provider.ActiveDirectReadbackStageLabel}"
-                        : provider.ActiveBodyReadbackPathLabel);
+                    provider.ActiveBodyFrameAcquisitionMode == BodyFrameAcquisitionMode.WebCamCpuPixels
+                        ? "Bypassed by WebCam CPU"
+                        : provider.ActiveBodyReadbackPath == BodyReadbackPath.DirectCPU
+                            ? $"DirectCPU stage={provider.ActiveDirectReadbackStageLabel}"
+                            : provider.ActiveBodyReadbackPathLabel);
                 EditorGUILayout.LabelField(
                     "Inference Flip",
                     $"H={(provider.FlipInputHorizontally ? 1 : 0)} V={(provider.FlipInputVertically ? 1 : 0)}");
