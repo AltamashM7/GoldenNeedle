@@ -1,11 +1,16 @@
 name: OpenVINO Unity regression proof
 
 on:
-  workflow_run:
-    workflows:
-      - OpenVINO Unity native build artifact
-    types:
-      - completed
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Tools/OpenVinoUnityPosePlugin/CMakeLists.txt'
+      - 'Tools/OpenVinoUnityPosePlugin/tests/plugin_smoke_test.cpp'
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/run_regression.ps1'
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/package_unity.ps1'
+      - 'Tools/MediaPipeOpenVinoParity/scripts/prepare_models.py'
+      - 'Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +19,6 @@ permissions:
 
 jobs:
   u2-regression:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-2022
     timeout-minutes: 45
     steps:
@@ -34,28 +38,24 @@ jobs:
           Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/bazelbuild/bazelisk/releases/download/v1.28.1/bazelisk-windows-amd64.exe" -OutFile $bazelisk
           $env:RUNNER_TEMP | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Resolve native artifact run
+      - name: Resolve latest successful native artifact run
         id: artifact_run
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ('${{ github.event_name }}' -eq 'workflow_run') {
-            $runId = '${{ github.event.workflow_run.id }}'
-          } else {
-            $headers = @{
-              Authorization = "Bearer $env:GH_TOKEN"
-              Accept = "application/vnd.github+json"
-              'X-GitHub-Api-Version' = '2022-11-28'
-            }
-            $repo = $env:GITHUB_REPOSITORY
-            $uri = "https://api.github.com/repos/$repo/actions/workflows/openvino-unity-native-build.yml/runs?branch=engine%2Fpose-tracking-spike&status=success&per_page=1"
-            $response = Invoke-RestMethod -Headers $headers -Uri $uri
-            if (-not $response.workflow_runs -or $response.workflow_runs.Count -eq 0) {
-              throw 'No successful OpenVINO native-build artifact run exists yet.'
-            }
-            $runId = [string]$response.workflow_runs[0].id
+          $headers = @{
+            Authorization = "Bearer $env:GH_TOKEN"
+            Accept = "application/vnd.github+json"
+            'X-GitHub-Api-Version' = '2022-11-28'
           }
+          $repo = $env:GITHUB_REPOSITORY
+          $uri = "https://api.github.com/repos/$repo/actions/workflows/openvino-unity-native-build.yml/runs?branch=engine%2Fpose-tracking-spike&status=success&per_page=1"
+          $response = Invoke-RestMethod -Headers $headers -Uri $uri
+          if (-not $response.workflow_runs -or $response.workflow_runs.Count -eq 0) {
+            throw 'No successful OpenVINO native-build artifact run exists yet.'
+          }
+          $runId = [string]$response.workflow_runs[0].id
           "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           Write-Host "Using native artifact from workflow run $runId"
 
