@@ -143,7 +143,12 @@ jobs:
           for text, name in [(workflow_a, 'Foundation A'), (workflow_b, 'Foundation B')]:
               if 'contents: read' not in text:
                   raise SystemExit(f'{name} workflow does not use read-only contents permission')
-              forbidden = ['git push ', 'git commit ', 'contents: write', 'apply_presenter_command_migration.py']
+              forbidden = [
+                  'git ' + 'push ',
+                  'git ' + 'commit ',
+                  'contents:' + ' write',
+                  'apply_presenter_' + 'command_migration.py',
+              ]
               found = [item for item in forbidden if item in text]
               if found:
                   raise SystemExit(f'{name} workflow is not read-only: {found}')
