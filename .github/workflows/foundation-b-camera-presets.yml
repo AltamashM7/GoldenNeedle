@@ -93,6 +93,9 @@ jobs:
               'controlledCamera.clearFlags = CameraClearFlags.SolidColor;',
           ], 'primary camera preset authority')
 
+          if 'CanonicalBoneId.' in camera and 'using GoldenNeedle.Core.Motion.Rotation;' not in camera:
+              raise SystemExit('ThirdPersonLabCamera references CanonicalBoneId without importing GoldenNeedle.Core.Motion.Rotation')
+
           select_start = camera.index('        public bool SelectViewPreset(string presetName)')
           late_start = camera.index('        private void LateUpdate()', select_start)
           select_method = camera[select_start:late_start]
@@ -154,6 +157,7 @@ jobs:
                   raise SystemExit(f'{name} workflow is not read-only: {found}')
 
           print('FOUNDATION_B_STATIC_AUDIT=PASS')
+          print('CANONICAL_BONE_NAMESPACE_IMPORT=PASS')
           print('SINGLE_PRIMARY_CAMERA=PASS')
           print('PRESET_SELECTION_ORTHOGONAL_TO_F12=PASS')
           print('FOCUS_FALLBACK_INVARIANTS=PASS')
