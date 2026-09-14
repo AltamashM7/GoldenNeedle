@@ -164,7 +164,27 @@ $Extractor = Join-Path $RepoRoot "Tools\MediaPipeOpenVinoParity\scripts\prepare_
 if ($LASTEXITCODE -ne 0) { throw "Exact production model extraction/identity gate failed." }
 $Detector = Join-Path $ModelDir "pose_detector.tflite"
 $Landmark = Join-Path $ModelDir "pose_landmarks_detector.tflite"
-$PoseImage = Join-Path $MediaPipe "mediapipe\tasks\testdata\vision\pose.jpg"
+
+# MediaPipe's pinned BUILD declares pose.jpg through mediapipe_files(), so the
+# source checkout intentionally does not contain the JPEG. Stage the exact pinned
+# external asset and verify its registry SHA before the real-frame smoke.
+$PoseFixtureDir = Join-Path $ToolRoot ".work\testdata"
+$PoseImage = Join-Path $PoseFixtureDir "pose.jpg"
+$PoseImageUrl = "https://storage.googleapis.com/mediapipe-assets/pose.jpg?generation=1678737494661975"
+$PoseImageSha256 = "c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b"
+New-Item -ItemType Directory -Force -Path $PoseFixtureDir | Out-Null
+if (-not (Test-Path $PoseImage) -or
+    (Get-FileHash -Algorithm SHA256 $PoseImage).Hash.ToLowerInvariant() -ne $PoseImageSha256) {
+    Remove-Item -Force $PoseImage -ErrorAction SilentlyContinue
+    Write-Host "[U2 regression] downloading exact pinned MediaPipe pose.jpg fixture..."
+    Invoke-WebRequest -UseBasicParsing -Uri $PoseImageUrl -OutFile $PoseImage
+}
+$PoseActualSha256 = (Get-FileHash -Algorithm SHA256 $PoseImage).Hash.ToLowerInvariant()
+if ($PoseActualSha256 -ne $PoseImageSha256) {
+    throw "FAIL CLOSED: MediaPipe pose.jpg fixture SHA-256 mismatch: $PoseActualSha256"
+}
+Write-Host "[U2 regression] MediaPipe pose.jpg identity PASS: $PoseActualSha256"
+
 foreach ($path in @($Detector, $Landmark, $PoseImage)) {
     if (-not (Test-Path $path)) { throw "U2 real-frame smoke input missing: $path" }
 }
@@ -177,5 +197,6 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host ""
 Write-Host "[U2 regression] lifecycle regression PASS"
 Write-Host "[U2 regression] exact production model identity PASS"
+Write-Host "[U2 regression] exact MediaPipe pose.jpg fixture identity PASS"
 Write-Host "[U2 regression] real-frame 33 normalized/world landmark smoke PASS"
 Write-Host "[U2 regression] shadow-TFLite inference is absent from runtime calculator"
