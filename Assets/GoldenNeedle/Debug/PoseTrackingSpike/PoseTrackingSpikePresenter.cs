@@ -1,3 +1,4 @@
+using GoldenNeedle.Core.Commands;
 using GoldenNeedle.Core.Motion.Calibration;
 using GoldenNeedle.Core.Motion.Canonical;
 using GoldenNeedle.Core.Motion.Locomotion;
@@ -77,7 +78,12 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         [SerializeField] private LocomotionPrototypeView locomotionView;
         [SerializeField] private ThirdPersonLabCamera gameViewCamera;
 
+        [Header("Speech Commands")]
+        [SerializeField] private SpeechCommandConfiguration speechCommands = SpeechCommandConfiguration.CreateDefault();
+
         private HumanoidRigBinding _rigBinding;
+        private GoldenNeedleCommandRouter _commandRouter;
+        private SpeechCommandInput _speechCommandInput;
 
         private float _renderFps;
         private GUIStyle _labelStyle;
@@ -150,6 +156,139 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             {
                 gameViewCamera = Object.FindAnyObjectByType<ThirdPersonLabCamera>();
             }
+
+            speechCommands = speechCommands ?? SpeechCommandConfiguration.CreateDefault();
+            speechCommands.Sanitize();
+            InitializeCommandSystem();
+        }
+
+        private void OnEnable()
+        {
+            _speechCommandInput?.Start();
+        }
+
+        private void OnDisable()
+        {
+            _speechCommandInput?.Stop();
+        }
+
+        private void OnDestroy()
+        {
+            _speechCommandInput?.Dispose();
+            _speechCommandInput = null;
+        }
+
+        private void OnValidate()
+        {
+            speechCommands = speechCommands ?? SpeechCommandConfiguration.CreateDefault();
+            speechCommands.Sanitize();
+        }
+
+        public GoldenNeedleCommandResult SubmitCommand(GoldenNeedleCommandRequest request)
+        {
+            return _commandRouter == null
+                ? GoldenNeedleCommandResult.MissingTarget(request, "GoldenNeedleCommandRouter")
+                : _commandRouter.Execute(request);
+        }
+
+        public bool RawLandmarksVisible => drawRawLandmarks;
+        public bool Canonical2DVisible => drawCanonical2D;
+        public bool Canonical3DVisible => drawCanonical3D;
+        public bool Stabilized2DVisible => drawStabilized2D;
+        public bool CoordinateDiagnosticVisible => drawCoordinateDiagnostic;
+        public bool MainDiagnosticsVisible => drawMainDiagnostics;
+        public bool ProceduralRigViewportVisible => drawProceduralRigViewport;
+        public bool LocomotionDiagnosticsVisible => drawLocomotionDiagnostics;
+        public bool LocomotionWorldViewVisible => drawLocomotionWorldView;
+        public bool AllDebugPresentationHidden => _hideAllDebugPresentation;
+
+        public void ToggleRawLandmarks()
+        {
+            drawRawLandmarks = !drawRawLandmarks;
+        }
+
+        public void ToggleCanonical2D()
+        {
+            drawCanonical2D = !drawCanonical2D;
+        }
+
+        public void ToggleCanonical3D()
+        {
+            drawCanonical3D = !drawCanonical3D;
+        }
+
+        public void ToggleStabilized2D()
+        {
+            drawStabilized2D = !drawStabilized2D;
+        }
+
+        public void ToggleCoordinateDiagnostic()
+        {
+            drawCoordinateDiagnostic = !drawCoordinateDiagnostic;
+        }
+
+        public void ToggleMainDiagnostics()
+        {
+            drawMainDiagnostics = !drawMainDiagnostics;
+        }
+
+        public void ToggleProceduralRigViewport()
+        {
+            drawProceduralRigViewport = !drawProceduralRigViewport;
+        }
+
+        public void ToggleLocomotionDiagnostics()
+        {
+            drawLocomotionDiagnostics = !drawLocomotionDiagnostics;
+        }
+
+        public void ToggleLocomotionWorldView()
+        {
+            drawLocomotionWorldView = !drawLocomotionWorldView;
+        }
+
+        public void ToggleAllDebugPresentation()
+        {
+            _hideAllDebugPresentation = !_hideAllDebugPresentation;
+        }
+
+        private void InitializeCommandSystem()
+        {
+            var targets = new GoldenNeedleCommandTargets
+            {
+                BeginCalibration = runtime == null ? null : runtime.BeginCalibration,
+                ResetCalibration = runtime == null ? null : runtime.ResetCalibration,
+                Recenter = locomotion == null ? null : locomotion.Recenter,
+                RetryTracking = provider == null ? null : provider.Retry,
+                CycleCaptureCameraDevice = provider == null ? null : provider.RequestCycleCamera,
+                SelectCaptureCameraDevice = provider == null ? null : provider.RequestCameraSwitch,
+                ToggleLabGamePresentation = gameViewCamera == null ? null : gameViewCamera.ToggleGameView,
+                SetGamePresentation = gameViewCamera == null ? null : gameViewCamera.SetGameViewActive,
+                ToggleRawLandmarks = ToggleRawLandmarks,
+                ToggleCanonical2D = ToggleCanonical2D,
+                ToggleCanonical3D = ToggleCanonical3D,
+                ToggleStabilized2D = ToggleStabilized2D,
+                ToggleRigDrive = retargeter == null ? null : () => retargeter.DriveRig = !retargeter.DriveRig,
+                ToggleCoordinateDiagnostic = ToggleCoordinateDiagnostic,
+                ToggleMainDiagnostics = ToggleMainDiagnostics,
+                ToggleProceduralRigViewport = ToggleProceduralRigViewport,
+                ToggleLocomotionDiagnostics = ToggleLocomotionDiagnostics,
+                ToggleLocomotionWorldView = ToggleLocomotionWorldView,
+                ToggleAllDebugPresentation = ToggleAllDebugPresentation,
+            };
+
+            _commandRouter = new GoldenNeedleCommandRouter(targets);
+            _speechCommandInput?.Dispose();
+            _speechCommandInput = new SpeechCommandInput(
+                speechCommands,
+                _commandRouter,
+                phrases => new WindowsKeywordSpeechProvider(phrases),
+                () => Time.unscaledTimeAsDouble);
+        }
+
+        private void SubmitKeyboardCommand(GoldenNeedleCommand command)
+        {
+            SubmitCommand(new GoldenNeedleCommandRequest(command));
         }
 
         private void Update()
@@ -158,89 +297,94 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             _renderFps = Mathf.Lerp(_renderFps, 1f / frameTime, 1f - Mathf.Exp(-8f * frameTime));
 
             var keyboard = Keyboard.current;
-            if (keyboard != null && keyboard.rKey.wasPressedThisFrame && provider != null)
+            if (keyboard == null)
             {
-                provider.Retry();
+                return;
             }
 
-            if (keyboard != null && keyboard.vKey.wasPressedThisFrame && provider != null)
+            if (keyboard.rKey.wasPressedThisFrame)
             {
-                provider.RequestCycleCamera();
+                SubmitKeyboardCommand(GoldenNeedleCommand.RetryTracking);
             }
 
-            if (keyboard != null && keyboard.f1Key.wasPressedThisFrame)
+            if (keyboard.vKey.wasPressedThisFrame)
             {
-                drawRawLandmarks = !drawRawLandmarks;
+                SubmitKeyboardCommand(GoldenNeedleCommand.CycleCaptureCameraDevice);
             }
 
-            if (keyboard != null && keyboard.f2Key.wasPressedThisFrame)
+            if (keyboard.f1Key.wasPressedThisFrame)
             {
-                drawCanonical2D = !drawCanonical2D;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleRawLandmarks);
             }
 
-            if (keyboard != null && keyboard.f3Key.wasPressedThisFrame)
+            if (keyboard.f2Key.wasPressedThisFrame)
             {
-                drawCanonical3D = !drawCanonical3D;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleCanonical2D);
             }
 
-            if (keyboard != null && keyboard.f4Key.wasPressedThisFrame)
+            if (keyboard.f3Key.wasPressedThisFrame)
             {
-                drawStabilized2D = !drawStabilized2D;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleCanonical3D);
             }
 
-            if (keyboard != null && keyboard.f5Key.wasPressedThisFrame && retargeter != null)
+            if (keyboard.f4Key.wasPressedThisFrame)
             {
-                retargeter.DriveRig = !retargeter.DriveRig;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleStabilized2D);
             }
 
-            if (keyboard != null && keyboard.f6Key.wasPressedThisFrame)
+            if (keyboard.f5Key.wasPressedThisFrame)
             {
-                drawCoordinateDiagnostic = !drawCoordinateDiagnostic;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleRigDrive);
             }
 
-            if (keyboard != null && keyboard.f7Key.wasPressedThisFrame)
+            if (keyboard.f6Key.wasPressedThisFrame)
             {
-                drawMainDiagnostics = !drawMainDiagnostics;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleCoordinateDiagnostic);
             }
 
-            if (keyboard != null && keyboard.f8Key.wasPressedThisFrame)
+            if (keyboard.f7Key.wasPressedThisFrame)
             {
-                drawProceduralRigViewport = !drawProceduralRigViewport;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleMainDiagnostics);
             }
 
-            if (keyboard != null && keyboard.f9Key.wasPressedThisFrame)
+            if (keyboard.f8Key.wasPressedThisFrame)
             {
-                drawLocomotionDiagnostics = !drawLocomotionDiagnostics;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleProceduralRigViewport);
             }
 
-            if (keyboard != null && keyboard.f10Key.wasPressedThisFrame)
+            if (keyboard.f9Key.wasPressedThisFrame)
             {
-                drawLocomotionWorldView = !drawLocomotionWorldView;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleLocomotionDiagnostics);
             }
 
-            if (keyboard != null && keyboard.f11Key.wasPressedThisFrame)
+            if (keyboard.f10Key.wasPressedThisFrame)
             {
-                _hideAllDebugPresentation = !_hideAllDebugPresentation;
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleLocomotionWorldView);
             }
 
-            if (keyboard != null && keyboard.f12Key.wasPressedThisFrame && gameViewCamera != null)
+            if (keyboard.f11Key.wasPressedThisFrame)
             {
-                gameViewCamera.ToggleGameView();
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleAllDebugPresentation);
             }
 
-            if (keyboard != null && keyboard.cKey.wasPressedThisFrame && runtime != null)
+            if (keyboard.f12Key.wasPressedThisFrame)
             {
-                runtime.BeginCalibration();
+                SubmitKeyboardCommand(GoldenNeedleCommand.ToggleLabGamePresentation);
             }
 
-            if (keyboard != null && keyboard.xKey.wasPressedThisFrame && runtime != null)
+            if (keyboard.cKey.wasPressedThisFrame)
             {
-                runtime.ResetCalibration();
+                SubmitKeyboardCommand(GoldenNeedleCommand.BeginCalibration);
             }
 
-            if (keyboard != null && keyboard.kKey.wasPressedThisFrame && locomotion != null)
+            if (keyboard.xKey.wasPressedThisFrame)
             {
-                locomotion.Recenter();
+                SubmitKeyboardCommand(GoldenNeedleCommand.ResetCalibration);
+            }
+
+            if (keyboard.kKey.wasPressedThisFrame)
+            {
+                SubmitKeyboardCommand(GoldenNeedleCommand.Recenter);
             }
         }
 
@@ -538,6 +682,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 $"Errors fidelity/IK/bend: {(retargeter == null ? 0f : retargeter.MaxNormalizedRetargetFidelityError * 100f):0.0}% / {(retargeter == null ? 0f : retargeter.MaxNormalizedIkEndpointResidual * 100f):0.0}% / {(retargeter == null ? 0f : retargeter.MaxBendPlaneErrorDegrees):0.0}°\n" +
                 $"Rotation effective/reported: {(provider == null ? 0 : provider.EffectiveRotationDegrees)}°/{(provider == null ? 0 : provider.VideoRotationAngle)}°   infer H/V={(provider != null && provider.Orientation.InferenceFlipHorizontally)}/{(provider != null && provider.Orientation.InferenceFlipVertically)}\n" +
                 $"Display rot/V/mirror: {(provider == null ? 0 : provider.Orientation.DisplayRotationDegrees)}°/{(provider != null && provider.Orientation.DisplayVerticalCorrection)}/{(provider != null && provider.Orientation.DisplayMirrored)}   switch={(provider != null && provider.CameraSwitchPending ? "pending" : "ready")}\n" +
+                $"Speech: {(_speechCommandInput == null ? "not initialized" : _speechCommandInput.DiagnosticSummary)}\n" +
                 $"Status: {(provider == null ? "No MediaPipe provider" : provider.StatusMessage)}";
 
             GUI.Label(
