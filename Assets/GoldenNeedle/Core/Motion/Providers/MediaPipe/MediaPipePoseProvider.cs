@@ -973,7 +973,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         }
     }
 
-    public sealed class MediaPipePoseProvider : MonoBehaviour
+    public sealed partial class MediaPipePoseProvider : MonoBehaviour
     {
         private const string ModelFileName = "pose_landmarker_lite.bytes";
         private const string ModelDirectory = "GoldenNeedle/PoseTrackingSpike/Models";
@@ -1924,7 +1924,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
             _freshCameraFramePending = false;
             _readbackPending = true;
-            StartCoroutine(CapturePreparedFrameAsync(
+            StartCoroutine(CapturePreparedFrameOptimizedAsync(
                 textureFrame,
                 frameObservedAtSeconds,
                 coordinateConventionVersion,
