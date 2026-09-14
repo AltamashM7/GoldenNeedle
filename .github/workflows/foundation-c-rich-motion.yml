@@ -15,6 +15,8 @@ on:
       - 'Assets/GoldenNeedle/Tests/Editor/FoundationCRichMotionTests.cs.meta'
       - 'Tools/FoundationCRichMotionSmoke/**'
       - '.github/workflows/foundation-c-rich-motion.yml'
+      - 'Docs/current-state.md'
+      - 'Docs/decisions.md'
   workflow_dispatch:
 
 permissions:
@@ -58,6 +60,7 @@ jobs:
           rich_interface = Path('Assets/GoldenNeedle/Core/Motion/Rich/IRichMotionEvidenceSource.cs').read_text(encoding='utf-8')
           mapper = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeRichMotionEvidenceMapper.cs').read_text(encoding='utf-8')
           media_source = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs').read_text(encoding='utf-8')
+          rich_tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationCRichMotionTests.cs').read_text(encoding='utf-8')
           workflow_a = Path('.github/workflows/foundation-a-command-system.yml').read_text(encoding='utf-8')
           workflow_b = Path('.github/workflows/foundation-b-camera-presets.yml').read_text(encoding='utf-8')
           workflow_c = Path('.github/workflows/foundation-c-rich-motion.yml').read_text(encoding='utf-8')
@@ -105,6 +108,16 @@ jobs:
               'RichTwistObservability.ReferenceFallback',
               'ResetReferenceState()', 'referenceFallbackAfterSeconds',
           ], 'rich orientation solver')
+          require(rich_tests, [
+              'CanonicalBodyV1RemainsExactlyTwentyJointsWithStableNumericMeanings',
+              'AnatomicalBasisIsFiniteNormalizedOrthogonalAndRightHanded',
+              'DegenerateSecondaryPreservesSwingWithoutClaimingTwist',
+              'AxialForearmEvidenceChangesRichBasisWhilePrimaryDirectionStaysFixed',
+              'ShortSecondaryLossHoldsTwistAndReprojectsAgainstUpdatedSwing',
+              'LongerSecondaryLossTransitionsToFiniteReferenceFallbackWithoutFlip',
+              'MissingLimbDoesNotInvalidateYawedTorsoAndMirroredArmsStayRightHanded',
+              'FootUsesHeelToePrimaryAndSafelyRejectsParallelSecondary',
+          ], 'Foundation C Unity Editor proof tests')
 
           if 'IRichMotionEvidenceSource' in legacy_source or 'RichMotion' in legacy_source:
               raise SystemExit('ICanonicalPoseSource was destructively expanded')
@@ -185,6 +198,7 @@ jobs:
           print('RICH_CANONICAL_NO_QUATERNION_AUTHORITY=PASS')
           print('MEDIAPIPE_INDEX_ISOLATION=PASS')
           print('OPTIONAL_RICH_SOURCE_BOUNDARY=PASS')
+          print('FOUNDATION_C_EDITOR_TEST_SURFACE=PASS')
           print('LEGACY_ROTATION_RETARGET_PATH_PRESERVED=PASS')
           print('FOUNDATION_A_B_READ_ONLY_PRESERVED=PASS')
           print('FOUNDATION_C_DIFF_SCOPE=PASS')
