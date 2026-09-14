@@ -2,6 +2,7 @@ using System;
 using GoldenNeedle.Core.Commands;
 using GoldenNeedle.Core.Motion.Locomotion;
 using GoldenNeedle.Core.Motion.Retargeting;
+using GoldenNeedle.Core.Motion.Rotation;
 using UnityEngine;
 
 namespace GoldenNeedle.Debug.PoseTrackingSpike
