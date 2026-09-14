@@ -37,9 +37,27 @@ internal static class Program
             True(router.Execute(cameraRequest).Succeeded, "parameter command execution");
             Equal("USB Camera", selected, "parameter preservation");
 
-            var reserved = router.Execute(new GoldenNeedleCommandRequest(GoldenNeedleCommand.SelectCameraViewPreset, "Hands"));
-            True(reserved.Status == GoldenNeedleCommandResultStatus.Unsupported, "Foundation B reserved command unsupported");
-            Equal("Hands", reserved.Request.parameter, "reserved parameter preserved");
+            string presetSelected = null;
+            var presetRouter = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets
+            {
+                SelectCameraViewPreset = value => { presetSelected = value; return true; },
+            });
+            var presetResult = presetRouter.Execute(new GoldenNeedleCommandRequest(
+                GoldenNeedleCommand.SelectCameraViewPreset,
+                "  Hands  "));
+            True(presetResult.Succeeded, "Foundation B preset command executes through shared target");
+            Equal("Hands", presetSelected, "Foundation B preset parameter trimmed");
+            True(
+                presetRouter.Execute(new GoldenNeedleCommandRequest(
+                    GoldenNeedleCommand.SelectCameraViewPreset,
+                    "   ")).Status == GoldenNeedleCommandResultStatus.Rejected,
+                "blank preset rejected");
+
+            var defaults = SpeechCommandConfiguration.CreateDefault();
+            var defaultResolver = new SpeechCommandResolver(defaults);
+            True(defaultResolver.TryResolve("hands view", SpeechRecognitionConfidence.Medium, out var handsRequest, out _), "default hands speech mapping resolves");
+            True(handsRequest.command == GoldenNeedleCommand.SelectCameraViewPreset, "hands speech maps to preset command");
+            Equal("Hands", handsRequest.parameter, "hands speech parameter");
 
             var now = 5d;
             var recenterCalls = 0;
@@ -77,7 +95,8 @@ internal static class Program
             Console.WriteLine("FOUNDATION_A_COMMAND_SMOKE=PASS");
             Console.WriteLine("NORMALIZATION_WAKE_DUPLICATES=PASS");
             Console.WriteLine("CONFIDENCE_COOLDOWN=PASS");
-            Console.WriteLine("PARAMETER_AND_RESERVED_COMMAND=PASS");
+            Console.WriteLine("PARAMETER_AND_CAMERA_PRESET_COMMAND=PASS");
+            Console.WriteLine("DEFAULT_CAMERA_SPEECH_MAPPINGS=PASS");
             Console.WriteLine("UNSUPPORTED_SPEECH_FALLBACK=PASS");
             return 0;
         }

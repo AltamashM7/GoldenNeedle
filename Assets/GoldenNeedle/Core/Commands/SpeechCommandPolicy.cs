@@ -73,6 +73,14 @@ namespace GoldenNeedle.Core.Commands
                     new SpeechCommandMapping("retry tracking", GoldenNeedleCommand.RetryTracking),
                     new SpeechCommandMapping("game view", GoldenNeedleCommand.SetGamePresentation),
                     new SpeechCommandMapping("lab view", GoldenNeedleCommand.SetLabPresentation),
+                    new SpeechCommandMapping("back view", GoldenNeedleCommand.SelectCameraViewPreset, "Back"),
+                    new SpeechCommandMapping("front view", GoldenNeedleCommand.SelectCameraViewPreset, "Front"),
+                    new SpeechCommandMapping("left view", GoldenNeedleCommand.SelectCameraViewPreset, "Left"),
+                    new SpeechCommandMapping("right view", GoldenNeedleCommand.SelectCameraViewPreset, "Right"),
+                    new SpeechCommandMapping("full body view", GoldenNeedleCommand.SelectCameraViewPreset, "FullBody"),
+                    new SpeechCommandMapping("hands view", GoldenNeedleCommand.SelectCameraViewPreset, "Hands"),
+                    new SpeechCommandMapping("left hand view", GoldenNeedleCommand.SelectCameraViewPreset, "LeftHand"),
+                    new SpeechCommandMapping("right hand view", GoldenNeedleCommand.SelectCameraViewPreset, "RightHand"),
                 },
             };
         }

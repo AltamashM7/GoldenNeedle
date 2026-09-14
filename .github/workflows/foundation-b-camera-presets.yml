@@ -1,0 +1,195 @@
+name: Foundation B camera presets
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Assets/GoldenNeedle/Core/Commands/**'
+      - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/CameraViewPreset.cs'
+      - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/ThirdPersonLabCamera.cs'
+      - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs'
+      - 'Assets/GoldenNeedle/Tests/Editor/FoundationACommandSystemTests.cs'
+      - 'Assets/GoldenNeedle/Tests/Editor/FoundationBCameraPresetTests.cs'
+      - 'Assets/GoldenNeedle/Tests/Editor/ThirdPersonLabCameraTests.cs'
+      - 'Tools/FoundationACommandSmoke/**'
+      - 'Tools/FoundationBCameraSmoke/**'
+      - '.github/workflows/foundation-a-command-system.yml'
+      - '.github/workflows/foundation-b-camera-presets.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+
+      - name: Run Foundation A command and speech smoke
+        run: dotnet run --configuration Release --project Tools/FoundationACommandSmoke/FoundationACommandSmoke.csproj
+
+      - name: Run Foundation B camera preset math smoke
+        run: dotnet run --configuration Release --project Tools/FoundationBCameraSmoke/FoundationBCameraSmoke.csproj
+
+      - name: Validate Foundation B integration invariants
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+
+          command = Path('Assets/GoldenNeedle/Core/Commands/GoldenNeedleCommand.cs').read_text(encoding='utf-8')
+          policy = Path('Assets/GoldenNeedle/Core/Commands/SpeechCommandPolicy.cs').read_text(encoding='utf-8')
+          speech_input = Path('Assets/GoldenNeedle/Core/Commands/SpeechCommandInput.cs').read_text(encoding='utf-8')
+          preset = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/CameraViewPreset.cs').read_text(encoding='utf-8')
+          camera = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/ThirdPersonLabCamera.cs').read_text(encoding='utf-8')
+          presenter = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs').read_text(encoding='utf-8')
+          tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationBCameraPresetTests.cs').read_text(encoding='utf-8')
+          camera_tests = Path('Assets/GoldenNeedle/Tests/Editor/ThirdPersonLabCameraTests.cs').read_text(encoding='utf-8')
+          scene = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity').read_text(encoding='utf-8')
+          workflow_a = Path('.github/workflows/foundation-a-command-system.yml').read_text(encoding='utf-8')
+          workflow_b = Path('.github/workflows/foundation-b-camera-presets.yml').read_text(encoding='utf-8')
+
+          def require(text, markers, label):
+              missing = [marker for marker in markers if marker not in text]
+              if missing:
+                  raise SystemExit(f'{label}: missing {missing}')
+
+          require(preset, [
+              'public enum CameraFocusSemantic',
+              'public sealed class CameraViewPreset',
+              'public string presetName = "Back";',
+              'public Vector2 placementDirection',
+              'public float distance',
+              'public float height',
+              'public Vector3 placementOffset',
+              'public Vector3 focusOffset',
+              'public float fieldOfView',
+              'public float positionResponse',
+              'public float orientationResponse',
+              'public float fieldOfViewResponse',
+              '"Back"', '"Front"', '"Left"', '"Right"',
+              '"FullBody"', '"Hands"', '"LeftHand"', '"RightHand"',
+              'StringComparison.OrdinalIgnoreCase',
+              'CameraFocusSemantic.Hands',
+              '"BothHands"',
+              '"LeftLowerArm"',
+              '"RightLowerArm"',
+              '"Chest"',
+              '"Pelvis"',
+              '"AvatarRoot"',
+              'Vector3.Cross(Vector3.up, forward)',
+              '1f - Mathf.Exp(-safeResponse * safeDeltaTime)',
+          ], 'camera preset data/math')
+
+          require(camera, [
+              'public sealed class ThirdPersonLabCamera',
+              'private float followDistance = 4.0f;',
+              'private float cameraHeight = 2.2f;',
+              'private float lookHeight = 1.15f;',
+              'private float positionResponse = 7.0f;',
+              'private float headingResponse = 8.0f;',
+              'private float fieldOfView = 55f;',
+              'private CameraViewPreset[] viewPresets = CameraViewPreset.CreateDefaults();',
+              'public bool SelectViewPreset(string presetName)',
+              'GoldenNeedleCommandRuntimeServices.RegisterCameraViewPresetSelector(',
+              'public string CurrentViewPresetName',
+              'public bool IsFocusFallbackActive',
+              'public string ResolvedFocusTarget',
+              'binding.GetChainTip(CanonicalKinematicChainId.LeftArm)',
+              'binding.GetChainTip(CanonicalKinematicChainId.RightArm)',
+              'if (!_gameViewActive)',
+              'TryRefreshHeading(dt);',
+              'CameraViewPresetMath.ResponseAlpha(',
+              'controlledCamera.fieldOfView = Mathf.Lerp(',
+              'public void ToggleGameView()',
+              'public void SetGameViewActive(bool active)',
+              'controlledCamera.cullingMask = 0;',
+              'controlledCamera.clearFlags = CameraClearFlags.SolidColor;',
+          ], 'primary camera preset authority')
+
+          select_start = camera.index('        public bool SelectViewPreset(string presetName)')
+          late_start = camera.index('        private void LateUpdate()', select_start)
+          select_method = camera[select_start:late_start]
+          if 'ToggleGameView(' in select_method or 'SetGameViewActive(' in select_method:
+              raise SystemExit('preset selection must not toggle Lab/Game presentation')
+
+          require(command, [
+              'public Func<string, bool> SelectCameraViewPreset { get; set; }',
+              'GoldenNeedleCommandRuntimeServices.CameraViewPresetSelector',
+              'SelectCameraViewPreset requires a preset-name parameter',
+              'ThirdPersonLabCamera.SelectViewPreset',
+          ], 'command router camera integration')
+          if 'CameraViewPresetMath' in command or 'Transform' in command or 'Vector3' in command:
+              raise SystemExit('command router must not own camera transform math')
+
+          require(policy, [
+              'new SpeechCommandMapping("game view", GoldenNeedleCommand.SetGamePresentation)',
+              'new SpeechCommandMapping("lab view", GoldenNeedleCommand.SetLabPresentation)',
+              'new SpeechCommandMapping("back view", GoldenNeedleCommand.SelectCameraViewPreset, "Back")',
+              'new SpeechCommandMapping("front view", GoldenNeedleCommand.SelectCameraViewPreset, "Front")',
+              'new SpeechCommandMapping("left view", GoldenNeedleCommand.SelectCameraViewPreset, "Left")',
+              'new SpeechCommandMapping("right view", GoldenNeedleCommand.SelectCameraViewPreset, "Right")',
+              'new SpeechCommandMapping("full body view", GoldenNeedleCommand.SelectCameraViewPreset, "FullBody")',
+              'new SpeechCommandMapping("hands view", GoldenNeedleCommand.SelectCameraViewPreset, "Hands")',
+              'new SpeechCommandMapping("left hand view", GoldenNeedleCommand.SelectCameraViewPreset, "LeftHand")',
+              'new SpeechCommandMapping("right hand view", GoldenNeedleCommand.SelectCameraViewPreset, "RightHand")',
+          ], 'Foundation B speech mappings')
+          if 'Keyboard.current' in speech_input or 'InputSystem' in speech_input:
+              raise SystemExit('speech input must remain independent of keyboard simulation')
+
+          require(presenter, [
+              'SubmitKeyboardCommand(GoldenNeedleCommand.ToggleLabGamePresentation);',
+              'ToggleLabGamePresentation = gameViewCamera == null ? null : gameViewCamera.ToggleGameView,',
+          ], 'F12 shared-command routing')
+
+          require(tests, [
+              'DefaultPresetSetContainsRequiredNames',
+              'DuplicateAndInvalidPresetNamesAreRejected',
+              'PresetLookupIsTrimmedAndCaseInsensitive',
+              'BackPresetMatchesLegacyThirdPersonGeometry',
+              'FrontLeftRightPlacementIsHeadingRelative',
+              'HandFocusUsesMidpointWhenBothHandsAreAvailable',
+              'HandsFocusFallsBackToOneAvailableHand',
+              'MissingHandsFallBackToBodyThenRoot',
+              'PresetSelectionIsCaseInsensitiveAndDoesNotToggleLabGameState',
+              'ExponentialResponseComposesAcrossEquivalentElapsedTime',
+          ], 'Foundation B Editor tests')
+          require(camera_tests, [
+              'LabUsesEnabledClearOnlyCameraAndGameRestoresWorldSettings',
+          ], 'existing Lab/Game restoration test')
+
+          if scene.count('--- !u!20 ') != 1:
+              raise SystemExit('PoseTrackingSpike scene must retain exactly one Camera component')
+
+          require(workflow_a, [
+              'contents: read',
+              "echo 'FOUNDATION_A_WORKFLOW_READ_ONLY=PASS'",
+          ], 'Foundation A read-only workflow')
+          require(workflow_b, [
+              'contents: read',
+              "echo 'FOUNDATION_B_WORKFLOW_READ_ONLY=PASS'",
+          ], 'Foundation B read-only workflow')
+          for text, name in [(workflow_a, 'Foundation A'), (workflow_b, 'Foundation B')]:
+              forbidden = ['git push ', 'git commit ', 'contents: write', 'apply_presenter_command_migration.py']
+              found = [item for item in forbidden if item in text]
+              if found:
+                  raise SystemExit(f'{name} workflow is not read-only: {found}')
+
+          print('FOUNDATION_B_STATIC_AUDIT=PASS')
+          print('SINGLE_PRIMARY_CAMERA=PASS')
+          print('PRESET_SELECTION_ORTHOGONAL_TO_F12=PASS')
+          print('FOCUS_FALLBACK_INVARIANTS=PASS')
+          print('FOUNDATION_A_COMMAND_SPEECH_PRESERVED=PASS')
+          PY
+
+      - name: Assert verification is read-only
+        shell: bash
+        run: |
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+          echo 'FOUNDATION_B_WORKFLOW_READ_ONLY=PASS'

@@ -114,18 +114,93 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void ReservedFoundationBPresetCommandFailsSafely()
+        public void CameraPresetCommandUsesSharedParameterizedTarget()
         {
-            var router = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets());
-            var request = new GoldenNeedleCommandRequest(
+            string selected = null;
+            var router = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets
+            {
+                SelectCameraViewPreset = value =>
+                {
+                    selected = value;
+                    return true;
+                },
+            });
+
+            var result = router.Execute(new GoldenNeedleCommandRequest(
                 GoldenNeedleCommand.SelectCameraViewPreset,
-                "Hands");
+                "  Hands  "));
 
-            var result = router.Execute(request);
+            Assert.That(result.Succeeded, Is.True);
+            Assert.That(selected, Is.EqualTo("Hands"));
+        }
 
-            Assert.That(result.Status, Is.EqualTo(GoldenNeedleCommandResultStatus.Unsupported));
-            Assert.That(result.Request.parameter, Is.EqualTo("Hands"));
-            Assert.That(result.Message, Does.Contain("Foundation B"));
+        [Test]
+        public void CameraPresetCommandRejectsBlankRejectedAndMissingTargetsSafely()
+        {
+            var rejectedRouter = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets
+            {
+                SelectCameraViewPreset = _ => false,
+            });
+            var blank = rejectedRouter.Execute(new GoldenNeedleCommandRequest(
+                GoldenNeedleCommand.SelectCameraViewPreset,
+                "   "));
+            var unknown = rejectedRouter.Execute(new GoldenNeedleCommandRequest(
+                GoldenNeedleCommand.SelectCameraViewPreset,
+                "Unknown"));
+
+            Func<string, bool> temporarySelector = _ => true;
+            GoldenNeedleCommandRuntimeServices.RegisterCameraViewPresetSelector(temporarySelector);
+            GoldenNeedleCommandRuntimeServices.UnregisterCameraViewPresetSelector(temporarySelector);
+            var missingRouter = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets());
+            var missing = missingRouter.Execute(new GoldenNeedleCommandRequest(
+                GoldenNeedleCommand.SelectCameraViewPreset,
+                "Hands"));
+
+            Assert.That(blank.Status, Is.EqualTo(GoldenNeedleCommandResultStatus.Rejected));
+            Assert.That(unknown.Status, Is.EqualTo(GoldenNeedleCommandResultStatus.Rejected));
+            Assert.That(missing.Status, Is.EqualTo(GoldenNeedleCommandResultStatus.MissingTarget));
+        }
+
+        [Test]
+        public void CameraPresetRuntimeServiceCanSupplyTheExistingPrimaryCameraAuthority()
+        {
+            string selected = null;
+            Func<string, bool> selector = value =>
+            {
+                selected = value;
+                return true;
+            };
+            GoldenNeedleCommandRuntimeServices.RegisterCameraViewPresetSelector(selector);
+            try
+            {
+                var router = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets());
+                var result = router.Execute(new GoldenNeedleCommandRequest(
+                    GoldenNeedleCommand.SelectCameraViewPreset,
+                    "LeftHand"));
+
+                Assert.That(result.Succeeded, Is.True);
+                Assert.That(selected, Is.EqualTo("LeftHand"));
+            }
+            finally
+            {
+                GoldenNeedleCommandRuntimeServices.UnregisterCameraViewPresetSelector(selector);
+            }
+        }
+
+        [Test]
+        public void DefaultSpeechConfigurationIncludesFoundationBCameraPresets()
+        {
+            var resolver = new SpeechCommandResolver(SpeechCommandConfiguration.CreateDefault());
+
+            Assert.That(
+                resolver.TryResolve(
+                    "hands view",
+                    SpeechRecognitionConfidence.Medium,
+                    out var request,
+                    out _),
+                Is.True);
+            Assert.That(request.command, Is.EqualTo(GoldenNeedleCommand.SelectCameraViewPreset));
+            Assert.That(request.parameter, Is.EqualTo("Hands"));
         }
 
         [Test]

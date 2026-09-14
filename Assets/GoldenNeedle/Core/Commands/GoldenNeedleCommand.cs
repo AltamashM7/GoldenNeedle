@@ -121,6 +121,34 @@ namespace GoldenNeedle.Core.Commands
     }
 
     /// <summary>
+    /// Runtime service hooks for authorities that live outside the scene-resident presenter.
+    /// The registry carries invocation delegates only; domain state and transform math remain
+    /// owned by the registered runtime authority.
+    /// </summary>
+    public static class GoldenNeedleCommandRuntimeServices
+    {
+        private static Func<string, bool> _cameraViewPresetSelector;
+
+        public static Func<string, bool> CameraViewPresetSelector => _cameraViewPresetSelector;
+
+        public static void RegisterCameraViewPresetSelector(Func<string, bool> selector)
+        {
+            if (selector != null)
+            {
+                _cameraViewPresetSelector = selector;
+            }
+        }
+
+        public static void UnregisterCameraViewPresetSelector(Func<string, bool> selector)
+        {
+            if (selector != null && _cameraViewPresetSelector == selector)
+            {
+                _cameraViewPresetSelector = null;
+            }
+        }
+    }
+
+    /// <summary>
     /// Narrow invocation surface used by the project-owned router. Runtime/domain objects keep
     /// their own state machines; these delegates only forward commands to their public APIs.
     /// </summary>
@@ -145,6 +173,7 @@ namespace GoldenNeedle.Core.Commands
         public Action ToggleLocomotionDiagnostics { get; set; }
         public Action ToggleLocomotionWorldView { get; set; }
         public Action ToggleAllDebugPresentation { get; set; }
+        public Func<string, bool> SelectCameraViewPreset { get; set; }
     }
 
     /// <summary>
@@ -219,9 +248,21 @@ namespace GoldenNeedle.Core.Commands
                 case GoldenNeedleCommand.ToggleAllDebugPresentation:
                     return Invoke(request, _targets.ToggleAllDebugPresentation, "PoseTrackingSpikePresenter.ToggleAllDebugPresentation");
                 case GoldenNeedleCommand.SelectCameraViewPreset:
-                    return GoldenNeedleCommandResult.Unsupported(
+                    if (string.IsNullOrWhiteSpace(request.parameter))
+                    {
+                        return GoldenNeedleCommandResult.Rejected(
+                            request,
+                            "SelectCameraViewPreset requires a preset-name parameter");
+                    }
+                    var presetSelector =
+                        _targets.SelectCameraViewPreset ??
+                        GoldenNeedleCommandRuntimeServices.CameraViewPresetSelector;
+                    return InvokeStringBool(
                         request,
-                        "SelectCameraViewPreset is reserved for Foundation B and is not implemented in Foundation A");
+                        presetSelector,
+                        request.parameter.Trim(),
+                        "ThirdPersonLabCamera.SelectViewPreset",
+                        "Camera view preset selection was rejected");
                 default:
                     return GoldenNeedleCommandResult.Unsupported(request, "Unknown Golden Needle command");
             }
