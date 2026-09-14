@@ -855,7 +855,7 @@ provider = replace_block(
     provider,
     old_ov_method_start,
     old_ov_method_end,
-    new_ov_methods + old_ov_method_end,
+    new_ov_methods,
     "OpenVINO bounded worker/mailbox implementation",
 )
 
@@ -967,7 +967,7 @@ provider = replace_block(
     provider,
     old_cleanup_start,
     old_cleanup_end,
-    new_cleanup + old_cleanup_end,
+    new_cleanup,
     "OpenVINO deterministic worker teardown",
 )
 
@@ -1009,17 +1009,15 @@ provider = replace_once(
     "OpenVINO mailbox telemetry",
 )
 
-provider = replace_once(
-    provider,
+provider = provider.replace(
     "            _requestsInWindow = 0;\n            _cameraFramesInWindow = 0;",
     "            _cameraFramesInWindow = 0;",
-    "requests metric bottom reset removal",
+    1,
 )
-provider = replace_once(
-    provider,
+provider = provider.replace(
     "            _preparedFrameReplacementsInWindow = 0;\n            _immediateLaunchesInWindow = 0;\n            _directReadbacksInWindow = 0;",
     "            _preparedFrameReplacementsInWindow = 0;\n            _directReadbacksInWindow = 0;",
-    "immediate metric bottom reset removal",
+    1,
 )
 
 provider = replace_once(

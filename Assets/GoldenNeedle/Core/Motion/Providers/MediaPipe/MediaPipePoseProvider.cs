@@ -10,6 +10,7 @@ using Mediapipe.Tasks.Vision.Core;
 using Mediapipe.Tasks.Vision.PoseLandmarker;
 using Mediapipe.Unity;
 using Mediapipe.Unity.Experimental;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Rendering;
 
@@ -35,6 +36,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         None,
         Update,
         ReadbackContinuation,
+        OpenVinoWorkerContinuation,
     }
 
     public enum BodyReadbackPath
@@ -292,7 +294,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 callbackEntryTicks < submitReturnTicks || completionTicks < callbackEntryTicks ||
                 nextAcceptedLaunchTicks <= completionTicks ||
                 (nextLaunchOrigin != PreparedInferenceLaunchOrigin.Update &&
-                 nextLaunchOrigin != PreparedInferenceLaunchOrigin.ReadbackContinuation))
+                 nextLaunchOrigin != PreparedInferenceLaunchOrigin.ReadbackContinuation &&
+                 nextLaunchOrigin != PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation))
             {
                 return false;
             }
@@ -322,10 +325,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
     public sealed class InferenceContinuationTimingWindow
     {
+        private readonly object _gate = new object();
         private readonly InferenceContinuationTimingSample[] _samples;
         private readonly double[] _scratch;
         private int _nextIndex;
         private int _count;
+        private int _missingSampleCount;
 
         public InferenceContinuationTimingWindow(int capacity = 64)
         {
@@ -335,16 +340,84 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         }
 
         public int Capacity => _samples.Length;
-        public int ValidSampleCount => _count;
-        public int MissingSampleCount { get; private set; }
+        public int ValidSampleCount
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _count;
+                }
+            }
+        }
+        public int MissingSampleCount
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _missingSampleCount;
+                }
+            }
+        }
         public int PreparedWaitingSampleCount
         {
             get
             {
+                lock (_gate)
+                {
+                    return CountPreparedWaiting();
+                }
+            }
+        }
+
+        public double PreparedWaitingRate
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _count == 0 ? double.NaN : CountPreparedWaiting() / (double)_count;
+                }
+            }
+        }
+
+        public void Reset()
+        {
+            lock (_gate)
+            {
+                _nextIndex = 0;
+                _count = 0;
+                _missingSampleCount = 0;
+            }
+        }
+
+        public void RecordMissingSample()
+        {
+            lock (_gate)
+            {
+                _missingSampleCount++;
+            }
+        }
+
+        public void Add(in InferenceContinuationTimingSample sample)
+        {
+            lock (_gate)
+            {
+                _samples[_nextIndex] = sample;
+                _nextIndex = (_nextIndex + 1) % _samples.Length;
+                _count = Math.Min(_count + 1, _samples.Length);
+            }
+        }
+
+        public int GetOriginSampleCount(PreparedInferenceLaunchOrigin origin, bool preparedOnly = false)
+        {
+            lock (_gate)
+            {
                 var count = 0;
                 for (var i = 0; i < _count; i++)
                 {
-                    if (_samples[i].PreparedWaitingAtResult)
+                    if (_samples[i].NextLaunchOrigin == origin && (!preparedOnly || _samples[i].PreparedWaitingAtResult))
                     {
                         count++;
                     }
@@ -353,68 +426,51 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
         }
 
-        public double PreparedWaitingRate => _count == 0
-            ? double.NaN
-            : PreparedWaitingSampleCount / (double)_count;
-
-        public void Reset()
+        public double GetMedianMilliseconds(InferenceContinuationTimingMetric metric, bool preparedOnly = false)
         {
-            _nextIndex = 0;
-            _count = 0;
-            MissingSampleCount = 0;
+            lock (_gate)
+            {
+                var count = CopyMetric(metric, preparedOnly);
+                if (count == 0)
+                {
+                    return double.NaN;
+                }
+
+                Array.Sort(_scratch, 0, count);
+                var middle = count / 2;
+                return count % 2 == 0
+                    ? (_scratch[middle - 1] + _scratch[middle]) * 0.5d
+                    : _scratch[middle];
+            }
         }
 
-        public void RecordMissingSample()
+        public double GetP95Milliseconds(InferenceContinuationTimingMetric metric, bool preparedOnly = false)
         {
-            MissingSampleCount++;
+            lock (_gate)
+            {
+                var count = CopyMetric(metric, preparedOnly);
+                if (count == 0)
+                {
+                    return double.NaN;
+                }
+
+                Array.Sort(_scratch, 0, count);
+                var index = Math.Min(count - 1, Math.Max(0, (int)Math.Ceiling(count * 0.95d) - 1));
+                return _scratch[index];
+            }
         }
 
-        public void Add(in InferenceContinuationTimingSample sample)
-        {
-            _samples[_nextIndex] = sample;
-            _nextIndex = (_nextIndex + 1) % _samples.Length;
-            _count = Math.Min(_count + 1, _samples.Length);
-        }
-
-        public int GetOriginSampleCount(PreparedInferenceLaunchOrigin origin, bool preparedOnly = false)
+        private int CountPreparedWaiting()
         {
             var count = 0;
             for (var i = 0; i < _count; i++)
             {
-                if (_samples[i].NextLaunchOrigin == origin && (!preparedOnly || _samples[i].PreparedWaitingAtResult))
+                if (_samples[i].PreparedWaitingAtResult)
                 {
                     count++;
                 }
             }
             return count;
-        }
-
-        public double GetMedianMilliseconds(InferenceContinuationTimingMetric metric, bool preparedOnly = false)
-        {
-            var count = CopyMetric(metric, preparedOnly);
-            if (count == 0)
-            {
-                return double.NaN;
-            }
-
-            Array.Sort(_scratch, 0, count);
-            var middle = count / 2;
-            return count % 2 == 0
-                ? (_scratch[middle - 1] + _scratch[middle]) * 0.5d
-                : _scratch[middle];
-        }
-
-        public double GetP95Milliseconds(InferenceContinuationTimingMetric metric, bool preparedOnly = false)
-        {
-            var count = CopyMetric(metric, preparedOnly);
-            if (count == 0)
-            {
-                return double.NaN;
-            }
-
-            Array.Sort(_scratch, 0, count);
-            var index = Math.Min(count - 1, Math.Max(0, (int)Math.Ceiling(count * 0.95d) - 1));
-            return _scratch[index];
         }
 
         private int CopyMetric(InferenceContinuationTimingMetric metric, bool preparedOnly)
@@ -446,27 +502,59 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
     /// </summary>
     public sealed class InferenceLaunchScheduler
     {
+        private readonly object _gate = new object();
         private bool _hasAcceptedRequest;
         private double _lastAcceptedRequestAtSeconds;
 
-        public bool HasAcceptedRequest => _hasAcceptedRequest;
-        public double LastAcceptedRequestAtSeconds => _lastAcceptedRequestAtSeconds;
+        public bool HasAcceptedRequest
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _hasAcceptedRequest;
+                }
+            }
+        }
+
+        public double LastAcceptedRequestAtSeconds
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _lastAcceptedRequestAtSeconds;
+                }
+            }
+        }
 
         public void Reset()
         {
-            _hasAcceptedRequest = false;
-            _lastAcceptedRequestAtSeconds = 0d;
+            lock (_gate)
+            {
+                _hasAcceptedRequest = false;
+                _lastAcceptedRequestAtSeconds = 0d;
+            }
+        }
+
+        public double SecondsUntilIntervalElapsed(double nowSeconds, double minimumIntervalSeconds)
+        {
+            lock (_gate)
+            {
+                if (!_hasAcceptedRequest)
+                {
+                    return 0d;
+                }
+
+                var remaining = Math.Max(0d, minimumIntervalSeconds) -
+                    (nowSeconds - _lastAcceptedRequestAtSeconds);
+                return Math.Max(0d, remaining);
+            }
         }
 
         public bool IsIntervalElapsed(double nowSeconds, double minimumIntervalSeconds)
         {
-            if (!_hasAcceptedRequest)
-            {
-                return true;
-            }
-
-            return nowSeconds - _lastAcceptedRequestAtSeconds >=
-                Math.Max(0d, minimumIntervalSeconds);
+            return SecondsUntilIntervalElapsed(nowSeconds, minimumIntervalSeconds) <= 0d;
         }
 
         public bool CanLaunch(
@@ -482,8 +570,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         public void MarkAccepted(double nowSeconds)
         {
-            _hasAcceptedRequest = true;
-            _lastAcceptedRequestAtSeconds = nowSeconds;
+            lock (_gate)
+            {
+                _hasAcceptedRequest = true;
+                _lastAcceptedRequestAtSeconds = nowSeconds;
+            }
         }
     }
 
@@ -608,6 +699,219 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
     }
 
     /// <summary>
+    /// Two-buffer, one-slot latest-frame mailbox used only by the experimental OpenVINO backend.
+    /// One slot may be owned by native inference while the other is the single replaceable pending
+    /// frame. There is deliberately no FIFO/history/catch-up queue.
+    /// </summary>
+    public sealed class OpenVinoLatestFrameMailbox
+    {
+        public sealed class Frame
+        {
+            internal Frame(int slotId)
+            {
+                SlotId = slotId;
+            }
+
+            internal byte[] Rgba;
+            public int SlotId { get; }
+            public int Width { get; internal set; }
+            public int Height { get; internal set; }
+            public int StrideBytes { get; internal set; }
+            public int RotationDegrees { get; internal set; }
+            public long TimestampMillisec { get; internal set; }
+            public double ObservedAtSeconds { get; internal set; }
+            public double PublishedAtSeconds { get; internal set; }
+            public int PublishedFrameCount { get; internal set; }
+            public int CoordinateConventionVersion { get; internal set; }
+            public PreparedInferenceLaunchOrigin LaunchOriginHint { get; internal set; }
+            public int ByteCount => Rgba == null ? 0 : Rgba.Length;
+        }
+
+        private readonly object _gate = new object();
+        private readonly Frame _slotA = new Frame(0);
+        private readonly Frame _slotB = new Frame(1);
+        private Frame _active;
+        private Frame _pending;
+        private bool _accepting = true;
+        private int _bufferAllocationCount;
+
+        public int PendingCount
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _pending == null ? 0 : 1;
+                }
+            }
+        }
+
+        public bool HasActive
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _active != null;
+                }
+            }
+        }
+
+        public int BufferAllocationCount
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return _bufferAllocationCount;
+                }
+            }
+        }
+
+        public void Reset()
+        {
+            lock (_gate)
+            {
+                if (_active != null)
+                {
+                    throw new InvalidOperationException("Cannot reset OpenVINO mailbox while a frame is active.");
+                }
+                _pending = null;
+                _accepting = true;
+            }
+        }
+
+        public bool Publish(
+            NativeArray<byte> rgba,
+            int width,
+            int height,
+            int strideBytes,
+            int rotationDegrees,
+            long timestampMillisec,
+            double observedAtSeconds,
+            double publishedAtSeconds,
+            int publishedFrameCount,
+            int coordinateConventionVersion,
+            PreparedInferenceLaunchOrigin launchOriginHint,
+            out bool replacedPending)
+        {
+            if (!rgba.IsCreated)
+            {
+                throw new ArgumentException("RGBA source must be created.", nameof(rgba));
+            }
+            if (width <= 0 || height <= 0 || strideBytes != checked(width * 4) ||
+                rgba.Length != checked(strideBytes * height))
+            {
+                throw new ArgumentException("OpenVINO mailbox RGBA dimensions/stride are invalid.");
+            }
+
+            lock (_gate)
+            {
+                if (!_accepting)
+                {
+                    replacedPending = false;
+                    return false;
+                }
+
+                var target = _pending;
+                replacedPending = target != null;
+                if (target == null)
+                {
+                    target = ReferenceEquals(_active, _slotA) ? _slotB : _slotA;
+                }
+                if (ReferenceEquals(target, _active))
+                {
+                    throw new InvalidOperationException("OpenVINO mailbox attempted to overwrite the active inference buffer.");
+                }
+
+                if (target.Rgba == null || target.Rgba.Length != rgba.Length)
+                {
+                    target.Rgba = new byte[rgba.Length];
+                    _bufferAllocationCount++;
+                }
+                rgba.CopyTo(target.Rgba);
+                target.Width = width;
+                target.Height = height;
+                target.StrideBytes = strideBytes;
+                target.RotationDegrees = rotationDegrees;
+                target.TimestampMillisec = timestampMillisec;
+                target.ObservedAtSeconds = observedAtSeconds;
+                target.PublishedAtSeconds = publishedAtSeconds;
+                target.PublishedFrameCount = publishedFrameCount;
+                target.CoordinateConventionVersion = coordinateConventionVersion;
+                target.LaunchOriginHint = launchOriginHint;
+                _pending = target;
+                return true;
+            }
+        }
+
+        public bool TryTake(int currentCoordinateConventionVersion, out Frame frame)
+        {
+            lock (_gate)
+            {
+                frame = null;
+                if (!_accepting || _active != null || _pending == null)
+                {
+                    return false;
+                }
+                if (_pending.CoordinateConventionVersion != currentCoordinateConventionVersion)
+                {
+                    _pending = null;
+                    return false;
+                }
+
+                frame = _pending;
+                _pending = null;
+                _active = frame;
+                return true;
+            }
+        }
+
+        public void Complete(Frame frame)
+        {
+            if (frame == null)
+            {
+                return;
+            }
+            lock (_gate)
+            {
+                if (!ReferenceEquals(_active, frame))
+                {
+                    throw new InvalidOperationException("OpenVINO mailbox completion did not match the active frame.");
+                }
+                _active = null;
+            }
+        }
+
+        public bool ClearPending()
+        {
+            lock (_gate)
+            {
+                var hadPending = _pending != null;
+                _pending = null;
+                return hadPending;
+            }
+        }
+
+        public void StopAcceptingAndClear()
+        {
+            lock (_gate)
+            {
+                _accepting = false;
+                _pending = null;
+            }
+        }
+    }
+
+    public static class OpenVinoSchedulingPolicy
+    {
+        public static long NextMonotonicTimestamp(long clockTimestampMillisec, long previousTimestampMillisec)
+        {
+            return Math.Max(clockTimestampMillisec, previousTimestampMillisec + 1L);
+        }
+    }
+
+    /// <summary>
     /// Selects the texture dimensions used only by the body-pose inference path.
     /// The source webcam dimensions remain authoritative and are never changed here.
     /// </summary>
@@ -728,8 +1032,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private PoseLandmarker _poseLandmarker;
         private OpenVinoPoseRuntime _openVinoPoseRuntime;
         private Task<OpenVinoPoseRuntime> _openVinoBootstrapTask;
-        private Task _openVinoInferenceTask;
-        private byte[] _openVinoRgbaBuffer;
+        private readonly OpenVinoLatestFrameMailbox _openVinoMailbox = new OpenVinoLatestFrameMailbox();
+        private AutoResetEvent _openVinoWorkerSignal;
+        private Task _openVinoWorkerTask;
+        private int _openVinoWorkerStopRequested;
+        private int _openVinoMailboxPaused;
+        private long _openVinoLastPublishedTimestampMillisec;
+        private int _openVinoWorkerContinuationLaunchesInWindow;
+        private int _latestMainThreadFrameCount;
         private readonly object _openVinoWorkerFailureGate = new object();
         private Exception _openVinoWorkerFailure;
         private PoseInferenceBackend _activeInferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;
@@ -881,6 +1191,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public float ReadbackTimeoutsPerSecond { get; private set; }
         public float PreparedFrameReplacementsPerSecond { get; private set; }
         public float ImmediateLaunchesPerSecond { get; private set; }
+        public float OpenVinoWorkerContinuationsPerSecond { get; private set; }
+        public int OpenVinoMailboxPendingCount => _openVinoMailbox.PendingCount;
+        public bool OpenVinoMailboxHasActive => _openVinoMailbox.HasActive;
+        public int OpenVinoMailboxBufferAllocationCount => _openVinoMailbox.BufferAllocationCount;
         public float DirectReadbacksPerSecond { get; private set; }
         public float DirectReadbackFailuresPerSecond { get; private set; }
         public int DirectReadbackTimingSampleCount => _directReadbackTimingWindow.ValidSampleCount;
@@ -913,6 +1227,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _inferenceContinuationTimingWindow.GetOriginSampleCount(PreparedInferenceLaunchOrigin.Update);
         public int InferenceContinuationTimingReadbackLaunchCount =>
             _inferenceContinuationTimingWindow.GetOriginSampleCount(PreparedInferenceLaunchOrigin.ReadbackContinuation);
+        public int InferenceContinuationTimingOpenVinoWorkerLaunchCount =>
+            _inferenceContinuationTimingWindow.GetOriginSampleCount(PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation);
         public double InferenceContinuationTimingSubmitCallMedianMilliseconds =>
             _inferenceContinuationTimingWindow.GetMedianMilliseconds(InferenceContinuationTimingMetric.SubmitCall);
         public double InferenceContinuationTimingSubmitCallP95Milliseconds =>
@@ -933,7 +1249,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _inferenceContinuationTimingWindow.GetP95Milliseconds(
                 InferenceContinuationTimingMetric.ResultToNextLaunch,
                 preparedOnly: true);
-        public bool HasPreparedFrame => _preparedTextureFrame != null;
+        public bool HasPreparedFrame => _preparedTextureFrame != null || _openVinoMailbox.PendingCount != 0;
         public bool ReadbackPending => _readbackPending;
         public bool InferencePending => Volatile.Read(ref _inferenceOutstanding) != 0;
         public bool HasReceivedResult => Volatile.Read(ref _resultCallbackReceived) != 0;
@@ -948,11 +1264,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public int LastPreparedToInferenceLaunchFrameDelta { get; private set; }
         public PreparedInferenceLaunchOrigin LastAcceptedLaunchOrigin => _lastAcceptedLaunchOrigin;
         public string LastAcceptedLaunchOriginLabel =>
-            _lastAcceptedLaunchOrigin == PreparedInferenceLaunchOrigin.ReadbackContinuation
-                ? "RB"
-                : _lastAcceptedLaunchOrigin == PreparedInferenceLaunchOrigin.Update
-                    ? "Update"
-                    : "-";
+            _lastAcceptedLaunchOrigin == PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation
+                ? "OVW"
+                : _lastAcceptedLaunchOrigin == PreparedInferenceLaunchOrigin.ReadbackContinuation
+                    ? "RB"
+                    : _lastAcceptedLaunchOrigin == PreparedInferenceLaunchOrigin.Update
+                        ? "Update"
+                        : "-";
         public double LatestPoseAgeMilliseconds
         {
             get
@@ -980,6 +1298,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private void Update()
         {
+            Volatile.Write(ref _latestMainThreadFrameCount, Time.frameCount);
+
             if (_bootstrapCoroutine != null && (Status == PoseProviderStatus.Ready || IsFailureStatus(Status)))
             {
                 _bootstrapCoroutine = null;
@@ -1152,10 +1472,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                         _lastAcceptedLaunchOrigin = origin;
                         if (origin == PreparedInferenceLaunchOrigin.ReadbackContinuation)
                         {
-                            _immediateLaunchesInWindow++;
+                            Interlocked.Increment(ref _immediateLaunchesInWindow);
                         }
                         Interlocked.Increment(ref _totalInferenceRequests);
-                        _requestsInWindow++;
+                        Interlocked.Increment(ref _requestsInWindow);
                         if (!_inferenceRequestLogPublished)
                         {
                             _inferenceRequestLogPublished = true;
@@ -1200,9 +1520,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             var frameReleased = false;
             try
             {
-                if (_openVinoPoseRuntime == null)
+                if (_openVinoPoseRuntime == null || _openVinoWorkerTask == null || _openVinoWorkerSignal == null)
                 {
-                    throw new InvalidOperationException("OpenVINO pose runtime is not ready.");
+                    throw new InvalidOperationException("OpenVINO pose worker is not ready.");
                 }
 
                 var width = textureFrame.width;
@@ -1216,106 +1536,48 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                         $"OpenVINO RGBA input size mismatch. expected={expectedByteCount} actual={rawData.Length}");
                 }
 
-                if (_openVinoRgbaBuffer == null || _openVinoRgbaBuffer.Length != expectedByteCount)
-                {
-                    _openVinoRgbaBuffer = new byte[expectedByteCount];
-                }
+                var timestampMillisec = OpenVinoSchedulingPolicy.NextMonotonicTimestamp(
+                    _clock.ElapsedMilliseconds,
+                    _openVinoLastPublishedTimestampMillisec);
+                _openVinoLastPublishedTimestampMillisec = timestampMillisec;
+                var publishedAtSeconds = framePublishedAtSeconds > 0d
+                    ? framePublishedAtSeconds
+                    : NowSeconds();
+                var publishedFrameCount = framePublishedFrameCount >= 0
+                    ? framePublishedFrameCount
+                    : Volatile.Read(ref _latestMainThreadFrameCount);
 
                 var copyStartedAtSeconds = NowSeconds();
-                rawData.CopyTo(_openVinoRgbaBuffer);
+                var accepted = _openVinoMailbox.Publish(
+                    rawData,
+                    width,
+                    height,
+                    strideBytes,
+                    _orientation.InferenceRotationDegrees,
+                    timestampMillisec,
+                    frameObservedAtSeconds,
+                    publishedAtSeconds,
+                    publishedFrameCount,
+                    _coordinateConventionVersion,
+                    origin,
+                    out var replacedPending);
                 var managedCopyMilliseconds = (float)((NowSeconds() - copyStartedAtSeconds) * 1000d);
                 LastCpuImageBuildDurationMilliseconds = managedCopyMilliseconds;
                 LastOpenVinoManagedInputCopyMilliseconds = managedCopyMilliseconds;
+
                 textureFrame.Release();
                 frameReleased = true;
-
-                var timestampMillisec = _clock.ElapsedMilliseconds;
-                Interlocked.Exchange(ref _inferenceOutstanding, 1);
-                _inferenceStartedAtSeconds = NowSeconds();
-                _activeInferenceFrameObservedAtSeconds = frameObservedAtSeconds;
-
-                var priorCompletion = CapturePendingInferenceCompletion();
-                var diagnosticSessionId = Volatile.Read(ref _inferenceDiagnosticSessionId);
-                var diagnosticSerial = Interlocked.Increment(ref _nextInferenceDiagnosticSerial);
-                Interlocked.Exchange(ref _activeInferenceDiagnosticSessionId, diagnosticSessionId);
-                Interlocked.Exchange(ref _activeInferenceDiagnosticSerial, diagnosticSerial);
-                Interlocked.Exchange(ref _activeInferenceDiagnosticTimestampMilliseconds, timestampMillisec);
-                Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitReturnTicks, 0L);
-                Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
-                var diagnosticSubmitStartTicks = Stopwatch.GetTimestamp();
-                Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitStartTicks, diagnosticSubmitStartTicks);
-
-                var runtime = _openVinoPoseRuntime;
-                var rgba = _openVinoRgbaBuffer;
-                var rotationDegrees = _orientation.InferenceRotationDegrees;
-                _openVinoInferenceTask = Task.Run(() =>
-                        runtime.ProcessRgba(
-                            rgba,
-                            width,
-                            height,
-                            strideBytes,
-                            rotationDegrees,
-                            timestampMillisec))
-                    .ContinueWith(
-                        task =>
-                        {
-                            if (task.IsFaulted)
-                            {
-                                PublishOpenVinoWorkerFailure(task.Exception?.GetBaseException() ??
-                                    new InvalidOperationException("OpenVINO pose worker failed."));
-                                return;
-                            }
-                            if (task.IsCanceled)
-                            {
-                                PublishOpenVinoWorkerFailure(
-                                    new OperationCanceledException("OpenVINO pose worker was canceled."));
-                                return;
-                            }
-
-                            try
-                            {
-                                OnOpenVinoPoseResult(task.Result);
-                            }
-                            catch (Exception exception)
-                            {
-                                PublishOpenVinoWorkerFailure(exception);
-                            }
-                        },
-                        CancellationToken.None,
-                        TaskContinuationOptions.ExecuteSynchronously,
-                        TaskScheduler.Default);
-
-                var diagnosticSubmitReturnTicks = Stopwatch.GetTimestamp();
-                Interlocked.Exchange(
-                    ref _activeInferenceDiagnosticSubmitReturnTicks,
-                    diagnosticSubmitReturnTicks);
-                Volatile.Write(ref _activeInferenceDiagnosticAccepted, 1);
-                RecordInferenceContinuationSample(
-                    priorCompletion,
-                    diagnosticSessionId,
-                    diagnosticSubmitStartTicks,
-                    origin);
-
-                var acceptedAtSeconds = NowSeconds();
-                _inferenceScheduler.MarkAccepted(acceptedAtSeconds);
-                LastPreparedToInferenceLaunchMilliseconds = framePublishedAtSeconds > 0d
-                    ? (float)((acceptedAtSeconds - framePublishedAtSeconds) * 1000d)
-                    : 0f;
-                LastPreparedToInferenceLaunchFrameDelta = framePublishedFrameCount >= 0
-                    ? Mathf.Max(0, Time.frameCount - framePublishedFrameCount)
-                    : 0;
-                _lastAcceptedLaunchOrigin = origin;
-                if (origin == PreparedInferenceLaunchOrigin.ReadbackContinuation)
+                if (!accepted)
                 {
-                    _immediateLaunchesInWindow++;
+                    return;
                 }
-                Interlocked.Increment(ref _totalInferenceRequests);
-                _requestsInWindow++;
-                if (!_inferenceRequestLogPublished)
+
+                if (replacedPending)
                 {
-                    _inferenceRequestLogPublished = true;
-                    UnityEngine.Debug.Log("[PoseTrackingSpike] OpenVINO inference request accepted");
+                    Interlocked.Increment(ref _preparedFrameReplacementsInWindow);
                 }
+                Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 1);
+                _openVinoWorkerSignal.Set();
             }
             catch (Exception exception)
             {
@@ -1324,9 +1586,179 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     textureFrame.Release();
                 }
                 Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
-                Interlocked.Exchange(ref _inferenceOutstanding, 0);
-                SetFailure(PoseProviderStatus.InferenceFailed, $"OpenVINO frame/inference launch failed: {exception.Message}");
+                SetFailure(PoseProviderStatus.InferenceFailed, $"OpenVINO frame publication failed: {exception.Message}");
                 UnityEngine.Debug.LogException(exception, this);
+            }
+        }
+
+        private void StartOpenVinoWorker()
+        {
+            if (_openVinoWorkerTask != null)
+            {
+                throw new InvalidOperationException("OpenVINO pose worker is already running.");
+            }
+
+            _openVinoMailbox.Reset();
+            Volatile.Write(ref _openVinoWorkerStopRequested, 0);
+            Volatile.Write(ref _openVinoMailboxPaused, 0);
+            _openVinoLastPublishedTimestampMillisec = 0L;
+            _openVinoWorkerSignal = new AutoResetEvent(false);
+            _openVinoWorkerTask = Task.Run(OpenVinoWorkerLoop);
+        }
+
+        private void OpenVinoWorkerLoop()
+        {
+            var continueFromPreviousResult = false;
+            while (Volatile.Read(ref _openVinoWorkerStopRequested) == 0)
+            {
+                if (Volatile.Read(ref _openVinoMailboxPaused) != 0)
+                {
+                    continueFromPreviousResult = false;
+                    _openVinoWorkerSignal.WaitOne();
+                    continue;
+                }
+
+                if (_openVinoMailbox.PendingCount == 0)
+                {
+                    continueFromPreviousResult = false;
+                    _openVinoWorkerSignal.WaitOne();
+                    continue;
+                }
+
+                var targetFps = Math.Max(1f, Volatile.Read(ref targetInferenceFps));
+                var intervalSeconds = 1d / targetFps;
+                var waitSeconds = _inferenceScheduler.SecondsUntilIntervalElapsed(
+                    NowSeconds(),
+                    intervalSeconds);
+                if (waitSeconds > 0d)
+                {
+                    var waitMilliseconds = Math.Max(1, (int)Math.Ceiling(waitSeconds * 1000d));
+                    _openVinoWorkerSignal.WaitOne(waitMilliseconds);
+                    continue;
+                }
+
+                if (!_openVinoMailbox.TryTake(
+                        Volatile.Read(ref _coordinateConventionVersion),
+                        out var frame))
+                {
+                    Volatile.Write(
+                        ref _preparedTextureFrameDiagnosticOccupied,
+                        _openVinoMailbox.PendingCount == 0 ? 0 : 1);
+                    continue;
+                }
+
+                Volatile.Write(
+                    ref _preparedTextureFrameDiagnosticOccupied,
+                    _openVinoMailbox.PendingCount == 0 ? 0 : 1);
+                var origin = continueFromPreviousResult
+                    ? PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation
+                    : frame.LaunchOriginHint;
+                continueFromPreviousResult = ProcessOpenVinoMailboxFrame(frame, origin);
+            }
+        }
+
+        private bool ProcessOpenVinoMailboxFrame(
+            OpenVinoLatestFrameMailbox.Frame frame,
+            PreparedInferenceLaunchOrigin origin)
+        {
+            try
+            {
+                if (_openVinoPoseRuntime == null)
+                {
+                    throw new InvalidOperationException("OpenVINO pose runtime is not ready.");
+                }
+                if (Volatile.Read(ref _openVinoWorkerStopRequested) != 0 ||
+                    Volatile.Read(ref _openVinoMailboxPaused) != 0)
+                {
+                    return false;
+                }
+
+                var acceptedAtSeconds = NowSeconds();
+                var priorCompletion = CapturePendingInferenceCompletion();
+                var diagnosticSessionId = Volatile.Read(ref _inferenceDiagnosticSessionId);
+                var diagnosticSerial = Interlocked.Increment(ref _nextInferenceDiagnosticSerial);
+                Interlocked.Exchange(ref _activeInferenceDiagnosticSessionId, diagnosticSessionId);
+                Interlocked.Exchange(ref _activeInferenceDiagnosticSerial, diagnosticSerial);
+                Interlocked.Exchange(ref _activeInferenceDiagnosticTimestampMilliseconds, frame.TimestampMillisec);
+                Volatile.Write(ref _activeInferenceDiagnosticAccepted, 0);
+                var diagnosticSubmitStartTicks = Stopwatch.GetTimestamp();
+                Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitStartTicks, diagnosticSubmitStartTicks);
+
+                Interlocked.Exchange(ref _inferenceOutstanding, 1);
+                _inferenceStartedAtSeconds = acceptedAtSeconds;
+                _activeInferenceFrameObservedAtSeconds = frame.ObservedAtSeconds;
+                _inferenceScheduler.MarkAccepted(acceptedAtSeconds);
+
+                var diagnosticSubmitReturnTicks = Stopwatch.GetTimestamp();
+                Interlocked.Exchange(ref _activeInferenceDiagnosticSubmitReturnTicks, diagnosticSubmitReturnTicks);
+                Volatile.Write(ref _activeInferenceDiagnosticAccepted, 1);
+                RecordInferenceContinuationSample(
+                    priorCompletion,
+                    diagnosticSessionId,
+                    diagnosticSubmitStartTicks,
+                    origin);
+
+                LastPreparedToInferenceLaunchMilliseconds = frame.PublishedAtSeconds > 0d
+                    ? (float)((acceptedAtSeconds - frame.PublishedAtSeconds) * 1000d)
+                    : 0f;
+                var latestMainThreadFrameCount = Volatile.Read(ref _latestMainThreadFrameCount);
+                LastPreparedToInferenceLaunchFrameDelta = frame.PublishedFrameCount >= 0
+                    ? Math.Max(0, latestMainThreadFrameCount - frame.PublishedFrameCount)
+                    : 0;
+                _lastAcceptedLaunchOrigin = origin;
+                if (origin == PreparedInferenceLaunchOrigin.ReadbackContinuation ||
+                    origin == PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation)
+                {
+                    Interlocked.Increment(ref _immediateLaunchesInWindow);
+                }
+                if (origin == PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation)
+                {
+                    Interlocked.Increment(ref _openVinoWorkerContinuationLaunchesInWindow);
+                }
+                Interlocked.Increment(ref _totalInferenceRequests);
+                Interlocked.Increment(ref _requestsInWindow);
+
+                var result = _openVinoPoseRuntime.ProcessRgba(
+                    frame.Rgba,
+                    frame.Width,
+                    frame.Height,
+                    frame.StrideBytes,
+                    frame.RotationDegrees,
+                    frame.TimestampMillisec);
+                OnOpenVinoPoseResult(result);
+                return Volatile.Read(ref _openVinoWorkerStopRequested) == 0 &&
+                    Volatile.Read(ref _openVinoMailboxPaused) == 0;
+            }
+            catch (Exception exception)
+            {
+                PublishOpenVinoWorkerFailure(exception);
+                return false;
+            }
+            finally
+            {
+                _openVinoMailbox.Complete(frame);
+            }
+        }
+
+        private void PauseOpenVinoMailboxAndDiscardPending()
+        {
+            if (_activeInferenceBackend != PoseInferenceBackend.OpenVinoCpuFp32 &&
+                _openVinoWorkerTask == null)
+            {
+                return;
+            }
+
+            Volatile.Write(ref _openVinoMailboxPaused, 1);
+            _openVinoMailbox.ClearPending();
+            Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 0);
+            _openVinoWorkerSignal?.Set();
+        }
+
+        private void DiscardOpenVinoPendingFrame()
+        {
+            if (_openVinoMailbox.ClearPending())
+            {
+                Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 0);
             }
         }
 
@@ -1434,6 +1866,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 }
             }
             Interlocked.Exchange(ref _inferenceOutstanding, 0);
+            Volatile.Write(ref _openVinoWorkerStopRequested, 1);
+            Volatile.Write(ref _openVinoMailboxPaused, 1);
+            _openVinoMailbox.StopAcceptingAndClear();
+            Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 0);
+            _openVinoWorkerSignal?.Set();
         }
 
         private void ConsumeOpenVinoWorkerFailure()
@@ -1577,6 +2014,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
                     _openVinoPoseRuntime = bootstrapTask.Result;
                     _activeInferenceBackend = PoseInferenceBackend.OpenVinoCpuFp32;
+                    StartOpenVinoWorker();
                     OpenVinoRuntimeInfo = _openVinoPoseRuntime.RuntimeInfo;
                     OpenVinoEngineInfo = _openVinoPoseRuntime.EngineInfo;
                 }
@@ -1684,7 +2122,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return false;
             }
 
-            if (_preparedTextureFrame != null)
+            if (_activeInferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32)
+            {
+                DiscardOpenVinoPendingFrame();
+            }
+            else if (_preparedTextureFrame != null)
             {
                 ReleasePreparedFrame();
             }
@@ -2166,6 +2608,30 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 yield break;
             }
 
+            var publishedAtSeconds = NowSeconds();
+            var publishedFrameCount = Time.frameCount;
+            if (_activeInferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32)
+            {
+                LaunchPreparedOpenVinoInference(
+                    textureFrame,
+                    frameObservedAtSeconds,
+                    publishedAtSeconds,
+                    publishedFrameCount,
+                    PreparedInferenceLaunchOrigin.ReadbackContinuation);
+                if (directRequest)
+                {
+                    RecordDirectReadbackTimingSample(
+                        directDiagnosticSerial,
+                        directSubmitStartTicks,
+                        directSubmitReturnTicks,
+                        coroutineObserveTicks,
+                        Stopwatch.GetTimestamp(),
+                        isError: false);
+                }
+                _readbackPending = false;
+                yield break;
+            }
+
             if (_preparedTextureFrame != null)
             {
                 _preparedTextureFrame.Release();
@@ -2176,8 +2642,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 1);
             _preparedFrameObservedAtSeconds = frameObservedAtSeconds;
             _preparedCoordinateConventionVersion = coordinateConventionVersion;
-            _preparedFramePublishedAtSeconds = NowSeconds();
-            _preparedFramePublishedFrameCount = Time.frameCount;
+            _preparedFramePublishedAtSeconds = publishedAtSeconds;
+            _preparedFramePublishedFrameCount = publishedFrameCount;
             if (directRequest)
             {
                 RecordDirectReadbackTimingSample(
@@ -2383,6 +2849,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _pendingCameraName = targetName;
             _pendingPreferredCameraName = preferredIdentity;
             _cameraSwitchPending = true;
+            PauseOpenVinoMailboxAndDiscardPending();
             StatusMessage = $"Camera switch pending: {targetName}";
             return true;
         }
@@ -2418,7 +2885,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             ClearProviderSessionState();
             if (invalidateCameraSession)
             {
-                _coordinateConventionVersion++;
+                Interlocked.Increment(ref _coordinateConventionVersion);
             }
             Status = PoseProviderStatus.Starting;
             _bootstrapCoroutine = StartCoroutine(BootstrapAsync());
@@ -2438,7 +2905,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             Interlocked.Exchange(ref _totalResultCallbacks, 0);
             Interlocked.Exchange(ref _resultsInWindow, 0);
             Interlocked.Exchange(ref _callbacksInWindow, 0);
-            _requestsInWindow = 0;
             _cameraFramesInWindow = 0;
             _skippedInWindow = 0;
             _noFreshFrameWaitsInWindow = 0;
@@ -2449,7 +2915,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _readbackFailuresInWindow = 0;
             _readbackTimeoutsInWindow = 0;
             _preparedFrameReplacementsInWindow = 0;
-            _immediateLaunchesInWindow = 0;
             _directReadbacksInWindow = 0;
             _directReadbackFailuresInWindow = 0;
             _directReadbackTimingWindow.Reset();
@@ -2489,6 +2954,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             ReadbackTimeoutsPerSecond = 0f;
             PreparedFrameReplacementsPerSecond = 0f;
             ImmediateLaunchesPerSecond = 0f;
+            OpenVinoWorkerContinuationsPerSecond = 0f;
             DirectReadbacksPerSecond = 0f;
             DirectReadbackFailuresPerSecond = 0f;
             LastGpuReadbackDurationMilliseconds = 0f;
@@ -2543,8 +3009,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 inferenceRotationDegrees: (int)transformation.rotationAngle);
             if (!_hasPublishedCoordinateConvention || !SameCoordinateConvention(_orientation, nextOrientation))
             {
-                _coordinateConventionVersion++;
+                Interlocked.Increment(ref _coordinateConventionVersion);
                 _hasPublishedCoordinateConvention = true;
+                if (_activeInferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32)
+                {
+                    DiscardOpenVinoPendingFrame();
+                }
             }
 
             _orientation = nextOrientation;
@@ -2567,7 +3037,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
-            var requests = _requestsInWindow;
+            var requests = Interlocked.Exchange(ref _requestsInWindow, 0);
+            var immediateLaunches = Interlocked.Exchange(ref _immediateLaunchesInWindow, 0);
+            var openVinoWorkerContinuations = Interlocked.Exchange(ref _openVinoWorkerContinuationLaunchesInWindow, 0);
             var callbacks = Interlocked.Exchange(ref _callbacksInWindow, 0);
             var results = Interlocked.Exchange(ref _resultsInWindow, 0);
             var cameraFrames = _cameraFramesInWindow;
@@ -2583,7 +3055,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             ReadbackFailuresPerSecond = (float)(_readbackFailuresInWindow / elapsed);
             ReadbackTimeoutsPerSecond = (float)(_readbackTimeoutsInWindow / elapsed);
             PreparedFrameReplacementsPerSecond = (float)(_preparedFrameReplacementsInWindow / elapsed);
-            ImmediateLaunchesPerSecond = (float)(_immediateLaunchesInWindow / elapsed);
+            ImmediateLaunchesPerSecond = (float)(immediateLaunches / elapsed);
+            OpenVinoWorkerContinuationsPerSecond = (float)(openVinoWorkerContinuations / elapsed);
             DirectReadbacksPerSecond = (float)(_directReadbacksInWindow / elapsed);
             DirectReadbackFailuresPerSecond = (float)(_directReadbackFailuresInWindow / elapsed);
             SkippedInferenceOpportunities += _skippedInWindow;
@@ -2610,10 +3083,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     $"prep={InferenceContinuationTimingPreparedWaitingSampleCount}/{InferenceContinuationTimingSampleCount} " +
                     $"({FormatTimingRate(InferenceContinuationTimingPreparedWaitingRate)}) " +
                     $"cb→next={FormatTimingPair(InferenceContinuationTimingPreparedResultToNextLaunchMedianMilliseconds, InferenceContinuationTimingPreparedResultToNextLaunchP95Milliseconds)}ms " +
-                    $"U/RB={InferenceContinuationTimingUpdateLaunchCount}/{InferenceContinuationTimingReadbackLaunchCount} " +
+                    $"U/RB/OVW={InferenceContinuationTimingUpdateLaunchCount}/{InferenceContinuationTimingReadbackLaunchCount}/{InferenceContinuationTimingOpenVinoWorkerLaunchCount} " +
                     $"missing={InferenceContinuationTimingMissingSampleCount}";
                 var openVinoTimingSummary = _activeInferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32
-                    ? $"\nOV ms managed/graph/det/lmk/bridge: {LastOpenVinoManagedInputCopyMilliseconds:0.0}/{LastOpenVinoGraphProcessMilliseconds:0.0}/{LastOpenVinoDetectorInferenceMilliseconds:0.0}/{LastOpenVinoLandmarkInferenceMilliseconds:0.0}/{LastOpenVinoBridgeCopyMilliseconds:0.0} detRan={(LastOpenVinoDetectorRan ? 1 : 0)}"
+                    ? $"\nOV ms managed/graph/det/lmk/bridge: {LastOpenVinoManagedInputCopyMilliseconds:0.0}/{LastOpenVinoGraphProcessMilliseconds:0.0}/{LastOpenVinoDetectorInferenceMilliseconds:0.0}/{LastOpenVinoLandmarkInferenceMilliseconds:0.0}/{LastOpenVinoBridgeCopyMilliseconds:0.0} detRan={(LastOpenVinoDetectorRan ? 1 : 0)}" +
+                      $" sched pending={OpenVinoMailboxPendingCount} active={(OpenVinoMailboxHasActive ? 1 : 0)} ovw={OpenVinoWorkerContinuationsPerSecond:0.0}/s buffers={OpenVinoMailboxBufferAllocationCount}"
                     : string.Empty;
                 StatusMessage =
                     $"Camera/Pose ready | Backend: {ActiveInferenceBackendLabel} | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
@@ -2625,7 +3099,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     openVinoTimingSummary;
             }
 
-            _requestsInWindow = 0;
+            Interlocked.Exchange(ref _requestsInWindow, 0);
+            Interlocked.Exchange(ref _immediateLaunchesInWindow, 0);
+            Interlocked.Exchange(ref _openVinoWorkerContinuationLaunchesInWindow, 0);
             _cameraFramesInWindow = 0;
             _skippedInWindow = 0;
             _noFreshFrameWaitsInWindow = 0;
@@ -2636,7 +3112,6 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _readbackFailuresInWindow = 0;
             _readbackTimeoutsInWindow = 0;
             _preparedFrameReplacementsInWindow = 0;
-            _immediateLaunchesInWindow = 0;
             _directReadbacksInWindow = 0;
             _directReadbackFailuresInWindow = 0;
             _metricsWindowStartedAtSeconds = now;
@@ -2888,19 +3363,27 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private void CleanupOpenVinoRuntime()
         {
-            var inferenceTask = _openVinoInferenceTask;
-            if (inferenceTask != null)
+            Volatile.Write(ref _openVinoMailboxPaused, 1);
+            Volatile.Write(ref _openVinoWorkerStopRequested, 1);
+            _openVinoMailbox.StopAcceptingAndClear();
+            Volatile.Write(ref _preparedTextureFrameDiagnosticOccupied, 0);
+            _openVinoWorkerSignal?.Set();
+
+            var workerTask = _openVinoWorkerTask;
+            if (workerTask != null)
             {
                 try
                 {
-                    inferenceTask.Wait();
+                    workerTask.Wait();
                 }
                 catch (AggregateException)
                 {
                     // Worker errors are surfaced through the provider failure channel while active.
                 }
-                _openVinoInferenceTask = null;
+                _openVinoWorkerTask = null;
             }
+            _openVinoWorkerSignal?.Dispose();
+            _openVinoWorkerSignal = null;
 
             var bootstrapTask = _openVinoBootstrapTask;
             if (bootstrapTask != null)
@@ -2924,7 +3407,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
             _openVinoPoseRuntime?.Dispose();
             _openVinoPoseRuntime = null;
-            _openVinoRgbaBuffer = null;
+            _openVinoLastPublishedTimestampMillisec = 0L;
             OpenVinoRuntimeInfo = string.Empty;
             OpenVinoEngineInfo = string.Empty;
             lock (_openVinoWorkerFailureGate)

@@ -1,5 +1,6 @@
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
 using NUnit.Framework;
+using Unity.Collections;
 using UnityEditor;
 using UnityEngine;
 
@@ -825,6 +826,108 @@ namespace GoldenNeedle.Tests
                 Is.NaN);
         }
 
+
+        [Test]
+        public void SchedulerReportsRemainingIntervalForWorkerContinuation()
+        {
+            var scheduler = new InferenceLaunchScheduler();
+            scheduler.MarkAccepted(1d);
+
+            Assert.That(scheduler.SecondsUntilIntervalElapsed(1.02d, 0.05d), Is.EqualTo(0.03d).Within(1e-9));
+            Assert.That(scheduler.SecondsUntilIntervalElapsed(1.05d, 0.05d), Is.EqualTo(0d));
+        }
+
+        [Test]
+        public void OpenVinoMailboxReplacesPendingWithoutGrowing()
+        {
+            var mailbox = new OpenVinoLatestFrameMailbox();
+            using var first = FilledBytes(16, 1);
+            using var second = FilledBytes(16, 2);
+            using var newest = FilledBytes(16, 3);
+
+            Assert.That(Publish(mailbox, first, timestamp: 10, out var replaced), Is.True);
+            Assert.That(replaced, Is.False);
+            Assert.That(mailbox.PendingCount, Is.EqualTo(1));
+            Assert.That(mailbox.BufferAllocationCount, Is.EqualTo(1));
+
+            Assert.That(mailbox.TryTake(1, out var active), Is.True);
+            Assert.That(mailbox.HasActive, Is.True);
+            Assert.That(mailbox.PendingCount, Is.EqualTo(0));
+
+            Assert.That(Publish(mailbox, second, timestamp: 20, out replaced), Is.True);
+            Assert.That(replaced, Is.False);
+            Assert.That(mailbox.PendingCount, Is.EqualTo(1));
+            Assert.That(mailbox.BufferAllocationCount, Is.EqualTo(2));
+
+            Assert.That(Publish(mailbox, newest, timestamp: 30, out replaced), Is.True);
+            Assert.That(replaced, Is.True);
+            Assert.That(mailbox.PendingCount, Is.EqualTo(1));
+            Assert.That(mailbox.BufferAllocationCount, Is.EqualTo(2));
+            Assert.That(mailbox.TryTake(1, out _), Is.False, "a second inference cannot overlap the active slot");
+
+            mailbox.Complete(active);
+            Assert.That(mailbox.TryTake(1, out var pending), Is.True);
+            Assert.That(pending.TimestampMillisec, Is.EqualTo(30), "newest pending frame must win");
+            Assert.That(pending.SlotId, Is.Not.EqualTo(active.SlotId), "pending writes must never overwrite the active buffer");
+            mailbox.Complete(pending);
+        }
+
+        [Test]
+        public void OpenVinoMailboxDropsStaleCoordinateConvention()
+        {
+            var mailbox = new OpenVinoLatestFrameMailbox();
+            using var bytes = FilledBytes(16, 7);
+            Assert.That(Publish(mailbox, bytes, timestamp: 10, out _), Is.True);
+
+            Assert.That(mailbox.TryTake(2, out _), Is.False);
+            Assert.That(mailbox.PendingCount, Is.EqualTo(0));
+            Assert.That(mailbox.HasActive, Is.False);
+        }
+
+        [Test]
+        public void OpenVinoMailboxStopClearsPendingAndRejectsNewFrames()
+        {
+            var mailbox = new OpenVinoLatestFrameMailbox();
+            using var bytes = FilledBytes(16, 9);
+            Assert.That(Publish(mailbox, bytes, timestamp: 10, out _), Is.True);
+
+            mailbox.StopAcceptingAndClear();
+
+            Assert.That(mailbox.PendingCount, Is.EqualTo(0));
+            Assert.That(Publish(mailbox, bytes, timestamp: 20, out _), Is.False);
+        }
+
+        [Test]
+        public void OpenVinoTimestampPolicyIsStrictlyMonotonic()
+        {
+            Assert.That(OpenVinoSchedulingPolicy.NextMonotonicTimestamp(100, 90), Is.EqualTo(100));
+            Assert.That(OpenVinoSchedulingPolicy.NextMonotonicTimestamp(100, 100), Is.EqualTo(101));
+            Assert.That(OpenVinoSchedulingPolicy.NextMonotonicTimestamp(99, 100), Is.EqualTo(101));
+        }
+
+        [Test]
+        public void InferenceContinuationTimingAcceptsOpenVinoWorkerOrigin()
+        {
+            Assert.That(
+                InferenceContinuationTimingMath.TryCreateSample(
+                    expectedSessionId: 3,
+                    completedSessionId: 3,
+                    expectedSerial: 7,
+                    completedSerial: 7,
+                    submitStartTicks: 100,
+                    submitReturnTicks: 105,
+                    callbackEntryTicks: 125,
+                    completionTicks: 130,
+                    nextAcceptedLaunchTicks: 131,
+                    preparedWaitingAtResult: true,
+                    nextLaunchOrigin: PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation,
+                    out var sample,
+                    frequency: 1000),
+                Is.True);
+            Assert.That(sample.NextLaunchOrigin, Is.EqualTo(PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation));
+            Assert.That(sample.ResultToNextLaunchMilliseconds, Is.EqualTo(1d));
+        }
+
         private static DirectReadbackTimingSample TimingSample(double callbackToPollMilliseconds)
         {
             return new DirectReadbackTimingSample(
@@ -850,6 +953,38 @@ namespace GoldenNeedle.Tests
                 resultToNextLaunchMilliseconds: resultToNextLaunchMilliseconds,
                 preparedWaitingAtResult: prepared,
                 nextLaunchOrigin: origin);
+        }
+
+
+        private static NativeArray<byte> FilledBytes(int count, byte value)
+        {
+            var bytes = new NativeArray<byte>(count, Allocator.Temp);
+            for (var i = 0; i < count; i++)
+            {
+                bytes[i] = value;
+            }
+            return bytes;
+        }
+
+        private static bool Publish(
+            OpenVinoLatestFrameMailbox mailbox,
+            NativeArray<byte> bytes,
+            long timestamp,
+            out bool replaced)
+        {
+            return mailbox.Publish(
+                bytes,
+                width: 2,
+                height: 2,
+                strideBytes: 8,
+                rotationDegrees: 0,
+                timestampMillisec: timestamp,
+                observedAtSeconds: timestamp / 1000d,
+                publishedAtSeconds: timestamp / 1000d,
+                publishedFrameCount: (int)timestamp,
+                coordinateConventionVersion: 1,
+                launchOriginHint: PreparedInferenceLaunchOrigin.ReadbackContinuation,
+                out replaced);
         }
 
         private static bool ImmediateLaunchAllowed(
