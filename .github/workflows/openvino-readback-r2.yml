@@ -1,0 +1,166 @@
+name: OpenVINO Unity readback R2 implementation
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_readback_r2.py'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs'
+      - 'Assets/GoldenNeedle/Tests/Editor/WebCamCpuFramePreparationTests.cs'
+      - 'Tools/OpenVinoUnityPosePlugin/tests/ManagedWebCamCpuSmoke/**'
+      - '.github/workflows/openvino-readback-r2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fail-closed R2 transformation
+        run: python3 Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_readback_r2.py
+
+      - name: Validate managed helper
+        run: dotnet run --configuration Release --project Tools/OpenVinoUnityPosePlugin/tests/ManagedWebCamCpuSmoke/ManagedWebCamCpuSmoke.csproj
+
+      - name: Re-run accepted scheduling helper smoke
+        shell: bash
+        run: |
+          python3 Tools/OpenVinoUnityPosePlugin/tests/ManagedSchedulingSmoke/extract_provider_scheduling.py
+          dotnet run --configuration Release --project Tools/OpenVinoUnityPosePlugin/tests/ManagedSchedulingSmoke/ManagedSchedulingSmoke.csproj
+
+      - name: Re-run managed ABI smoke
+        run: dotnet run --configuration Release --project Tools/OpenVinoUnityPosePlugin/tests/ManagedAbiSmoke/ManagedAbiSmoke.csproj
+
+      - name: Validate R2 and preserved scheduling invariants
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+
+          provider = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs').read_text(encoding='utf-8')
+          editor = Path('Assets/GoldenNeedle/Editor/MediaPipePoseProviderEditor.cs').read_text(encoding='utf-8')
+          helper = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs').read_text(encoding='utf-8')
+          tests = Path('Assets/GoldenNeedle/Tests/Editor/WebCamCpuFramePreparationTests.cs').read_text(encoding='utf-8')
+
+          required_provider = [
+              'bodyFrameAcquisitionMode = BodyFrameAcquisitionMode.ExistingReadback;',
+              'BodyFrameAcquisitionMode.WebCamCpuPixels',
+              '_webCamTexture.GetPixels32(_webCamCpuPixels);',
+              'WebCamCpuFramePreparation.PrepareRgba(',
+              'new Color32[sourcePixelCount]',
+              'Allocator.Persistent',
+              'ReleaseWebCamCpuBuffers();',
+              'PublishWebCamCpuPreparedOpenVinoFrame(',
+              '_openVinoMailbox.Publish(',
+              'PreparedInferenceLaunchOrigin.ReadbackContinuation',
+              'Acq: {ActiveBodyFrameAcquisitionModeLabel}',
+              'CPU cam: n={WebCamCpuAcquisitionTimingSampleCount}',
+              'inferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;',
+              'PoseInferenceBackend.OpenVinoCpuFp32',
+              'public sealed class OpenVinoLatestFrameMailbox',
+              'Task.Run(OpenVinoWorkerLoop)',
+              '_openVinoMailbox.TryTake(',
+              '_openVinoMailbox.Complete(frame);',
+              '_poseLandmarker.DetectAsync(',
+          ]
+          missing = [item for item in required_provider if item not in provider]
+          if missing:
+              raise SystemExit(f'missing R2/provider invariants: {missing}')
+
+          if provider.count('Task.Run(OpenVinoWorkerLoop)') != 1:
+              raise SystemExit('OpenVINO worker count changed')
+          if provider.count('new Frame(') != 2:
+              raise SystemExit('OpenVINO mailbox no longer owns exactly two reusable frame slots')
+          if 'Queue<' in provider or 'ConcurrentQueue<' in provider:
+              raise SystemExit('queue/backlog type detected')
+          if provider.count('_webCamTexture.GetPixels32(_webCamCpuPixels);') != 1:
+              raise SystemExit('expected one bounded GetPixels32 acquisition call')
+          if 'GetPixels32()' in provider:
+              raise SystemExit('allocating GetPixels32 overload detected')
+          if provider.count('new Color32[sourcePixelCount]') != 1:
+              raise SystemExit('camera CPU buffer allocation is not isolated to resource setup')
+
+          required_editor = [
+              'serializedObject.FindProperty("bodyFrameAcquisitionMode")',
+              '"Frame Acquisition"',
+              '"Acquisition Fallback"',
+              '"CPU Get/Prep/Total"',
+          ]
+          missing_editor = [item for item in required_editor if item not in editor]
+          if missing_editor:
+              raise SystemExit(f'missing Inspector telemetry: {missing_editor}')
+
+          required_helper = [
+              'PrepareHalfScale(',
+              'PrepareBilinear(',
+              'WebCamCpuAcquisitionTimingWindow',
+              'destination[offset + 3] = a;',
+          ]
+          missing_helper = [item for item in required_helper if item not in helper]
+          if missing_helper:
+              raise SystemExit(f'missing helper behavior: {missing_helper}')
+          if 'new Color32' in helper or 'new NativeArray' in helper:
+              raise SystemExit('per-frame helper allocation detected')
+
+          required_tests = [
+              'HalfScaleAveragesTwoByTwoAndPreservesFlipSemantics',
+              'GeneralPathPreservesPixelsAtEqualResolution',
+              'GeneralPathFlipsAtEqualResolution',
+              'InvalidDestinationSizeFailsClosed',
+              'TimingWindowReportsMedianAndP95WithoutGrowing',
+          ]
+          missing_tests = [item for item in required_tests if item not in tests]
+          if missing_tests:
+              raise SystemExit(f'missing deterministic R2 tests: {missing_tests}')
+
+          print('OPENVINO_READBACK_R2_STATIC_AUDIT=PASS')
+          print('OPENVINO_READBACK_R2_BOUNDEDNESS=PASS')
+          print('OPENVINO_SCHEDULING_PRESERVED=PASS')
+          PY
+
+      - name: Validate changed-file scope
+        shell: bash
+        run: |
+          allowed='^(Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs|Assets/GoldenNeedle/Editor/MediaPipePoseProviderEditor.cs)$'
+          bad="$(git diff --name-only | grep -Ev "$allowed" || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected generated changes:"
+            echo "$bad"
+            exit 1
+          fi
+          if git diff --name-only | grep -Eq '(^|/)PoseTrackingSpike\.unity$|^ProjectSettings/|^Packages/'; then
+            echo 'Forbidden scene/project/package change detected'
+            exit 1
+          fi
+
+      - name: Show implementation diff summary
+        shell: bash
+        run: |
+          git diff --stat
+          git diff -- Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs | sed -n '1,420p'
+          git diff -- Assets/GoldenNeedle/Editor/MediaPipePoseProviderEditor.cs | sed -n '1,260p'
+
+      - name: Commit generated R2 implementation
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'R2 implementation already applied; nothing to commit.'
+            exit 0
+          fi
+          git config user.name 'Golden Needle Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs \
+            Assets/GoldenNeedle/Editor/MediaPipePoseProviderEditor.cs
+          git commit -m 'perf: add selectable webcam CPU acquisition'
+          git push origin HEAD:engine/pose-tracking-spike
