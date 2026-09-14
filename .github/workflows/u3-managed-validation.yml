@@ -7,6 +7,7 @@ on:
     paths:
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/OpenVinoPoseNative.cs'
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs'
+      - 'Assets/GoldenNeedle/Tests/Editor/MediaPipeInferenceSchedulingTests.cs'
       - 'Tools/OpenVinoUnityPosePlugin/tests/ManagedAbiSmoke/**'
       - '.github/workflows/u3-managed-validation.yml'
   workflow_dispatch:
@@ -22,26 +23,55 @@ jobs:
       - name: Compile real managed wrapper and assert ABI layout
         run: dotnet run --configuration Release --project Tools/OpenVinoUnityPosePlugin/tests/ManagedAbiSmoke/ManagedAbiSmoke.csproj
 
-      - name: Validate provider integration invariants
+      - name: Validate provider integration and bounded scheduling invariants
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs')
+          t = Path('Assets/GoldenNeedle/Tests/Editor/MediaPipeInferenceSchedulingTests.cs')
           text = p.read_text(encoding='utf-8')
+          tests = t.read_text(encoding='utf-8')
           required = [
               'inferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;',
               'PoseInferenceBackend.OpenVinoCpuFp32',
               'LaunchPreparedOpenVinoInference(',
-              'runtime.ProcessRgba(',
+              '_openVinoPoseRuntime.ProcessRgba(',
+              '_poseLandmarker.DetectAsync(',
               'PoseTrustClassifier.IsCandidate(',
               'CleanupOpenVinoRuntime();',
               'OpenVINO CPU FP32',
+              'public sealed class OpenVinoLatestFrameMailbox',
+              'Task.Run(OpenVinoWorkerLoop)',
+              '_openVinoMailbox.TryTake(',
+              '_openVinoMailbox.Complete(frame);',
+              'PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation',
+              'PauseOpenVinoMailboxAndDiscardPending();',
+              'Interlocked.Exchange(ref _requestsInWindow, 0);',
+              'Interlocked.Exchange(ref _immediateLaunchesInWindow, 0);',
+              'Interlocked.Exchange(ref _openVinoWorkerContinuationLaunchesInWindow, 0);',
           ]
           missing = [item for item in required if item not in text]
           if missing:
               raise SystemExit(f'missing provider invariants: {missing}')
           if text.count('LaunchPreparedOpenVinoInference(') < 2:
               raise SystemExit('OpenVINO launch branch/method pairing is incomplete')
+          if text.count('Task.Run(OpenVinoWorkerLoop)') != 1:
+              raise SystemExit('OpenVINO scheduling must own exactly one persistent worker')
+          if text.count('new Frame(') != 2:
+              raise SystemExit('OpenVINO mailbox must own exactly two reusable frame slots')
+          if 'Queue<' in text or 'ConcurrentQueue<' in text:
+              raise SystemExit('queue/backlog type detected in provider')
+          required_tests = [
+              'OpenVinoMailboxReplacesPendingWithoutGrowing',
+              'OpenVinoMailboxDropsStaleCoordinateConvention',
+              'OpenVinoMailboxStopClearsPendingAndRejectsNewFrames',
+              'OpenVinoTimestampPolicyIsStrictlyMonotonic',
+              'InferenceContinuationTimingAcceptsOpenVinoWorkerOrigin',
+          ]
+          missing_tests = [item for item in required_tests if item not in tests]
+          if missing_tests:
+              raise SystemExit(f'missing deterministic scheduling tests: {missing_tests}')
           print('U3_PROVIDER_STATIC_INVARIANTS=PASS')
+          print('OPENVINO_BOUNDED_SCHEDULING_STATIC_INVARIANTS=PASS')
           PY
