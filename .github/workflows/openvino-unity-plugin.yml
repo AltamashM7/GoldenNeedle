@@ -73,6 +73,23 @@ jobs:
         shell: pwsh
         run: .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
 
+      - name: Stage Windows runtime DLLs for preserved semantic host
+        shell: pwsh
+        run: |
+          # runtime_pose_smoke.exe was compiled into the preserved native artifact
+          # before the lifecycle-host search-mask fix. Its explicit LoadLibraryExW
+          # flags omit System32. Stage only its standard Windows/MSVC direct imports
+          # beside the plugin so the unchanged executable can exercise semantics.
+          # These files are test-only and are not copied by package_unity.ps1.
+          $release = Join-Path $PWD 'Tools\OpenVinoUnityPosePlugin\build\Release'
+          New-Item -ItemType Directory -Force -Path $release | Out-Null
+          $system = [Environment]::SystemDirectory
+          foreach ($name in @('dbghelp.dll','MSVCP140.dll','CONCRT140.dll','VCRUNTIME140.dll','VCRUNTIME140_1.dll')) {
+            $source = Join-Path $system $name
+            if (-not (Test-Path $source)) { throw "Required system runtime missing: $source" }
+            Copy-Item -Force $source (Join-Path $release $name)
+          }
+
       - name: Run lifecycle and real-frame regression against preserved build
         shell: pwsh
         run: .\Tools\OpenVinoUnityPosePlugin\scripts\run_regression.ps1 -ArtifactDir .\Tools\OpenVinoUnityPosePlugin\.work\native-artifact
