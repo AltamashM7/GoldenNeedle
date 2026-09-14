@@ -189,6 +189,22 @@ foreach ($path in @($Detector, $Landmark, $PoseImage)) {
     if (-not (Test-Path $path)) { throw "U2 real-frame smoke input missing: $path" }
 }
 
+# runtime_pose_smoke.exe in the preserved U2 artifact predates the corrected
+# lifecycle-host System32 search mask. The CI regression already compensates by
+# staging these standard Windows/MSVC direct imports beside the preserved host.
+# Make that compatibility step part of the regression script itself so local U4
+# preparation and CI exercise the same semantics. These copies are test-only;
+# package_unity.ps1 stages an explicit allow-list and does not ship them.
+$systemDirectory = [Environment]::SystemDirectory
+foreach ($name in @("dbghelp.dll", "MSVCP140.dll", "CONCRT140.dll", "VCRUNTIME140.dll", "VCRUNTIME140_1.dll")) {
+    $source = Join-Path $systemDirectory $name
+    if (-not (Test-Path $source)) {
+        throw "Required test-only Windows/MSVC runtime is missing: $source"
+    }
+    Copy-Item -Force $source (Join-Path $ReleaseDir $name)
+}
+Write-Host "[U2 regression] staged test-only System32/MSVC runtimes for preserved semantic host"
+
 & $RuntimeSmoke $Plugin $Detector $Landmark $PoseImage @runtimeDirs
 if ($LASTEXITCODE -ne 0) {
     throw "U2 real-frame MediaPipe/OpenVINO 33-landmark semantic smoke failed. Native build is preserved for a regression-only retry."
