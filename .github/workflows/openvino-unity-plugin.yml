@@ -1,23 +1,27 @@
-name: OpenVINO Unity plugin recovery proof
+name: OpenVINO Unity regression proof
 
 on:
-  push:
-    branches:
-      - engine/pose-tracking-spike
-    paths:
-      - 'Tools/OpenVinoUnityPosePlugin/**'
-      - 'Assets/GoldenNeedle/Plugins/OpenVinoPose/**'
-      - 'Assets/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/**'
-      - '.github/workflows/openvino-unity-plugin.yml'
+  workflow_run:
+    workflows:
+      - OpenVINO Unity native build artifact
+    types:
+      - completed
   workflow_dispatch:
 
+permissions:
+  actions: read
+  contents: read
+
 jobs:
-  u2-native-backend:
+  u2-regression:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-2022
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install Homuler MSYS2 build utilities
         shell: pwsh
@@ -30,13 +34,47 @@ jobs:
           Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/bazelbuild/bazelisk/releases/download/v1.28.1/bazelisk-windows-amd64.exe" -OutFile $bazelisk
           $env:RUNNER_TEMP | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Bootstrap exact pinned native sources and OpenVINO runtime
+      - name: Resolve native artifact run
+        id: artifact_run
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ('${{ github.event_name }}' -eq 'workflow_run') {
+            $runId = '${{ github.event.workflow_run.id }}'
+          } else {
+            $headers = @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = "application/vnd.github+json"
+              'X-GitHub-Api-Version' = '2022-11-28'
+            }
+            $repo = $env:GITHUB_REPOSITORY
+            $uri = "https://api.github.com/repos/$repo/actions/workflows/openvino-unity-native-build.yml/runs?branch=engine%2Fpose-tracking-spike&status=success&per_page=1"
+            $response = Invoke-RestMethod -Headers $headers -Uri $uri
+            if (-not $response.workflow_runs -or $response.workflow_runs.Count -eq 0) {
+              throw 'No successful OpenVINO native-build artifact run exists yet.'
+            }
+            $runId = [string]$response.workflow_runs[0].id
+          }
+          "run_id=$runId" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          Write-Host "Using native artifact from workflow run $runId"
+
+      - name: Download immutable U2 native build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: golden-needle-u2-native
+          path: Tools/OpenVinoUnityPosePlugin/.work/native-artifact
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.artifact_run.outputs.run_id }}
+
+      - name: Bootstrap exact pinned runtime dependencies
         shell: pwsh
         run: .\Tools\OpenVinoUnityPosePlugin\scripts\bootstrap.ps1
 
-      - name: Build U2 x64 Release and run lifecycle + real-frame semantic smoke
+      - name: Run lifecycle and real-frame regression against preserved build
         shell: pwsh
-        run: .\Tools\OpenVinoUnityPosePlugin\scripts\build.ps1
+        run: .\Tools\OpenVinoUnityPosePlugin\scripts\run_regression.ps1 -ArtifactDir .\Tools\OpenVinoUnityPosePlugin\.work\native-artifact
 
       - name: Package additively into Unity assets and smoke packaged DLL
         shell: pwsh
