@@ -518,27 +518,24 @@ provider = replace_once(
 
 provider = replace_once(
     provider,
-    """                StatusMessage =
-                    $"Camera/Pose ready | Backend: {ActiveInferenceBackendLabel} | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
-                    $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
-                    $"Readback: {readbackPathSummary} H={(FlipInputHorizontally ? 1 : 0)} V={(FlipInputVertically ? 1 : 0)} direct={DirectReadbacksPerSecond:0.0}/s fail={DirectReadbackFailuresPerSecond:0.0}/s{fallbackSuffix}\n" +
-                    $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s" +
-                    inferenceContinuationTimingSummary +
-                    directTimingSummary +
-                    openVinoTimingSummary;
+    """                    $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
 """,
-    """                StatusMessage =
-                    $"Camera/Pose ready | Backend: {ActiveInferenceBackendLabel} | Body input: {BodyInferenceWidth}x{BodyInferenceHeight} {(BodyInferenceUsesScaledTexture ? "scaled" : "native")} | Pipe ms RB/build/detect/~F→R: {LastGpuReadbackDurationMilliseconds:0.0}/{LastCpuImageBuildDurationMilliseconds:0.0}/{LastInferenceDurationMilliseconds:0.0}/{LastApproxFrameToResultMilliseconds:0.0}\n" +
-                    $"Acq: {ActiveBodyFrameAcquisitionModeLabel} requested={RequestedBodyFrameAcquisitionModeLabel}{acquisitionFallbackSuffix}\n" +
+    """                    $"Acq: {ActiveBodyFrameAcquisitionModeLabel} requested={RequestedBodyFrameAcquisitionModeLabel}{acquisitionFallbackSuffix}\n" +
                     $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
-                    $"Readback: {readbackPathSummary} H={(FlipInputHorizontally ? 1 : 0)} V={(FlipInputVertically ? 1 : 0)} direct={DirectReadbacksPerSecond:0.0}/s fail={DirectReadbackFailuresPerSecond:0.0}/s{fallbackSuffix}\n" +
-                    $"Wait/s noFresh/int/RB/inf/pool: {NoFreshFrameWaitsPerSecond:0.0}/{TargetIntervalWaitsPerSecond:0.0}/{ReadbackBusyWaitsPerSecond:0.0}/{InferenceBusyWaitsPerSecond:0.0}/{TextureFramePoolWaitsPerSecond:0.0}   RB fail/to={ReadbackFailuresPerSecond:0.0}/{ReadbackTimeoutsPerSecond:0.0}   replace={PreparedFrameReplacementsPerSecond:0.0}/s   cb={ResultCallbacksPerSecond:0.0}/s" +
-                    webCamCpuTimingSummary +
-                    inferenceContinuationTimingSummary +
-                    directTimingSummary +
-                    openVinoTimingSummary;
 """,
     "status acquisition telemetry",
+)
+
+provider = replace_once(
+    provider,
+    """                    inferenceContinuationTimingSummary +
+                    directTimingSummary +
+""",
+    """                    webCamCpuTimingSummary +
+                    inferenceContinuationTimingSummary +
+                    directTimingSummary +
+""",
+    "status cpu timing telemetry",
 )
 
 editor = replace_once(
