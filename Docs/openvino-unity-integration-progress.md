@@ -12,7 +12,7 @@ A replacement Builder should read this file first, verify the current remote `en
 - Gate B: **PASS WITH NOTES**
 - U0 plan/recovery scaffold: **COMPLETE**
 - U1 architecture resolution/native lifecycle skeleton: **COMPLETE**
-- U2 native OpenVINO backend: **IMPLEMENTED; NATIVE BUILD NOW REPEATABLY SUCCEEDS; REUSABLE BUILD-ARTIFACT PROOF IN PROGRESS; POST-BUILD LOADER REGRESSION STILL OPEN**
+- U2 native OpenVINO backend: **IMPLEMENTED; NATIVE BUILD HAS SUCCEEDED TWICE; REUSABLE BUILD-ARTIFACT PROOF IN PROGRESS; LATEST PRODUCER RETRY FIXES A PINNED-ZLIB FETCH FAILURE; POST-BUILD LOADER REGRESSION STILL OPEN**
 - U3 Unity selection/telemetry: **IMPLEMENTED; MANAGED ABI/STATIC VALIDATION PASS; NATIVE PACKAGE PROOF + UNITY RUNTIME QA PENDING**
 - U4 USER A/B runtime QA: **READY PROCEDURE WRITTEN; NOT STARTED**
 - U5 cleanup/production recommendation: **NOT STARTED**
@@ -77,11 +77,13 @@ These are offline VIDEO-mode measurements, not Unity LIVE_STREAM end-to-end resu
 5. Commit `43e5a888b80874ace1643dcdcfc4cb5a35eb919e` widened the workflow limit from 60 to 120 minutes without changing source/pins/models/backend.
 6. Run `34770530769`, job `103759179464`: first full-budget build exposed the first genuine compiler failure. MSVC could not create an object at the generated MediaPipe path because the Bazel output path was too long.
 7. Commit `36342d0982617e85972ddc4ebd36d0fe6012cb32` shortened the hosted-runner Bazel output root to `C:\b` only. Run `34795710675` then completed the entire Bazel build successfully (**3,675 actions**) and linked `golden_needle_openvino_pose.dll`, proving the path-length build blocker fixed. Post-build lifecycle smoke failed before `gnovpose_create` with `LoadLibraryExW` Win32 error 126.
-8. Commit `42c8a9a8372088285da99d5d4547223900ad20a4` imported the full proven OpenVINO `setupvars.bat` process environment before lifecycle smoke. Run `34800169484` again completed the entire Bazel build successfully (**3,675 actions**) but produced the same immediate `LoadLibraryExW` error 126. Therefore the current open issue is a post-build dependency/loader problem, not compilation and not yet an inference-semantic failure.
+8. Commit `42c8a9a8372088285da99d5d4547223900ad20a4` imported the full proven OpenVINO `setupvars.bat` process environment before lifecycle smoke. Run `34800169484` again completed the entire Bazel build successfully (**3,675 actions**) but produced the same immediate `LoadLibraryExW` error 126. Therefore the current open functional issue is a post-build dependency/loader problem, not compilation and not yet an inference-semantic failure.
+9. The recovery workflow was split so successful native builds can be reused instead of recompiling for every loader/smoke/package-only fix. The first artifact-producing run `34804276926`, job `103852914474`, failed **before compilation** during Bazel repository analysis because Homuler's pinned `http://zlib.net/fossils/zlib-1.2.13.tar.gz` fetch returned bytes with SHA-256 `8e378e...` instead of the pinned expected `b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30`. No native artifact was produced and this is not a compiler/backend regression.
+10. Commit `d4c126e6f4eff089c4f3c0f433a140bd5e3bddfc` keeps zlib **1.2.13 and the exact expected SHA unchanged**, downloads the official `madler/zlib` GitHub release archive, verifies the SHA fail-closed, and supplies it to Bazel via `--distdir`. This only fixes delivery of the already-pinned dependency; it does not alter source semantics, versions, compiler settings, OpenVINO backend, or models.
 
 ### U2 recovery-method split — CURRENT
 
-Repeated one-hour rebuilds are no longer required for loader/smoke/package-only fixes.
+Repeated one-hour rebuilds are no longer required for loader/smoke/package-only fixes after one successful preserved artifact exists.
 
 Implemented recovery split:
 - `2b531bfb3d9ba5603640418df8eb7f635abbf2fc`: repurposed the old monolithic workflow into a regression consumer.
@@ -92,12 +94,12 @@ Implemented recovery split:
 - `683bfcee06fe378ddb9afee42b29c58ab59f2586`: configured `OpenVINO Unity regression proof` so regression-only changes download the latest successful native artifact instead of rebuilding MediaPipe/OpenVINO.
 - The regression runner fails closed if artifact hashes/pins mismatch, if the artifact source is not an ancestor, or if native-impacting files changed after the preserved build.
 
-Current artifact-producing run:
+Current artifact-producing retry:
 - Workflow: `OpenVINO Unity native build artifact`
-- Run: `34804276926`
-- Job: `103852914474`
-- Build source SHA: `9d4d3230f0440116ee6892e1ee0c73b335cf6a10`
-- At last check: checkout, MSYS2 utilities, native Bazelisk and exact bootstrap all **PASS**; `Build immutable U2 x64 Release artifact` is **IN PROGRESS**; artifact upload is pending.
+- Run: `34805228184`
+- Build source SHA: `d4c126e6f4eff089c4f3c0f433a140bd5e3bddfc`
+- Trigger reason: verified zlib 1.2.13 distdir fix after run `34804276926` failed during dependency fetch/analysis.
+- At last check: **QUEUED**.
 
 U2 remains **NOT COMPLETE** until preserved native build + lifecycle smoke + exact model identity + real-frame 33-landmark semantic smoke + additive Unity package smoke all pass.
 
@@ -142,9 +144,10 @@ Execution plan: `Docs/openvino-unity-integration-checkpoints.md`.
 
 ## Exact next action
 
-1. Follow native-artifact run `34804276926`, job `103852914474`, to completion.
-2. If the native build succeeds, confirm artifact `golden-needle-u2-native` exists and record its manifest/source SHA/hashes. This should be the last expensive rebuild unless a native-impacting input changes.
-3. Run `OpenVINO Unity regression proof` against that preserved artifact. Use the emitted `dumpbin /DEPENDENTS` and loader output to identify the specific missing dependency behind Win32 error 126; make loader/test/package-only fixes without rebuilding the native DLL.
-4. Continue fast regression-only iterations until lifecycle, exact model identity, real-frame 33-landmark smoke and package smoke pass.
-5. Only then mark U2 COMPLETE and U3 COMPLETE for implementation/pre-USER validation, and stop at the genuine U4 USER Windows/Unity A/B boundary.
-6. Do not start U5 from CI alone. Do not merge to `main`. Do not start Phase 6.
+1. Follow native-artifact retry run `34805228184` from source SHA `d4c126e6f4eff089c4f3c0f433a140bd5e3bddfc` to completion.
+2. Verify the log prints the exact zlib 1.2.13 distdir checksum PASS before Bazel analysis. If it fails, treat the first new failure as source of truth.
+3. If the native build succeeds, confirm artifact `golden-needle-u2-native` exists and record its manifest/source SHA/hashes. This should be the last expensive rebuild unless a native-impacting input changes.
+4. Run `OpenVINO Unity regression proof` against that preserved artifact. Use the emitted `dumpbin /DEPENDENTS` and loader output to identify the specific missing dependency behind Win32 error 126; make loader/test/package-only fixes without rebuilding the native DLL.
+5. Continue fast regression-only iterations until lifecycle, exact model identity, real-frame 33-landmark smoke and package smoke pass.
+6. Only then mark U2 COMPLETE and U3 COMPLETE for implementation/pre-USER validation, and stop at the genuine U4 USER Windows/Unity A/B boundary.
+7. Do not start U5 from CI alone. Do not merge to `main`. Do not start Phase 6.
