@@ -9,5 +9,7 @@
     <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs" Link="CanonicalPoseFrame.cs" />
     <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Rich/RichMotionFrame.cs" Link="RichMotionFrame.cs" />
     <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Rich/RichAnatomicalOrientationSolver.cs" Link="RichAnatomicalOrientationSolver.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/PoseObservation.cs" Link="PoseObservation.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeRichMotionEvidenceMapper.cs" Link="MediaPipeRichMotionEvidenceMapper.cs" />
   </ItemGroup>
 </Project>
