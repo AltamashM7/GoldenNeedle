@@ -288,7 +288,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 return;
             }
 
-            var sourceFrame = runtime.StabilizedFrame;
+            var sourceFrame = runtime.AvatarDriveFrame;
             var frame = runtime.RotationFrame;
             var targets = runtime.KinematicTargets;
             var profile = runtime.Calibration == null ? null : runtime.Calibration.Profile;

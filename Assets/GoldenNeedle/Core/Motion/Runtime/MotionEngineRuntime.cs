@@ -7,6 +7,12 @@ using UnityEngine;
 
 namespace GoldenNeedle.Core.Motion.Runtime
 {
+    public enum AvatarDrivePoseSource
+    {
+        StabilizedCanonical,
+        RawCanonical,
+    }
+
     /// <summary>
     /// Single owner of the reusable Motion Engine pipeline:
     /// canonical source -> raw canonical -> stabilization -> calibration -> rotation output.
@@ -18,6 +24,10 @@ namespace GoldenNeedle.Core.Motion.Runtime
         [SerializeField] private MonoBehaviour canonicalSourceBehaviour;
         [SerializeField] private CanonicalStabilizerSettings stabilizerSettings = new CanonicalStabilizerSettings();
         [SerializeField] private MotionCalibrationSettings calibrationSettings = new MotionCalibrationSettings();
+
+        [Header("Avatar Retargeting")]
+        [Tooltip("Select which canonical pose drives only avatar pose solving. Calibration and locomotion remain stabilized in both modes.")]
+        [SerializeField] private AvatarDrivePoseSource avatarDrivePoseSource = AvatarDrivePoseSource.StabilizedCanonical;
 
         private ICanonicalPoseSource _source;
         private CanonicalPoseStabilizer _stabilizer;
@@ -34,6 +44,15 @@ namespace GoldenNeedle.Core.Motion.Runtime
         public ICanonicalPoseSource Source => _source;
         public CanonicalPoseFrame RawCanonicalFrame => _rawCanonicalFrame;
         public CanonicalPoseFrame StabilizedFrame => _stabilizedFrame;
+        public AvatarDrivePoseSource AvatarDriveSource => avatarDrivePoseSource;
+        public CanonicalPoseFrame AvatarDriveFrame =>
+            avatarDrivePoseSource == AvatarDrivePoseSource.RawCanonical
+                ? _rawCanonicalFrame
+                : _stabilizedFrame;
+        public string AvatarDriveSourceLabel =>
+            avatarDrivePoseSource == AvatarDrivePoseSource.RawCanonical
+                ? "RawCanonical"
+                : "StabilizedCanonical";
         public CanonicalRotationFrame RotationFrame => _rotationFrame;
         public CanonicalKinematicTargets KinematicTargets => _kinematicTargets;
         public CanonicalRotationSolver RotationSolver => _rotationSolver;
@@ -79,8 +98,10 @@ namespace GoldenNeedle.Core.Motion.Runtime
             _lastEvaluationTimeSeconds = SanitizeTime(_source.EvaluationTimeSeconds);
             _stabilizer.Stabilize(_rawCanonicalFrame, _stabilizedFrame, _lastEvaluationTimeSeconds);
             _calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);
-            _rotationSolver.Solve(_stabilizedFrame, _calibration.Profile, _rotationFrame);
-            _kinematicTargetBuilder.Build(_stabilizedFrame, _calibration.Profile, _kinematicTargets);
+
+            var avatarDriveFrame = AvatarDriveFrame;
+            _rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);
+            _kinematicTargetBuilder.Build(avatarDriveFrame, _calibration.Profile, _kinematicTargets);
         }
 
         public void BeginCalibration()
