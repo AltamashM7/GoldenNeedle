@@ -2,77 +2,106 @@
 
 This is the rolling resume point for the avatar-only responsive stabilization experiment that follows the accepted raw-vs-stabilized avatar-drive A/B.
 
-This file and `Docs/worker-briefs/responsive-avatar-stabilizer-handoff.md` are the newest authority for this experiment. They supersede the older raw-vs-stabilized handoff wherever the two conflict.
+This file and `Docs/worker-briefs/responsive-avatar-stabilizer-handoff.md` are the newest authority for this experiment. Do not reopen accepted OpenVINO, WebCamCPU, raw-vs-stabilized selector, retargeting, calibration, or locomotion work unless new direct evidence requires it.
 
 ## Current authorization and status
 
 - Branch: `engine/pose-tracking-spike`.
-- Exact remote branch HEAD before this experiment was authorized: `4aa23cc6479d8269a6e667e5599aeeb4b7247184`.
+- Remote HEAD inspected immediately before this implementation: `c07cea3801a11ba100d5a465935906895debbf63`.
+- Earlier authorization/runtime base before the responsive-stabilizer documentation handoff: `4aa23cc6479d8269a6e667e5599aeeb4b7247184`.
 - OpenVINO Unity integration: **USER ACCEPTED — PASS**.
 - OpenVINO scheduling optimization: **USER ACCEPTED — PASS**.
 - WebCamCPU/GetPixels32 acquisition path: **USER ACCEPTED — PASS**.
-- Raw-vs-stabilized avatar-drive selector implementation: **COMPLETE**.
-- Raw-vs-stabilized USER QA: **COMPLETE — raw is decisively more responsive, with modest extra instability/micro-jitter**.
-- Responsive avatar-only stabilization experiment: **EXPLICITLY USER AUTHORIZED on 2026-09-14**.
-- Current gate: implementation + non-hardware verification, then USER visual/runtime QA.
+- Raw-vs-stabilized avatar-drive selector: **IMPLEMENTED + USER QA COMPLETE**.
+- Responsive avatar-only stabilization implementation: **COMPLETE**.
+- Responsive avatar-only non-hardware/static verification: **PASS**.
+- Current gate: **GENUINE USER VISUAL/RUNTIME A/B/C/D QA**.
 - Phase 5A remains **NOT USER ACCEPTED**.
 - Phase 6 remains **NOT STARTED**.
 - No merge to `main` without explicit USER approval.
 
-## Accepted upstream best path — do not reopen
+## Accepted motivation
 
-The current best upstream motion path is:
+USER runtime A/B established that:
 
-```text
-WebCamTexture
-  -> WebCamCPU/GetPixels32 reusable CPU acquisition
-  -> reusable 320x240 preparation
-  -> accepted bounded OpenVINO latest-frame mailbox
-  -> one persistent OpenVINO CPU FP32 worker
-  -> pose result
-  -> raw canonical
-```
+- `StabilizedCanonical` is satisfactory and stable;
+- `RawCanonical` feels effectively instant / dramatically more responsive;
+- raw has only modest extra micro-jitter/abruptness;
+- no fundamental orientation, left/right, retarget, or IK failure was reported in raw mode.
 
-Representative full-body USER evidence from the current best path is approximately:
+This experiment therefore adds two avatar-only middle paths while leaving the existing stable canonical path unchanged for calibration and locomotion.
 
-```text
-camera capture:        ~28.6-30.3 FPS
-fresh pose results:    ~26.7-29.3/s
-CPU acquisition total: ~3.9 ms
-OpenVINO processing:   commonly ~25-35 ms
-frame->result:         commonly ~33-62 ms
-```
+## Implemented architecture
 
-Do not spend this task changing camera acquisition, OpenVINO, native ABI, body input size, worker/mailbox scheduling, detector logic, or provider semantics.
-
-## Accepted raw-vs-stabilized finding
-
-The USER performed the authorized A/B with phone video so OBS did not add load.
-
-USER result:
-
-- `StabilizedCanonical` is satisfactory and visually stable.
-- `RawCanonical` feels effectively instant / dramatically more responsive.
-- `RawCanonical` is slightly less stable, with modest additional micro-jitter/abruptness.
-- No fundamental orientation, left/right, retarget, or IK failure was reported in raw mode.
-
-Interpretation:
-
-- upstream acquisition/inference latency is no longer the dominant practical problem;
-- the existing canonical stabilizer is now the visible latency/stability tradeoff;
-- raw should be kept as the maximum-responsiveness reference, not automatically promoted to the final production default;
-- the next goal is a middle path: near-raw responsiveness with materially better idle/endpoint stability.
-
-## Current canonical endpoints
-
-The Lab already has:
+`MotionEngineRuntime` now maintains four avatar-drive candidates:
 
 ```text
-RawCanonicalFrame          = yellow debug skeleton
-StabilizedFrame            = cyan/blue debug skeleton
+raw canonical
+   |
+   +-> existing stable CanonicalPoseStabilizer -> StabilizedCanonical
+   |       +-> calibration (UNCHANGED / stable only)
+   |       +-> locomotion  (UNCHANGED / stable only)
+   |
+   +-> responsive CanonicalPoseStabilizer A -> ResponsiveCanonicalA
+   |
+   +-> responsive CanonicalPoseStabilizer B -> ResponsiveCanonicalB
+   |
+   +-----------------------------------------> RawCanonical
+
+AvatarDriveFrame selector
+   -> selected frame
+   -> CanonicalRotationSolver
+   -> CanonicalKinematicTargetBuilder
+   -> HumanoidRetargeter torso/source mapping
 ```
 
-Current production stabilization defaults remain:
+The two responsive stabilizers are persistent objects created once in `Awake()`. Their output `CanonicalPoseFrame` objects are persistent/read-only runtime fields. No responsive stabilizer or pose frame is allocated in `Update()`.
+
+Both responsive stabilizers consume `_rawCanonicalFrame` and execute every runtime update whether selected or not. This keeps them warm for live switching in a single calibrated Play session.
+
+The accepted stable ordering is preserved literally:
+
+```text
+_stabilizer.Stabilize(raw -> stable)
+_calibration.Update(stable)
+responsive A Stabilize(raw -> A)
+responsive B Stabilize(raw -> B)
+select AvatarDriveFrame
+rotation solve(selected)
+kinematic targets(selected)
+```
+
+Therefore the responsive experiment does not insert itself between the existing stable stabilizer and stable calibration update.
+
+## Serialization-safe avatar source selector
+
+The serialized enum meanings are explicitly fixed as:
+
+```text
+StabilizedCanonical   = 0   (existing meaning preserved / default)
+RawCanonical          = 1   (existing meaning preserved)
+ResponsiveCanonicalA  = 2   (new)
+ResponsiveCanonicalB  = 3   (new)
+```
+
+`StabilizedCanonical` remains the serialized/default value.
+
+`AvatarDriveFrame` routes all four modes from one authority. `HumanoidRetargeter` remains unchanged and still reads `runtime.AvatarDriveFrame`, so torso/source mapping uses the same selected frame as rotation solving and kinematic-target generation.
+
+F7 already reads `runtime.AvatarDriveSourceLabel`. The runtime labels now identify responsive profiles explicitly:
+
+```text
+ResponsiveCanonicalA (1.5/0.25/1.0)
+ResponsiveCanonicalB (2.0/0.50/1.0)
+```
+
+No extra responsive skeleton overlays were added. Existing yellow raw and cyan stable overlays remain unchanged.
+
+## Exact stabilization profiles
+
+### Existing stable path — unchanged
+
+`CanonicalStabilizerSettings.cs` was not modified.
 
 ```text
 acquireConfidence       0.60
@@ -80,7 +109,6 @@ sustainConfidence       0.40
 acquireSamples          2
 lossGraceSeconds        0.10
 resetAfterLossSeconds   0.25
-
 minCutoff               1.0
 beta                    0.05
 derivativeCutoff        1.0
@@ -88,73 +116,7 @@ defaultDeltaTimeSeconds 0.05
 maximumDeltaTimeSeconds 0.25
 ```
 
-The existing One Euro implementation computes an adaptive cutoff from:
-
-```text
-cutoff = minCutoff + beta * abs(filtered derivative)
-```
-
-The current low `beta` is intentionally conservative and was accepted when the pipeline ran much slower.
-
-## Required architecture for this experiment
-
-Do **not** retune the existing canonical stabilizer globally.
-
-Keep the current stable canonical path unchanged because calibration and locomotion depend on it.
-
-Required conceptual split:
-
-```text
-provider result
-   -> raw canonical -----------------------------------------------+
-       |                                                          |
-       +-> existing canonical stabilizer                           |
-       |      -> StableCanonical                                   |
-       |          +-> calibration                                  |
-       |          +-> locomotion / support / cadence / heading     |
-       |                                                          |
-       +-> responsive avatar stabilizer A -> ResponsiveCanonicalA  |
-       |                                                          |
-       +-> responsive avatar stabilizer B -> ResponsiveCanonicalB  |
-       |                                                          |
-       +----------------------------------------------------------> RawCanonical
-                                                                  |
-Avatar Drive Source selector <------------------------------------+
-   -> StableCanonical        [existing/default]
-   -> ResponsiveCanonicalA   [experimental]
-   -> ResponsiveCanonicalB   [experimental]
-   -> RawCanonical           [latency reference]
-   -> rotation solver
-   -> kinematic targets / IK
-   -> HumanoidRetargeter torso/source mapping
-   -> avatar
-```
-
-Both responsive stabilizers should run continuously from the raw canonical frame, even when not selected. That allows live source switching in one Play session without a cold-start/warm-up discontinuity.
-
-## Initial responsive profiles
-
-These are **experimental starting profiles**, not final production constants.
-
-Keep confidence/loss semantics identical to the current accepted stabilizer. Change only the One Euro positional response for the two new avatar-only candidates.
-
 ### Responsive A — moderate
-
-```text
-minCutoff        1.5
-beta             0.25
-derivativeCutoff 1.0
-```
-
-### Responsive B — aggressive
-
-```text
-minCutoff        2.0
-beta             0.50
-derivativeCutoff 1.0
-```
-
-Retain the existing values for:
 
 ```text
 acquireConfidence       0.60
@@ -162,38 +124,120 @@ sustainConfidence       0.40
 acquireSamples          2
 lossGraceSeconds        0.10
 resetAfterLossSeconds   0.25
+minCutoff               1.5
+beta                    0.25
+derivativeCutoff        1.0
 defaultDeltaTimeSeconds 0.05
 maximumDeltaTimeSeconds 0.25
 ```
 
-Do not change the existing stable profile `1.0 / 0.05 / 1.0`.
+### Responsive B — aggressive
 
-## Required implementation invariants
+```text
+acquireConfidence       0.60
+sustainConfidence       0.40
+acquireSamples          2
+lossGraceSeconds        0.10
+resetAfterLossSeconds   0.25
+minCutoff               2.0
+beta                    0.50
+derivativeCutoff        1.0
+defaultDeltaTimeSeconds 0.05
+maximumDeltaTimeSeconds 0.25
+```
 
-The implementation must preserve all of the following:
+The responsive candidates reuse the existing `CanonicalPoseStabilizer`; no new smoothing algorithm was introduced.
 
-- `StabilizedCanonical` remains the serialized/default avatar source.
-- `RawCanonical` remains available as the maximum-responsiveness reference.
-- Add two clearly named experimental avatar-only responsive sources.
-- Calibration continues to call `_calibration.Update(_stabilizedFrame, ...)` only.
-- Locomotion continues to consume `runtime.StabilizedFrame` only.
-- Existing stable canonical frame and its settings remain unchanged.
-- Responsive A/B are separate `CanonicalPoseStabilizer` instances with separate preallocated `CanonicalPoseFrame` outputs.
-- No per-frame allocations in the new stabilization path.
-- Rotation solver, kinematic-target builder, and HumanoidRetargeter torso/source mapping must all consume the exact same selected `AvatarDriveFrame`.
-- Yellow raw and cyan stable debug skeletons remain unchanged.
-- Presentation smoothing code/settings remain unchanged.
-- OpenVINO, WebCamCPU, camera acquisition, provider, canonical mapping, calibration math, IK math, partial-body semantics and Phase 5A locomotion remain untouched.
-- No queue/history/replay/prediction/extrapolation is introduced.
-- No scene YAML edits merely to select a test mode.
-- No merge to `main`.
-- No Phase 6 work.
+## Calibration and locomotion invariants
 
-## Recommended runtime surface
+Calibration remains hard-wired to:
 
-Extend the existing `AvatarDrivePoseSource` selector rather than adding a second selector.
+```csharp
+_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);
+```
 
-Expected modes:
+No responsive or raw frame is used for calibration.
+
+`EmbodiedLocomotionController.cs` was not modified. Root/support tracking, cadence, and heading still directly consume `runtime.StabilizedFrame`.
+
+Phase 5A behavior is therefore outside this experiment.
+
+## Reset / lifecycle behavior
+
+Responsive A/B are reset and their output frames cleared when:
+
+- the coordinate convention changes and the existing stable stabilizer is reset;
+- `ResetCalibration()` explicitly resets the existing stable stabilizer;
+- no canonical source can be resolved, in which case responsive frames are cleared alongside the existing raw/stable output frames.
+
+This prevents stale responsive poses and keeps comparison state coherent after lifecycle resets.
+
+## Implementation and verification checkpoints
+
+Implementation commits/checkpoints:
+
+- `fa1f5de64121b0b40b26c940210b57553ffa3c1e` — initial responsive avatar stabilizer candidates.
+- `759729273355f96defba2b9120ca3545fff6d7a0` — added dedicated read-only experiment audit workflow.
+- `fe7209bff9ac30c3a639d96929c5c60f23a548cd` — preserved the existing stable stabilizer -> calibration ordering literally, with responsive updates after calibration but before avatar selection/solve.
+- `418445879e301e95a4d44aca688846032088dc47` — current verified runtime + audit checkpoint before this documentation update.
+
+Current-head audit:
+
+```text
+GitHub Actions run: 34857834001
+Workflow: Responsive avatar stabilizer audit
+Result: SUCCESS
+```
+
+Passed checks include:
+
+- old serialized enum meanings stable=0/raw=1 preserved;
+- serialized default remains `StabilizedCanonical`;
+- existing stable profile unchanged;
+- Responsive A exactly `1.5 / 0.25 / 1.0` plus accepted confidence/loss timings;
+- Responsive B exactly `2.0 / 0.50 / 1.0` plus accepted confidence/loss timings;
+- persistent stabilizer/frame state, no per-update filter/frame construction;
+- stable stabilizer -> stable calibration ordering preserved;
+- both responsive stabilizers update continuously from raw before avatar selection/solve;
+- calibration stable-only;
+- locomotion stable-only;
+- four-way `AvatarDriveFrame` routing;
+- rotation solver and kinematic builder share the selected frame;
+- HumanoidRetargeter still consumes `runtime.AvatarDriveFrame`;
+- responsive reset/clear lifecycle;
+- yellow raw + cyan stable debug paths preserved;
+- Presentation Smoothing surface/defaults preserved;
+- no queue/history/replay/prediction-like state;
+- diff scope contains no scene, `Packages`, `ProjectSettings`, OpenVINO, WebCamCPU, provider, native plugin/model, locomotion, IK-math, `CanonicalPoseStabilizer`, or `CanonicalStabilizerSettings` changes.
+
+A full Unity/webcam visual result cannot be established remotely and is intentionally the next USER gate.
+
+## Files changed by this experiment
+
+Implementation/verification scope before this documentation checkpoint:
+
+- `Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs`
+- `.github/workflows/responsive-avatar-stabilizer-audit.yml`
+
+This rolling progress document is also updated as the recovery checkpoint.
+
+No USER-owned scene YAML was modified.
+
+## USER QA procedure
+
+Pull the latest `engine/pose-tracking-spike` and let Unity compile normally.
+
+Use one Play session with common settings:
+
+```text
+Inference Backend = OpenVINO CPU FP32
+Frame Acquisition = WebCamCPU/GetPixels32
+Body input = 320x240
+full-body framing where practical (~30 FPS capture)
+Presentation Smoothing = OFF for the primary comparison
+```
+
+Calibrate once. Then live-switch `MotionEngineRuntime -> Avatar Drive Pose Source` among all four modes without recalibrating:
 
 ```text
 StabilizedCanonical
@@ -202,88 +246,40 @@ ResponsiveCanonicalB
 RawCanonical
 ```
 
-Expose enough read-only runtime information for F7 to clearly show the effective source and, for responsive modes, the profile parameters or a concise label such as:
+Both responsive candidates are already running continuously in the background, so switching to them should not cause filter cold-start/warm-up behavior.
 
-```text
-Avatar source: ResponsiveCanonicalA (1.5 / 0.25 / 1.0)
-Avatar source: ResponsiveCanonicalB (2.0 / 0.50 / 1.0)
-```
+Use F7 briefly before each comparison segment. For responsive modes it should show the exact profile in the `Avatar source` line.
 
-Do not require the USER to modify code or scene YAML to switch modes.
-
-## Non-hardware verification requirements
-
-Before stopping for USER QA, verify at minimum:
-
-1. default serialized source remains `StabilizedCanonical`;
-2. existing stable stabilizer settings remain byte-for-byte/semantically unchanged;
-3. calibration remains hard-wired to stable canonical;
-4. locomotion still directly consumes stable canonical and is not routed through the avatar source selector;
-5. responsive A/B stabilizers consume raw canonical and produce separate frames;
-6. responsive A/B run continuously every runtime update so live switching is warm;
-7. source selector routes Stable/A/B/Raw correctly;
-8. selected source feeds rotation solving and kinematic targets consistently;
-9. HumanoidRetargeter uses the same selected source frame;
-10. raw/stable debug skeletons remain intact;
-11. presentation smoothing was not modified;
-12. no OpenVINO/WebCamCPU/native/camera/scene/Package/ProjectSettings changes;
-13. no additional queues or frame history;
-14. cleanup/reset paths reset both responsive stabilizers and frames on coordinate-convention changes and explicit calibration reset where appropriate.
-
-Use narrow repeatable tests/static assertions where useful. Do not perform unnecessary full Unity scene automation. Hardware behavior is a USER gate.
-
-## USER QA target
-
-After implementation, the USER should be able to stay in one calibrated Play session with Presentation Smoothing OFF and live-switch among:
-
-```text
-StabilizedCanonical
-ResponsiveCanonicalA
-ResponsiveCanonicalB
-RawCanonical
-```
-
-The USER will compare:
+Compare:
 
 - perceived motion-to-avatar delay;
-- fast arms/reaches;
+- whether motion feels essentially as immediate as Raw;
+- idle micro-jitter;
+- wrist/ankle endpoint jitter;
+- fast reaches / arm swings;
 - torso response;
 - knees/legs when visible;
-- idle micro-jitter;
-- endpoint jitter;
-- snapping/IK instability;
+- snapping or IK instability;
 - partial-body loss/recovery;
-- orientation and left/right correctness.
+- left/right and orientation correctness.
 
-The desired winner is the most stable mode that feels essentially as immediate as Raw.
+Phone-recorded external video is preferred over OBS if recording helps.
 
-If A/B are both clearly behind Raw, do not silently invent additional tuning profiles without USER approval. Report the evidence and stop.
+Decision criterion:
 
-If one responsive profile is clearly close to Raw while materially more stable, stop for USER acceptance before changing defaults.
+> Prefer the most stable responsive profile that feels essentially as immediate as Raw.
 
-## Recovery/checkpoint policy
-
-Checkpoints are recovery markers, not approval gates.
-
-The Builder should continue through implementation and non-hardware verification. At every coherent recovery point:
-
-- commit and push;
-- update this file with the exact ending SHA;
-- record what is complete;
-- record the next unfinished action under `CONTINUE FROM HERE`.
-
-Stop only for:
-
-- genuine USER visual/runtime QA;
-- a real blocker needing a decision;
-- execution-limit risk that requires handoff.
+If neither A nor B is close enough to Raw, do not add another profile without new USER/Orchestrator approval. If one is clearly best, do not change the serialized/default production mode yet; return for USER acceptance and the next decision.
 
 ## CONTINUE FROM HERE
 
-Starting remote runtime state for this experiment:
+**STATUS: IMPLEMENTATION + NON-HARDWARE VERIFICATION COMPLETE. GENUINE USER VISUAL/RUNTIME QA REQUIRED.**
 
-`4aa23cc6479d8269a6e667e5599aeeb4b7247184`
+Next action:
 
-Next authorized action:
+1. USER pulls latest `engine/pose-tracking-spike` and confirms Unity compiles.
+2. USER performs the one-session four-way visual comparison above with Presentation Smoothing OFF.
+3. USER reports which mode best balances near-Raw responsiveness with stability, plus any snapping, endpoint jitter, partial-body, orientation, or left/right regression.
+4. Builder/Orchestrator evaluates that evidence. Do not add new tuning profiles or change the default without a new decision.
 
-Implement the avatar-only responsive stabilizer A/B paths exactly as described above, preserve the existing stable path for calibration/locomotion, verify routing/reset/boundedness/scope, then stop for USER visual/runtime A/B/C/D QA.
+No merge to `main`. Do not start Phase 6.
