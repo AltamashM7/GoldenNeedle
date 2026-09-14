@@ -20,6 +20,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Version 1 is the versioned target used by Google's official MediaPipe samples.
           url='https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
           curl --fail --location --retry 3 --output hand_landmarker.task "$url"
           test -s hand_landmarker.task
