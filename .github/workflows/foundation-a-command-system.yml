@@ -1,0 +1,250 @@
+name: Foundation A command system
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Assets/GoldenNeedle/Core/Commands/**'
+      - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs'
+      - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/WindowsKeywordSpeechProvider.cs'
+      - 'Assets/GoldenNeedle/Tests/Editor/FoundationACommandSystemTests.cs'
+      - 'Tools/FoundationACommandSystem/**'
+      - 'Tools/FoundationACommandSmoke/**'
+      - '.github/workflows/foundation-a-command-system.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  verify-and-apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fail-closed presenter command migration
+        run: python3 Tools/FoundationACommandSystem/apply_presenter_command_migration.py
+
+      - name: Run pure command and speech policy smoke
+        run: dotnet run --configuration Release --project Tools/FoundationACommandSmoke/FoundationACommandSmoke.csproj
+
+      - name: Validate Foundation A invariants
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+
+          command = Path('Assets/GoldenNeedle/Core/Commands/GoldenNeedleCommand.cs').read_text(encoding='utf-8')
+          policy = Path('Assets/GoldenNeedle/Core/Commands/SpeechCommandPolicy.cs').read_text(encoding='utf-8')
+          speech_input = Path('Assets/GoldenNeedle/Core/Commands/SpeechCommandInput.cs').read_text(encoding='utf-8')
+          presenter = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs').read_text(encoding='utf-8')
+          windows = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/WindowsKeywordSpeechProvider.cs').read_text(encoding='utf-8')
+          tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationACommandSystemTests.cs').read_text(encoding='utf-8')
+          camera = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/ThirdPersonLabCamera.cs').read_text(encoding='utf-8')
+          provider = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs').read_text(encoding='utf-8')
+          locomotion = Path('Assets/GoldenNeedle/Core/Motion/Locomotion/EmbodiedLocomotionController.cs').read_text(encoding='utf-8')
+          runtime = Path('Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs').read_text(encoding='utf-8')
+
+          def require(text, markers, label):
+              missing = [marker for marker in markers if marker not in text]
+              if missing:
+                  raise SystemExit(f'{label}: missing {missing}')
+
+          require(command, [
+              'public enum GoldenNeedleCommand',
+              'BeginCalibration,',
+              'ResetCalibration,',
+              'Recenter,',
+              'RetryTracking,',
+              'CycleCaptureCameraDevice,',
+              'SelectCaptureCameraDevice,',
+              'ToggleLabGamePresentation,',
+              'SetLabPresentation,',
+              'SetGamePresentation,',
+              'ToggleLocomotionWorldView,',
+              'ToggleAllDebugPresentation,',
+              'SelectCameraViewPreset,',
+              'public string parameter;',
+              'public sealed class GoldenNeedleCommandRouter',
+              'Foundation B and is not implemented in Foundation A',
+          ], 'command model/router')
+
+          require(policy, [
+              'public bool speechEnabled = true;',
+              'public float commandCooldownSeconds = 0.75f;',
+              'public string wakePrefix = string.Empty;',
+              'public bool enabled = true;',
+              'public string phrase = string.Empty;',
+              'public string parameter = string.Empty;',
+              'public SpeechRecognitionConfidence minimumConfidence = SpeechRecognitionConfidence.Medium;',
+              'NormalizePhrase(',
+              'BuildEffectivePhrase(',
+              'Ambiguous speech phrase:',
+              'new SpeechCommandMapping("begin calibration", GoldenNeedleCommand.BeginCalibration)',
+              'new SpeechCommandMapping("reset calibration", GoldenNeedleCommand.ResetCalibration)',
+              'new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter)',
+              'new SpeechCommandMapping("retry tracking", GoldenNeedleCommand.RetryTracking)',
+              'new SpeechCommandMapping("game view", GoldenNeedleCommand.SetGamePresentation)',
+              'new SpeechCommandMapping("lab view", GoldenNeedleCommand.SetLabPresentation)',
+          ], 'speech configuration/resolution')
+          default_block = policy[policy.index('public static SpeechCommandConfiguration CreateDefault()'):]
+          if 'GoldenNeedleCommand.SelectCameraViewPreset' in default_block:
+              raise SystemExit('Foundation B preset command must not have a default speech mapping')
+
+          require(speech_input, [
+              'public interface ISpeechInputProvider : IDisposable',
+              'event Action<SpeechRecognitionSample> PhraseRecognized;',
+              'public sealed class SpeechCommandInput : IDisposable',
+              '_resolver.TryResolve(',
+              '_cooldown.CanDispatch(',
+              'var result = _dispatcher.Execute(request);',
+              '_cooldown.MarkDispatched(now);',
+              'Speech recognition is unsupported on this runtime',
+              'provider.PhraseRecognized -= OnPhraseRecognized;',
+              'provider.Dispose();',
+          ], 'speech provider boundary/input')
+          if 'UnityEngine' in policy or 'UnityEngine' in speech_input or 'UnityEngine' in command:
+              raise SystemExit('core command/speech policy must not depend on Unity platform speech APIs')
+
+          require(windows, [
+              '#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN || UNITY_WSA',
+              'using UnityEngine.Windows.Speech;',
+              'PhraseRecognitionSystem.isSupported',
+              'new KeywordRecognizer(_keywords, ConfidenceLevel.Low)',
+              'PhraseRecognitionSystem.OnError += HandlePhraseSystemError;',
+              'PhraseRecognitionSystem.OnError -= HandlePhraseSystemError;',
+              '_recognizer.OnPhraseRecognized += HandlePhraseRecognized;',
+              '_recognizer.Stop();',
+              '_recognizer.Dispose();',
+              'MapConfidence(args.confidence)',
+          ], 'Windows speech backend')
+          if any(domain in windows for domain in ['BeginCalibration', 'ResetCalibration', '.Recenter(', 'ToggleGameView', 'RequestCycleCamera']):
+              raise SystemExit('Windows speech backend contains domain-command knowledge')
+
+          require(presenter, [
+              'private SpeechCommandConfiguration speechCommands = SpeechCommandConfiguration.CreateDefault();',
+              'private GoldenNeedleCommandRouter _commandRouter;',
+              'private SpeechCommandInput _speechCommandInput;',
+              'public GoldenNeedleCommandResult SubmitCommand(',
+              'new GoldenNeedleCommandRouter(targets);',
+              'phrases => new WindowsKeywordSpeechProvider(phrases)',
+              'Speech: {(_speechCommandInput == null ? "not initialized" : _speechCommandInput.DiagnosticSummary)}',
+          ], 'presenter command/speech wiring')
+
+          update_start = presenter.index('        private void Update()')
+          on_gui_start = presenter.index('        private void OnGUI()', update_start)
+          update = presenter[update_start:on_gui_start]
+          key_routes = [
+              ('rKey', 'RetryTracking'),
+              ('vKey', 'CycleCaptureCameraDevice'),
+              ('f1Key', 'ToggleRawLandmarks'),
+              ('f2Key', 'ToggleCanonical2D'),
+              ('f3Key', 'ToggleCanonical3D'),
+              ('f4Key', 'ToggleStabilized2D'),
+              ('f5Key', 'ToggleRigDrive'),
+              ('f6Key', 'ToggleCoordinateDiagnostic'),
+              ('f7Key', 'ToggleMainDiagnostics'),
+              ('f8Key', 'ToggleProceduralRigViewport'),
+              ('f9Key', 'ToggleLocomotionDiagnostics'),
+              ('f10Key', 'ToggleLocomotionWorldView'),
+              ('f11Key', 'ToggleAllDebugPresentation'),
+              ('f12Key', 'ToggleLabGamePresentation'),
+              ('cKey', 'BeginCalibration'),
+              ('xKey', 'ResetCalibration'),
+              ('kKey', 'Recenter'),
+          ]
+          for key, action in key_routes:
+              if key not in update or f'SubmitKeyboardCommand(GoldenNeedleCommand.{action});' not in update:
+                  raise SystemExit(f'keyboard route missing/mismatched: {key} -> {action}')
+          forbidden_direct = [
+              'provider.Retry(',
+              'provider.RequestCycleCamera(',
+              'runtime.BeginCalibration(',
+              'runtime.ResetCalibration(',
+              'locomotion.Recenter(',
+              'gameViewCamera.ToggleGameView(',
+              'retargeter.DriveRig =',
+              'drawRawLandmarks = !',
+              'drawCanonical2D = !',
+              'drawCanonical3D = !',
+              'drawStabilized2D = !',
+              'drawCoordinateDiagnostic = !',
+              'drawMainDiagnostics = !',
+              'drawProceduralRigViewport = !',
+              'drawLocomotionDiagnostics = !',
+              'drawLocomotionWorldView = !',
+              '_hideAllDebugPresentation = !',
+          ]
+          direct = [item for item in forbidden_direct if item in update]
+          if direct:
+              raise SystemExit(f'keyboard Update still owns command business logic: {direct}')
+
+          require(camera, ['public void ToggleGameView()', 'public void SetGameViewActive(bool active)', 'controlledCamera.cullingMask = 0;'], 'F12 camera authority')
+          require(provider, ['public void Retry()', 'public bool RequestCycleCamera()', 'public bool RequestCameraSwitch(string preferredName)'], 'provider authorities')
+          require(locomotion, ['public void Recenter()'], 'locomotion authority')
+          require(runtime, ['public void BeginCalibration()', 'public void ResetCalibration()'], 'calibration authorities')
+
+          required_tests = [
+              'PhraseNormalizationTrimsCollapsesWhitespaceAndIgnoresCase',
+              'WakePrefixBuildsDeterministicEffectivePhrase',
+              'WakePrefixIsRequiredDuringResolutionWhenConfigured',
+              'DuplicateEffectivePhraseMakesConfigurationInvalid',
+              'PerMappingConfidenceRejectsBelowThreshold',
+              'SpeechCooldownBlocksDuplicateSpeechButDoesNotBelongToRouter',
+              'CommandParameterIsPreservedThroughResolutionAndRouting',
+              'ReservedFoundationBPresetCommandFailsSafely',
+              'RouterUsesSharedTargetsAndReportsMissingTargetsSafely',
+              'UnsupportedProviderDisablesGracefullyWithoutDispatch',
+          ]
+          require(tests, required_tests, 'Foundation A Editor tests')
+
+          print('FOUNDATION_A_STATIC_AUDIT=PASS')
+          print('SHARED_COMMAND_ROUTING=PASS')
+          print('KEYBOARD_MIGRATION_F1_F12_R_V_C_X_K=PASS')
+          print('SPEECH_POLICY_AND_PROVIDER_BOUNDARY=PASS')
+          print('FOUNDATION_B_RESERVED_UNSUPPORTED=PASS')
+          print('EXISTING_RUNTIME_AUTHORITIES_PRESERVED=PASS')
+          PY
+
+      - name: Validate scoped diff
+        shell: bash
+        run: |
+          base='9920e5f327bf0cfbea8894c7fcbb3a35a0f97970'
+          allowed='^(Assets/GoldenNeedle/Core/Commands(\.meta|/.*)|Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter\.cs|Assets/GoldenNeedle/Debug/PoseTrackingSpike/WindowsKeywordSpeechProvider\.cs(\.meta)?|Assets/GoldenNeedle/Tests/Editor/FoundationACommandSystemTests\.cs(\.meta)?|Tools/FoundationACommandSystem/.*|Tools/FoundationACommandSmoke/.*|\.github/workflows/foundation-a-command-system\.yml)$'
+          changed="$({ git diff --name-only "$base"..HEAD; git diff --name-only; } | sort -u)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          if [ -n "$bad" ]; then
+            echo 'Unexpected Foundation A files changed:'
+            echo "$bad"
+            exit 1
+          fi
+          if printf '%s\n' "$changed" | grep -Eq '(^|/)PoseTrackingSpike\.unity$|^Packages/|^ProjectSettings/|OpenVino|WebCamCpu|MediaPipePoseProvider\.cs$|MotionEngineRuntime\.cs$|EmbodiedLocomotionController\.cs$|HumanoidRetarget'; then
+            echo 'Forbidden Foundation A scope change detected'
+            exit 1
+          fi
+          echo 'FOUNDATION_A_DIFF_SCOPE=PASS'
+
+      - name: Show focused diff
+        shell: bash
+        run: |
+          git diff --stat
+          git diff -- Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs
+
+      - name: Commit generated presenter migration
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Foundation A presenter migration already applied; nothing to commit.'
+            exit 0
+          fi
+          git config user.name 'Golden Needle Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs
+          git commit -m 'refactor: route lab controls through shared commands'
+          git push origin HEAD:engine/pose-tracking-spike

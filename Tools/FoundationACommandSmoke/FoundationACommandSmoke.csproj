@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Assets/GoldenNeedle/Core/Commands/GoldenNeedleCommand.cs" Link="GoldenNeedleCommand.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Commands/SpeechCommandPolicy.cs" Link="SpeechCommandPolicy.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Commands/SpeechCommandInput.cs" Link="SpeechCommandInput.cs" />
+  </ItemGroup>
+</Project>
