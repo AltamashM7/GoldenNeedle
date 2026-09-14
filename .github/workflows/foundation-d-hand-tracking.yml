@@ -1,0 +1,38 @@
+name: Foundation D hand tracking
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - '.github/workflows/foundation-d-hand-tracking.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  acquire-official-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download official MediaPipe Hand Landmarker bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
+          curl --fail --location --retry 3 --output hand_landmarker.task "$url"
+          test -s hand_landmarker.task
+          sha256sum hand_landmarker.task | tee hand_landmarker.sha256
+          stat --printf='HAND_LANDMARKER_BYTES=%s\n' hand_landmarker.task
+          echo "HAND_LANDMARKER_SOURCE=$url"
+
+      - name: Publish official model as acquisition artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: foundation-d-official-hand-landmarker
+          path: |
+            hand_landmarker.task
+            hand_landmarker.sha256
+          if-no-files-found: error
+          retention-days: 1
