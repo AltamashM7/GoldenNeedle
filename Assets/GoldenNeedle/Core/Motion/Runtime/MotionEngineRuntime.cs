@@ -153,6 +153,8 @@ namespace GoldenNeedle.Core.Motion.Runtime
 
             _lastEvaluationTimeSeconds = SanitizeTime(_source.EvaluationTimeSeconds);
             _stabilizer.Stabilize(_rawCanonicalFrame, _stabilizedFrame, _lastEvaluationTimeSeconds);
+            _calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);
+
             _responsiveStabilizerA.Stabilize(
                 _rawCanonicalFrame,
                 _responsiveCanonicalFrameA,
@@ -161,7 +163,6 @@ namespace GoldenNeedle.Core.Motion.Runtime
                 _rawCanonicalFrame,
                 _responsiveCanonicalFrameB,
                 _lastEvaluationTimeSeconds);
-            _calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);
 
             var avatarDriveFrame = AvatarDriveFrame;
             _rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);
