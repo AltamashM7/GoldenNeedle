@@ -43,25 +43,30 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         public void Sanitize()
         {
             presetName = (presetName ?? string.Empty).Trim();
-            if (!CameraViewPresetMath.IsFinite(placementDirection))
-            {
-                placementDirection = Vector2.zero;
-            }
-            if (!CameraViewPresetMath.IsFinite(placementOffset))
-            {
-                placementOffset = Vector3.zero;
-            }
-            if (!CameraViewPresetMath.IsFinite(focusOffset))
-            {
-                focusOffset = Vector3.zero;
-            }
-
+            placementDirection = CameraViewPresetMath.IsFinite(placementDirection)
+                ? placementDirection
+                : Vector2.zero;
+            placementOffset = CameraViewPresetMath.IsFinite(placementOffset)
+                ? placementOffset
+                : Vector3.zero;
+            focusOffset = CameraViewPresetMath.IsFinite(focusOffset)
+                ? focusOffset
+                : Vector3.zero;
             distance = CameraViewPresetMath.SanitizeNonNegative(distance, 0f);
             height = CameraViewPresetMath.SanitizeFinite(height, 0f);
-            fieldOfView = Mathf.Clamp(CameraViewPresetMath.SanitizeFinite(fieldOfView, 55f), 30f, 90f);
-            positionResponse = Mathf.Max(0.1f, CameraViewPresetMath.SanitizeFinite(positionResponse, 7f));
-            orientationResponse = Mathf.Max(0.1f, CameraViewPresetMath.SanitizeFinite(orientationResponse, 7f));
-            fieldOfViewResponse = Mathf.Max(0.1f, CameraViewPresetMath.SanitizeFinite(fieldOfViewResponse, 7f));
+            fieldOfView = Mathf.Clamp(
+                CameraViewPresetMath.SanitizeFinite(fieldOfView, 55f),
+                30f,
+                90f);
+            positionResponse = Mathf.Max(
+                0.1f,
+                CameraViewPresetMath.SanitizeFinite(positionResponse, 7f));
+            orientationResponse = Mathf.Max(
+                0.1f,
+                CameraViewPresetMath.SanitizeFinite(orientationResponse, 7f));
+            fieldOfViewResponse = Mathf.Max(
+                0.1f,
+                CameraViewPresetMath.SanitizeFinite(fieldOfViewResponse, 7f));
         }
 
         public static CameraViewPreset[] CreateDefaults()
@@ -78,101 +83,30 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         {
             return new[]
             {
-                Create(
-                    "Back",
-                    CameraFocusSemantic.AvatarBody,
-                    new Vector2(0f, -1f),
-                    legacyBackDistance,
-                    legacyBackHeight,
-                    new Vector3(0f, legacyBackLookHeight, 0f),
-                    legacyBackFieldOfView,
-                    legacyBackResponse,
-                    legacyBackResponse,
-                    legacyBackResponse),
-                Create(
-                    "Front",
-                    CameraFocusSemantic.AvatarBody,
-                    new Vector2(0f, 1f),
-                    4f,
-                    2.2f,
-                    new Vector3(0f, 1.15f, 0f),
-                    55f,
-                    7f,
-                    7f,
-                    7f),
-                Create(
-                    "Left",
-                    CameraFocusSemantic.AvatarBody,
-                    new Vector2(-1f, 0f),
-                    4f,
-                    2.2f,
-                    new Vector3(0f, 1.15f, 0f),
-                    55f,
-                    7f,
-                    7f,
-                    7f),
-                Create(
-                    "Right",
-                    CameraFocusSemantic.AvatarBody,
-                    new Vector2(1f, 0f),
-                    4f,
-                    2.2f,
-                    new Vector3(0f, 1.15f, 0f),
-                    55f,
-                    7f,
-                    7f,
-                    7f),
-                Create(
-                    "FullBody",
-                    CameraFocusSemantic.AvatarBody,
-                    new Vector2(0f, -1f),
-                    5.2f,
-                    2.4f,
-                    new Vector3(0f, 1.05f, 0f),
-                    60f,
-                    6f,
-                    6f,
-                    6f),
-                Create(
-                    "Hands",
-                    CameraFocusSemantic.Hands,
-                    new Vector2(0f, -1f),
-                    2.4f,
-                    0.35f,
-                    Vector3.zero,
-                    45f,
-                    8f,
-                    8f,
-                    8f),
-                Create(
-                    "LeftHand",
-                    CameraFocusSemantic.LeftHand,
-                    new Vector2(0f, -1f),
-                    1.7f,
-                    0.25f,
-                    Vector3.zero,
-                    40f,
-                    9f,
-                    9f,
-                    9f),
-                Create(
-                    "RightHand",
-                    CameraFocusSemantic.RightHand,
-                    new Vector2(0f, -1f),
-                    1.7f,
-                    0.25f,
-                    Vector3.zero,
-                    40f,
-                    9f,
-                    9f,
-                    9f),
+                Create("Back", CameraFocusSemantic.AvatarBody, new Vector2(0f, -1f),
+                    legacyBackDistance, legacyBackHeight, new Vector3(0f, legacyBackLookHeight, 0f),
+                    legacyBackFieldOfView, legacyBackResponse, legacyBackResponse, legacyBackResponse),
+                Create("Front", CameraFocusSemantic.AvatarBody, new Vector2(0f, 1f),
+                    4f, 2.2f, new Vector3(0f, 1.15f, 0f), 55f, 7f, 7f, 7f),
+                Create("Left", CameraFocusSemantic.AvatarBody, new Vector2(-1f, 0f),
+                    4f, 2.2f, new Vector3(0f, 1.15f, 0f), 55f, 7f, 7f, 7f),
+                Create("Right", CameraFocusSemantic.AvatarBody, new Vector2(1f, 0f),
+                    4f, 2.2f, new Vector3(0f, 1.15f, 0f), 55f, 7f, 7f, 7f),
+                Create("FullBody", CameraFocusSemantic.AvatarBody, new Vector2(0f, -1f),
+                    5.2f, 2.4f, new Vector3(0f, 1.05f, 0f), 60f, 6f, 6f, 6f),
+                Create("Hands", CameraFocusSemantic.Hands, new Vector2(0f, -1f),
+                    2.4f, 0.35f, Vector3.zero, 45f, 8f, 8f, 8f),
+                Create("LeftHand", CameraFocusSemantic.LeftHand, new Vector2(0f, -1f),
+                    1.7f, 0.25f, Vector3.zero, 40f, 9f, 9f, 9f),
+                Create("RightHand", CameraFocusSemantic.RightHand, new Vector2(0f, -1f),
+                    1.7f, 0.25f, Vector3.zero, 40f, 9f, 9f, 9f),
             };
         }
 
         private static CameraViewPreset Create(
             string name,
             CameraFocusSemantic focus,
-            Vector2 placementDirection,
+            Vector2 direction,
             float distance,
             float height,
             Vector3 focusOffset,
@@ -185,7 +119,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             {
                 presetName = name,
                 focusSemantic = focus,
-                placementDirection = placementDirection,
+                placementDirection = direction,
                 distance = distance,
                 height = height,
                 placementOffset = Vector3.zero,
@@ -250,8 +184,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             preset = null;
             index = -1;
             failureReason = string.Empty;
-            var normalized = (requestedName ?? string.Empty).Trim();
-            if (string.IsNullOrEmpty(normalized))
+            var requestedKey = NormalizePresetName(requestedName);
+            if (string.IsNullOrEmpty(requestedKey))
             {
                 failureReason = "Camera preset name is blank";
                 return false;
@@ -266,11 +200,14 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             for (var i = 0; i < presets.Length; i++)
             {
                 var candidate = presets[i];
-                if (candidate == null || string.IsNullOrWhiteSpace(candidate.presetName))
+                if (candidate == null)
                 {
                     continue;
                 }
-                if (!string.Equals(candidate.presetName.Trim(), normalized, StringComparison.OrdinalIgnoreCase))
+
+                var candidateKey = NormalizePresetName(candidate.presetName);
+                if (string.IsNullOrEmpty(candidateKey) ||
+                    !string.Equals(candidateKey, requestedKey, StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -287,9 +224,10 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             preset = null;
             index = -1;
+            var displayName = (requestedName ?? string.Empty).Trim();
             failureReason = matchCount > 1
-                ? $"Camera preset name is ambiguous: {normalized}"
-                : $"Unknown camera preset: {normalized}";
+                ? $"Camera preset name is ambiguous: {displayName}"
+                : $"Unknown camera preset: {displayName}";
             return false;
         }
 
@@ -392,14 +330,9 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var orbitDirection =
                 right * preset.placementDirection.x +
                 forward * preset.placementDirection.y;
-            if (orbitDirection.sqrMagnitude > Epsilon)
-            {
-                orbitDirection = orbitDirection.normalized;
-            }
-            else
-            {
-                orbitDirection = Vector3.zero;
-            }
+            orbitDirection = orbitDirection.sqrMagnitude > Epsilon
+                ? orbitDirection.normalized
+                : Vector3.zero;
 
             targetPosition =
                 focusPosition +
@@ -442,6 +375,28 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         public static bool IsFinite(float value)
         {
             return !float.IsNaN(value) && !float.IsInfinity(value);
+        }
+
+        private static string NormalizePresetName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return string.Empty;
+            }
+
+            var source = name.Trim();
+            var buffer = new char[source.Length];
+            var count = 0;
+            for (var i = 0; i < source.Length; i++)
+            {
+                var c = source[i];
+                if (char.IsWhiteSpace(c) || c == '-' || c == '_')
+                {
+                    continue;
+                }
+                buffer[count++] = c;
+            }
+            return count == 0 ? string.Empty : new string(buffer, 0, count);
         }
 
         private static Vector3 HeadingLocalToWorld(Vector3 local, Vector3 right, Vector3 forward)

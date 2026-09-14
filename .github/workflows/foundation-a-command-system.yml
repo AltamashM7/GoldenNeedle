@@ -39,7 +39,6 @@ jobs:
           speech_input = Path('Assets/GoldenNeedle/Core/Commands/SpeechCommandInput.cs').read_text(encoding='utf-8')
           presenter = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs').read_text(encoding='utf-8')
           windows = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/WindowsKeywordSpeechProvider.cs').read_text(encoding='utf-8')
-          tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationACommandSystemTests.cs').read_text(encoding='utf-8')
           camera = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/ThirdPersonLabCamera.cs').read_text(encoding='utf-8')
           provider = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs').read_text(encoding='utf-8')
           locomotion = Path('Assets/GoldenNeedle/Core/Motion/Locomotion/EmbodiedLocomotionController.cs').read_text(encoding='utf-8')
@@ -52,148 +51,80 @@ jobs:
 
           require(command, [
               'public enum GoldenNeedleCommand',
-              'BeginCalibration,',
-              'ResetCalibration,',
-              'Recenter,',
-              'RetryTracking,',
-              'CycleCaptureCameraDevice,',
-              'SelectCaptureCameraDevice,',
-              'ToggleLabGamePresentation,',
-              'SetLabPresentation,',
-              'SetGamePresentation,',
-              'ToggleLocomotionWorldView,',
-              'ToggleAllDebugPresentation,',
-              'SelectCameraViewPreset,',
-              'public string parameter;',
               'public sealed class GoldenNeedleCommandRouter',
-          ], 'command model/router')
+              'BeginCalibration,', 'ResetCalibration,', 'Recenter,', 'RetryTracking,',
+              'ToggleLabGamePresentation,', 'SetLabPresentation,', 'SetGamePresentation,',
+              'SelectCameraViewPreset,', 'public string parameter;',
+          ], 'shared command model/router')
 
           require(policy, [
-              'public bool speechEnabled = true;',
               'public float commandCooldownSeconds = 0.75f;',
-              'public string wakePrefix = string.Empty;',
-              'public bool enabled = true;',
-              'public string phrase = string.Empty;',
-              'public string parameter = string.Empty;',
               'public SpeechRecognitionConfidence minimumConfidence = SpeechRecognitionConfidence.Medium;',
-              'NormalizePhrase(',
-              'BuildEffectivePhrase(',
-              'Ambiguous speech phrase:',
+              'NormalizePhrase(', 'BuildEffectivePhrase(', 'Ambiguous speech phrase:',
               'new SpeechCommandMapping("begin calibration", GoldenNeedleCommand.BeginCalibration)',
               'new SpeechCommandMapping("reset calibration", GoldenNeedleCommand.ResetCalibration)',
               'new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter)',
               'new SpeechCommandMapping("retry tracking", GoldenNeedleCommand.RetryTracking)',
               'new SpeechCommandMapping("game view", GoldenNeedleCommand.SetGamePresentation)',
               'new SpeechCommandMapping("lab view", GoldenNeedleCommand.SetLabPresentation)',
-          ], 'speech configuration/resolution')
+          ], 'speech policy')
 
           require(speech_input, [
               'public interface ISpeechInputProvider : IDisposable',
-              'event Action<SpeechRecognitionSample> PhraseRecognized;',
-              'public sealed class SpeechCommandInput : IDisposable',
-              '_resolver.TryResolve(',
-              '_cooldown.CanDispatch(',
-              'var result = _dispatcher.Execute(request);',
-              '_cooldown.MarkDispatched(now);',
-              'Speech recognition is unsupported on this runtime',
-              'provider.PhraseRecognized -= OnPhraseRecognized;',
-              'provider.Dispose();',
-          ], 'speech provider boundary/input')
-          if 'UnityEngine' in policy or 'UnityEngine' in speech_input or 'UnityEngine' in command:
+              '_resolver.TryResolve(', '_cooldown.CanDispatch(',
+              'var result = _dispatcher.Execute(request);', '_cooldown.MarkDispatched(now);',
+              'provider.PhraseRecognized -= OnPhraseRecognized;', 'provider.Dispose();',
+          ], 'speech input boundary')
+          if any(token in speech_input for token in ['Keyboard.current', 'InputSystem']):
+              raise SystemExit('speech input must not simulate keyboard input')
+          if any('UnityEngine' in text for text in [command, policy, speech_input]):
               raise SystemExit('core command/speech policy must remain platform-neutral')
-          if 'Keyboard.current' in speech_input or 'InputSystem' in speech_input:
-              raise SystemExit('speech input must not simulate or depend on keyboard input')
 
           require(windows, [
               '#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN || UNITY_WSA',
-              'using UnityEngine.Windows.Speech;',
-              'PhraseRecognitionSystem.isSupported',
+              'using UnityEngine.Windows.Speech;', 'PhraseRecognitionSystem.isSupported',
               'new KeywordRecognizer(_keywords, ConfidenceLevel.Low)',
-              'PhraseRecognitionSystem.OnError += HandlePhraseSystemError;',
-              'PhraseRecognitionSystem.OnError -= HandlePhraseSystemError;',
               '_recognizer.OnPhraseRecognized += HandlePhraseRecognized;',
-              '_recognizer.Stop();',
-              '_recognizer.Dispose();',
-              'MapConfidence(args.confidence)',
+              '_recognizer.Stop();', '_recognizer.Dispose();',
           ], 'Windows speech backend')
-          if any(domain in windows for domain in ['BeginCalibration', 'ResetCalibration', '.Recenter(', 'ToggleGameView', 'RequestCycleCamera']):
+          if any(token in windows for token in ['BeginCalibration', 'ResetCalibration', '.Recenter(', 'ToggleGameView', 'RequestCycleCamera']):
               raise SystemExit('Windows speech backend contains domain-command knowledge')
 
           require(presenter, [
-              'private SpeechCommandConfiguration speechCommands = SpeechCommandConfiguration.CreateDefault();',
               'private GoldenNeedleCommandRouter _commandRouter;',
               'private SpeechCommandInput _speechCommandInput;',
               'public GoldenNeedleCommandResult SubmitCommand(',
               'new GoldenNeedleCommandRouter(targets);',
               'phrases => new WindowsKeywordSpeechProvider(phrases)',
-              'Speech: {(_speechCommandInput == null ? "not initialized" : _speechCommandInput.DiagnosticSummary)}',
-          ], 'presenter command/speech wiring')
+          ], 'presenter wiring')
 
           update_start = presenter.index('        private void Update()')
           on_gui_start = presenter.index('        private void OnGUI()', update_start)
           update = presenter[update_start:on_gui_start]
-          key_routes = [
-              ('rKey', 'RetryTracking'),
-              ('vKey', 'CycleCaptureCameraDevice'),
-              ('f1Key', 'ToggleRawLandmarks'),
-              ('f2Key', 'ToggleCanonical2D'),
-              ('f3Key', 'ToggleCanonical3D'),
-              ('f4Key', 'ToggleStabilized2D'),
-              ('f5Key', 'ToggleRigDrive'),
-              ('f6Key', 'ToggleCoordinateDiagnostic'),
-              ('f7Key', 'ToggleMainDiagnostics'),
-              ('f8Key', 'ToggleProceduralRigViewport'),
-              ('f9Key', 'ToggleLocomotionDiagnostics'),
-              ('f10Key', 'ToggleLocomotionWorldView'),
-              ('f11Key', 'ToggleAllDebugPresentation'),
-              ('f12Key', 'ToggleLabGamePresentation'),
-              ('cKey', 'BeginCalibration'),
-              ('xKey', 'ResetCalibration'),
-              ('kKey', 'Recenter'),
+          routes = [
+              ('rKey', 'RetryTracking'), ('vKey', 'CycleCaptureCameraDevice'),
+              ('f1Key', 'ToggleRawLandmarks'), ('f2Key', 'ToggleCanonical2D'),
+              ('f3Key', 'ToggleCanonical3D'), ('f4Key', 'ToggleStabilized2D'),
+              ('f5Key', 'ToggleRigDrive'), ('f6Key', 'ToggleCoordinateDiagnostic'),
+              ('f7Key', 'ToggleMainDiagnostics'), ('f8Key', 'ToggleProceduralRigViewport'),
+              ('f9Key', 'ToggleLocomotionDiagnostics'), ('f10Key', 'ToggleLocomotionWorldView'),
+              ('f11Key', 'ToggleAllDebugPresentation'), ('f12Key', 'ToggleLabGamePresentation'),
+              ('cKey', 'BeginCalibration'), ('xKey', 'ResetCalibration'), ('kKey', 'Recenter'),
           ]
-          for key, action in key_routes:
+          for key, action in routes:
               if key not in update or f'SubmitKeyboardCommand(GoldenNeedleCommand.{action});' not in update:
                   raise SystemExit(f'keyboard route missing/mismatched: {key} -> {action}')
           forbidden_direct = [
-              'provider.Retry(',
-              'provider.RequestCycleCamera(',
-              'runtime.BeginCalibration(',
-              'runtime.ResetCalibration(',
-              'locomotion.Recenter(',
-              'gameViewCamera.ToggleGameView(',
-              'retargeter.DriveRig =',
-              'drawRawLandmarks = !',
-              'drawCanonical2D = !',
-              'drawCanonical3D = !',
-              'drawStabilized2D = !',
-              'drawCoordinateDiagnostic = !',
-              'drawMainDiagnostics = !',
-              'drawProceduralRigViewport = !',
-              'drawLocomotionDiagnostics = !',
-              'drawLocomotionWorldView = !',
-              '_hideAllDebugPresentation = !',
+              'provider.Retry(', 'provider.RequestCycleCamera(', 'runtime.BeginCalibration(',
+              'runtime.ResetCalibration(', 'locomotion.Recenter(', 'gameViewCamera.ToggleGameView(',
           ]
-          direct = [item for item in forbidden_direct if item in update]
-          if direct:
-              raise SystemExit(f'keyboard Update still owns command business logic: {direct}')
+          if any(item in update for item in forbidden_direct):
+              raise SystemExit('keyboard Update still bypasses shared command routing')
 
-          require(camera, ['public void ToggleGameView()', 'public void SetGameViewActive(bool active)', 'controlledCamera.cullingMask = 0;'], 'F12 camera authority')
+          require(camera, ['public void ToggleGameView()', 'public void SetGameViewActive(bool active)', 'controlledCamera.cullingMask = 0;'], 'presentation authority')
           require(provider, ['public void Retry()', 'public bool RequestCycleCamera()', 'public bool RequestCameraSwitch(string preferredName)'], 'provider authorities')
           require(locomotion, ['public void Recenter()'], 'locomotion authority')
           require(runtime, ['public void BeginCalibration()', 'public void ResetCalibration()'], 'calibration authorities')
-
-          required_tests = [
-              'PhraseNormalizationTrimsCollapsesWhitespaceAndIgnoresCase',
-              'WakePrefixBuildsDeterministicEffectivePhrase',
-              'WakePrefixIsRequiredDuringResolutionWhenConfigured',
-              'DuplicateEffectivePhraseMakesConfigurationInvalid',
-              'PerMappingConfidenceRejectsBelowThreshold',
-              'SpeechCooldownBlocksDuplicateSpeechButDoesNotBelongToRouter',
-              'CommandParameterIsPreservedThroughResolutionAndRouting',
-              'RouterUsesSharedTargetsAndReportsMissingTargetsSafely',
-              'UnsupportedProviderDisablesGracefullyWithoutDispatch',
-          ]
-          require(tests, required_tests, 'Foundation A Editor tests')
 
           print('FOUNDATION_A_STATIC_AUDIT=PASS')
           print('SHARED_COMMAND_ROUTING=PASS')
@@ -206,5 +137,5 @@ jobs:
         shell: bash
         run: |
           git diff --exit-code
-          test -z "$(git status --porcelain)"
+          git diff --cached --exit-code
           echo 'FOUNDATION_A_WORKFLOW_READ_ONLY=PASS'

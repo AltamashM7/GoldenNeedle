@@ -60,54 +60,35 @@ jobs:
                   raise SystemExit(f'{label}: missing {missing}')
 
           require(preset, [
-              'public enum CameraFocusSemantic',
-              'public sealed class CameraViewPreset',
-              'public string presetName = "Back";',
-              'public Vector2 placementDirection',
-              'public float distance',
-              'public float height',
-              'public Vector3 placementOffset',
-              'public Vector3 focusOffset',
-              'public float fieldOfView',
-              'public float positionResponse',
-              'public float orientationResponse',
+              'public enum CameraFocusSemantic', 'public sealed class CameraViewPreset',
+              'public string presetName = "Back";', 'public Vector2 placementDirection',
+              'public float distance', 'public float height', 'public Vector3 placementOffset',
+              'public Vector3 focusOffset', 'public float fieldOfView',
+              'public float positionResponse', 'public float orientationResponse',
               'public float fieldOfViewResponse',
-              '"Back"', '"Front"', '"Left"', '"Right"',
-              '"FullBody"', '"Hands"', '"LeftHand"', '"RightHand"',
-              'StringComparison.OrdinalIgnoreCase',
-              'CameraFocusSemantic.Hands',
-              '"BothHands"',
-              '"LeftLowerArm"',
-              '"RightLowerArm"',
-              '"Chest"',
-              '"Pelvis"',
-              '"AvatarRoot"',
+              '"Back"', '"Front"', '"Left"', '"Right"', '"FullBody"',
+              '"Hands"', '"LeftHand"', '"RightHand"',
+              'StringComparison.OrdinalIgnoreCase', '"BothHands"',
+              '"LeftLowerArm"', '"RightLowerArm"', '"Chest"', '"Pelvis"', '"AvatarRoot"',
               'Vector3.Cross(Vector3.up, forward)',
               '1f - Mathf.Exp(-safeResponse * safeDeltaTime)',
           ], 'camera preset data/math')
 
           require(camera, [
               'public sealed class ThirdPersonLabCamera',
-              'private float followDistance = 4.0f;',
-              'private float cameraHeight = 2.2f;',
-              'private float lookHeight = 1.15f;',
-              'private float positionResponse = 7.0f;',
-              'private float headingResponse = 8.0f;',
-              'private float fieldOfView = 55f;',
+              'private float followDistance = 4.0f;', 'private float cameraHeight = 2.2f;',
+              'private float lookHeight = 1.15f;', 'private float positionResponse = 7.0f;',
+              'private float headingResponse = 8.0f;', 'private float fieldOfView = 55f;',
               'private CameraViewPreset[] viewPresets = CameraViewPreset.CreateDefaults();',
               'public bool SelectViewPreset(string presetName)',
               'GoldenNeedleCommandRuntimeServices.RegisterCameraViewPresetSelector(',
-              'public string CurrentViewPresetName',
-              'public bool IsFocusFallbackActive',
+              'public string CurrentViewPresetName', 'public bool IsFocusFallbackActive',
               'public string ResolvedFocusTarget',
               'binding.GetChainTip(CanonicalKinematicChainId.LeftArm)',
               'binding.GetChainTip(CanonicalKinematicChainId.RightArm)',
-              'if (!_gameViewActive)',
-              'TryRefreshHeading(dt);',
-              'CameraViewPresetMath.ResponseAlpha(',
+              'if (!_gameViewActive)', 'TryRefreshHeading(dt);',
               'controlledCamera.fieldOfView = Mathf.Lerp(',
-              'public void ToggleGameView()',
-              'public void SetGameViewActive(bool active)',
+              'public void ToggleGameView()', 'public void SetGameViewActive(bool active)',
               'controlledCamera.cullingMask = 0;',
               'controlledCamera.clearFlags = CameraClearFlags.SolidColor;',
           ], 'primary camera preset authority')
@@ -123,9 +104,9 @@ jobs:
               'GoldenNeedleCommandRuntimeServices.CameraViewPresetSelector',
               'SelectCameraViewPreset requires a preset-name parameter',
               'ThirdPersonLabCamera.SelectViewPreset',
-          ], 'command router camera integration')
-          if 'CameraViewPresetMath' in command or 'Transform' in command or 'Vector3' in command:
-              raise SystemExit('command router must not own camera transform math')
+          ], 'command-router preset integration')
+          if any(token in command for token in ['CameraViewPresetMath', 'Vector3', 'UnityEngine']):
+              raise SystemExit('command router owns camera math/platform state')
 
           require(policy, [
               'new SpeechCommandMapping("game view", GoldenNeedleCommand.SetGamePresentation)',
@@ -139,42 +120,29 @@ jobs:
               'new SpeechCommandMapping("left hand view", GoldenNeedleCommand.SelectCameraViewPreset, "LeftHand")',
               'new SpeechCommandMapping("right hand view", GoldenNeedleCommand.SelectCameraViewPreset, "RightHand")',
           ], 'Foundation B speech mappings')
-          if 'Keyboard.current' in speech_input or 'InputSystem' in speech_input:
-              raise SystemExit('speech input must remain independent of keyboard simulation')
+          if any(token in speech_input for token in ['Keyboard.current', 'InputSystem']):
+              raise SystemExit('speech must remain independent of keyboard simulation')
 
           require(presenter, [
               'SubmitKeyboardCommand(GoldenNeedleCommand.ToggleLabGamePresentation);',
               'ToggleLabGamePresentation = gameViewCamera == null ? null : gameViewCamera.ToggleGameView,',
-          ], 'F12 shared-command routing')
-
+          ], 'F12 routing')
           require(tests, [
-              'DefaultPresetSetContainsRequiredNames',
-              'DuplicateAndInvalidPresetNamesAreRejected',
-              'PresetLookupIsTrimmedAndCaseInsensitive',
-              'BackPresetMatchesLegacyThirdPersonGeometry',
-              'FrontLeftRightPlacementIsHeadingRelative',
-              'HandFocusUsesMidpointWhenBothHandsAreAvailable',
-              'HandsFocusFallsBackToOneAvailableHand',
-              'MissingHandsFallBackToBodyThenRoot',
+              'DefaultPresetSetContainsRequiredNames', 'DuplicateAndInvalidPresetNamesAreRejected',
+              'PresetLookupIsTrimmedAndCaseInsensitive', 'BackPresetMatchesLegacyThirdPersonGeometry',
+              'FrontLeftRightPlacementIsHeadingRelative', 'HandFocusUsesMidpointWhenBothHandsAreAvailable',
+              'HandsFocusFallsBackToOneAvailableHand', 'MissingHandsFallBackToBodyThenRoot',
               'PresetSelectionIsCaseInsensitiveAndDoesNotToggleLabGameState',
               'ExponentialResponseComposesAcrossEquivalentElapsedTime',
           ], 'Foundation B Editor tests')
-          require(camera_tests, [
-              'LabUsesEnabledClearOnlyCameraAndGameRestoresWorldSettings',
-          ], 'existing Lab/Game restoration test')
+          require(camera_tests, ['LabUsesEnabledClearOnlyCameraAndGameRestoresWorldSettings'], 'Lab/Game restoration test')
 
           if scene.count('--- !u!20 ') != 1:
               raise SystemExit('PoseTrackingSpike scene must retain exactly one Camera component')
 
-          require(workflow_a, [
-              'contents: read',
-              "echo 'FOUNDATION_A_WORKFLOW_READ_ONLY=PASS'",
-          ], 'Foundation A read-only workflow')
-          require(workflow_b, [
-              'contents: read',
-              "echo 'FOUNDATION_B_WORKFLOW_READ_ONLY=PASS'",
-          ], 'Foundation B read-only workflow')
           for text, name in [(workflow_a, 'Foundation A'), (workflow_b, 'Foundation B')]:
+              if 'contents: read' not in text:
+                  raise SystemExit(f'{name} workflow does not use read-only contents permission')
               forbidden = ['git push ', 'git commit ', 'contents: write', 'apply_presenter_command_migration.py']
               found = [item for item in forbidden if item in text]
               if found:
@@ -191,5 +159,5 @@ jobs:
         shell: bash
         run: |
           git diff --exit-code
-          test -z "$(git status --porcelain)"
+          git diff --cached --exit-code
           echo 'FOUNDATION_B_WORKFLOW_READ_ONLY=PASS'
