@@ -5,8 +5,8 @@ Authoritative current-state refresh: 2026-09-14.
 Last substantive runtime/code checkpoint before this documentation refresh:
 `4a20b6a00bb86a023cab764407ec8c148356529d` — verified responsive-avatar beta-sweep runtime/audit state.
 
-Last branch checkpoint before this documentation refresh:
-`83ab2d15206e4563c3302cdcdccc2121ceddd741` — `docs: checkpoint beta sweep for user QA`.
+Last completed documentation checkpoint before the pre-Phase-5A foundation design:
+`334d6f66873fec29e7e42e4a6fc1c005692e8014` — `docs: defer final avatar smoothing fine tuning`.
 
 Working branch: `engine/pose-tracking-spike`.
 
@@ -29,12 +29,88 @@ This document records what is true **now**. Historical experiment details remain
 - Phase 3 — stabilization/confidence: **PASS**.
 - Phase 4 — humanoid retargeting/calibration/orientation: **USER ACCEPTED — PASS**.
 - Motion Engine latency/performance optimization milestone: **CURRENT MILESTONE COMPLETE; FURTHER TUNING DEFERRED**.
+- Pre-Phase-5A foundation track: **USER APPROVED / IMPLEMENTATION NOT STARTED**.
 - Phase 5A — support-foot locomotion / Lab-Game presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 
 The project is **not** blocked on further motion-engine latency optimization. The current engine is strong enough to continue normal development. Additional smoothing/performance tuning remains intentionally available later.
 
-The USER has stated that a separate pre-locomotion task list must be handled before returning to Phase 5A acceptance work. Until that list is supplied and prioritized, do not resume locomotion merely because it is the numerically next phase.
+The USER has now finalized the prerequisites to complete before returning to Phase 5A acceptance. The approved architecture and order are documented in `Docs/pre-phase5a-foundations.md`.
+
+## Approved pre-Phase-5A foundation track
+
+The next development sequence is:
+
+```text
+A — Unified Command System + modular speech input
+    ↓
+B — Camera View / Focus Preset System
+    ↓
+C — Rich canonical motion/orientation architecture
+    ↓
+D — MediaPipe hand-landmark integration
+    ↓
+E — Orientation-aware + optional hand/finger retargeting
+    ↓
+Return to Phase 5A locomotion acceptance/fixes
+```
+
+These are foundation tasks, not a replacement for Phase 5A. Phase 5A remains implemented but unaccepted while the prerequisite work is completed.
+
+### Foundation A — commands and speech
+
+- create one project-owned command/action layer;
+- keyboard, speech, UI and future inputs call the same underlying actions;
+- do not simulate keyboard presses from speech;
+- speech backend remains replaceable;
+- phrase→action mappings are Inspector-editable;
+- include cooldown/state guards, optional wake prefix and graceful unsupported-backend behavior;
+- first actions should cover calibration/reset/recenter/retry/presentation/camera actions where appropriate.
+
+### Foundation B — camera presets
+
+Use one primary gameplay/presentation camera with named, data-driven presets rather than many simultaneously rendering full-screen cameras.
+
+Initial useful presets include Back, Front, Left, Right, FullBody, Hands, LeftHand and RightHand. Bone-relative focus must fall back safely when optional targets are missing.
+
+Speech invokes camera selection through the shared command layer.
+
+### Foundation C — rich canonical orientation
+
+The current accepted 20-joint canonical representation is preserved as a compatibility contract (`CanonicalBodyV1` in architectural terms).
+
+Do **not** destructively append many joints to the existing enum/count as the first step.
+
+Introduce an additive/provider-independent richer motion representation that can carry:
+
+- joint/position data;
+- bone/anatomical orientation;
+- orientation confidence;
+- twist confidence/observability;
+- optional hand articulation;
+- schema/timestamp identity.
+
+Canonical orientation authority is a validated orthonormal anatomical basis with handedness/confidence, **not an opaque quaternion**. Unity quaternions are generated only after canonical basis mapping into the avatar's captured bind/reference basis and only for final transform application/interpolation.
+
+The bone-orientation solution must be general. Each supported bone uses a primary longitudinal axis plus independent secondary anatomical evidence, with orthogonalization, handedness validation and degeneracy checks. Do not implement a forearm-only twist patch.
+
+Swing may remain observable when twist is not. Twist updates only when secondary evidence is trustworthy; short ambiguity preserves recent trusted twist, and longer loss uses a controlled reference fallback instead of inventing rotation.
+
+### Foundation D — MediaPipe hands
+
+Perfect finger mocap is not required for this milestone.
+
+Use MediaPipe-provided hand landmarks for useful palm/finger behavior such as fist/open-hand state, basic finger flexion, pointing where reliable, and palm orientation evidence.
+
+Before choosing the final provider path, audit the current practical options, especially separate Hand Landmarker vs Holistic. The default preference is to preserve the optimized body provider and add adaptive/separate hand tracking unless evidence shows a combined provider is cleaner and sufficiently fast.
+
+Body tracking remains the priority real-time stream. Hand inference may run adaptively or at a lower cadence and must not introduce an unbounded queue/backlog.
+
+### Foundation E — optional-bone retargeting
+
+Avatar binding is capability-based. Drive only bones that actually exist.
+
+Missing finger/hand/detail bones must never crash or invalidate unrelated body retargeting. The accepted Phase 4 positional/IK path remains available as fallback/reference while richer orientation/articulation is rolled out.
 
 ## Current best-tested runtime path
 
@@ -169,7 +245,7 @@ Status: **USER ACCEPTED — PASS for the current milestone**.
 
 ## Canonical, calibration, and retargeting invariants
 
-Canonical semantics remain unchanged:
+Current accepted V1 semantics remain unchanged while the rich foundation is developed:
 
 - image X right, image Y up;
 - 3D +X camera/view right, +Y up, +Z away;
@@ -178,10 +254,10 @@ Canonical semantics remain unchanged:
 - display mirror is presentation-only;
 - modular calibration allows body-reference readiness plus independent arm/leg chain geometry;
 - partial-body tracking remains valid;
-- Phase 4 signed canonical-to-avatar mapping and analytic two-bone IK remain authoritative;
-- swing-only limb alignment remains the accepted orientation policy.
+- Phase 4 signed canonical-to-avatar mapping and analytic two-bone IK remain authoritative fallback/reference behavior;
+- current swing-only limb alignment remains the accepted V1 policy until richer orientation passes its own QA.
 
-Do not change these semantics as a side effect of performance or smoothing work.
+The rich orientation track must be additive and independently testable. Do not change these semantics as a side effect of commands, camera work, hand-provider experiments or unrelated tuning.
 
 ## Stabilization and avatar-drive tuning
 
@@ -279,7 +355,7 @@ Known USER QA findings that remain unresolved:
 
 Therefore Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED**.
 
-The USER intends to supply a set of prerequisite tasks before locomotion work resumes. Treat those prerequisites as the next development planning input.
+Do not return to these fixes until the approved pre-Phase-5A foundation track has reached the USER-approved stopping point for the current milestone.
 
 ## Closed / deferred performance lines
 
@@ -299,19 +375,20 @@ Sentis and earlier OpenVINO benchmark history remains documented in the dedicate
 
 ## Current development state
 
-The Motion Engine is now considered sufficiently optimized for the current milestone:
+The Motion Engine is sufficiently optimized for the current milestone, and the next track is fidelity/usability infrastructure:
 
 ```text
 camera/input acquisition       strong baseline
 inference backend              strong baseline
 scheduling                     accepted
 fresh pose throughput          near camera cadence on best tested path
-canonical/retarget semantics   accepted
+V1 canonical/retarget          accepted compatibility baseline
 avatar-drive latency tuning    preserved and deferrable
+pre-5A foundations             approved; implementation next
 locomotion                     implemented, not accepted
 ```
 
-Further engine optimization is **optional future work**, not a prerequisite to move forward.
+Further latency optimization is **optional future work**, not a prerequisite to move forward.
 
 ## Documentation authority
 
@@ -319,13 +396,14 @@ For current project truth, use this order:
 
 1. `Docs/current-state.md` — current status and immediate governance.
 2. `Docs/decisions.md` — current architectural/product decisions.
-3. `Docs/architecture.md` and `Docs/motion-engine.md` — detailed architecture/phase design; read together with this current-state refresh when older phase wording appears.
-4. `Docs/openvino-unity-integration-progress.md` — OpenVINO integration history/current resolution.
-5. `Docs/openvino-unity-scheduling-optimization-progress.md` — scheduling optimization history/current resolution.
-6. `Docs/openvino-unity-readback-optimization-progress.md` — acquisition optimization history/current resolution.
-7. `Docs/avatar-drive-source-experiment-progress.md`, `Docs/responsive-avatar-stabilizer-progress.md`, and `Docs/responsive-avatar-beta-sweep-progress.md` — avatar-drive tuning experiment history/current tuning state.
+3. `Docs/pre-phase5a-foundations.md` — authoritative architecture/requirements for the next development track.
+4. `Docs/architecture.md` and `Docs/motion-engine.md` — detailed accepted architecture/phase design; read together with the newer current-state/foundation docs when older phase wording appears.
+5. `Docs/openvino-unity-integration-progress.md` — OpenVINO integration history/current resolution.
+6. `Docs/openvino-unity-scheduling-optimization-progress.md` — scheduling optimization history/current resolution.
+7. `Docs/openvino-unity-readback-optimization-progress.md` — acquisition optimization history/current resolution.
+8. `Docs/avatar-drive-source-experiment-progress.md`, `Docs/responsive-avatar-stabilizer-progress.md`, and `Docs/responsive-avatar-beta-sweep-progress.md` — avatar-drive tuning experiment history/current tuning state.
 
-Worker handoffs are execution briefs for their specific task and must not override a newer current-state/progress decision.
+Task/worker handoffs are execution briefs for their specific task and must not override a newer current-state/decision/foundation document.
 
 ## Guardrails for the next Orchestrator / Builder
 
@@ -335,7 +413,11 @@ Worker handoffs are execution briefs for their specific task and must not overri
 - Do not delete or weaken the stock MediaPipe/TFLite fallback.
 - Do not silently switch serialized/default backend, frame-acquisition mode, or avatar-drive source.
 - Do not change stable calibration/locomotion inputs while tuning avatar response.
-- Do not refactor provider/canonical topology during unrelated feature work.
+- Do not destructively mutate the accepted 20-joint canonical V1 contract.
+- Do not use quaternions as the hidden canonical orientation source of truth; reason from validated anatomical bases and map to quaternions only at final avatar application.
+- Do not solve only forearm twist as a special-case patch; rich orientation must be a general bone-orientation system.
+- Do not make optional finger/hand bones mandatory for rig validity.
+- Do not allow hand tracking experiments to casually regress the accepted low-end body path or introduce unbounded queues/backlogs.
 - Do not densify the detector.
 - Do not force D3D12 globally.
 - Do not reopen accepted OpenVINO scheduling/WebCamCPU work without new evidence.
@@ -343,6 +425,8 @@ Worker handoffs are execution briefs for their specific task and must not overri
 
 ## Immediate next step
 
-**Pause motion-engine optimization.**
+Begin **Foundation A — Unified Command System + modular speech input**.
 
-Wait for the USER's pre-locomotion development list, organize it by dependency/risk, and complete those prerequisites before returning to Phase 5A locomotion acceptance work.
+Before editing code, inspect the current branch and identify the actual ownership/public entry points for calibration, calibration reset/cancel, recenter, retry/restart, F12 Lab/Game presentation and existing camera behavior. The command layer must unify those actions rather than duplicate key-handling logic.
+
+After Foundation A implementation and focused USER QA, proceed to Foundation B camera presets. Rich canonical/orientation and hand work follow in the approved staged order from `Docs/pre-phase5a-foundations.md`.
