@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs" Link="CanonicalPoseFrame.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Rich/RichMotionFrame.cs" Link="RichMotionFrame.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Rich/RichAnatomicalOrientationSolver.cs" Link="RichAnatomicalOrientationSolver.cs" />
+  </ItemGroup>
+</Project>
