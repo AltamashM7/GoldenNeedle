@@ -1532,31 +1532,39 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 yield break;
             }
 
+            Task<OpenVinoPoseRuntime> bootstrapTask = null;
+            if (inferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32)
+            {
+                var detectorPath = Path.Combine(
+                    Application.streamingAssetsPath,
+                    OpenVinoModelDirectory,
+                    OpenVinoDetectorModelFileName);
+                var landmarkPath = Path.Combine(
+                    Application.streamingAssetsPath,
+                    OpenVinoModelDirectory,
+                    OpenVinoLandmarkModelFileName);
+                if (!File.Exists(detectorPath) || !File.Exists(landmarkPath))
+                {
+                    SetFailure(
+                        PoseProviderStatus.ModelFailed,
+                        "Generated OpenVINO detector/landmark files are missing. Run Tools/OpenVinoUnityPosePlugin/scripts/package_unity.ps1 before selecting the experimental backend.");
+                    CleanupRuntime();
+                    yield break;
+                }
+
+                bootstrapTask = Task.Run(() => OpenVinoPoseRuntime.Create(detectorPath, landmarkPath));
+                _openVinoBootstrapTask = bootstrapTask;
+                while (!bootstrapTask.IsCompleted)
+                {
+                    yield return null;
+                }
+                _openVinoBootstrapTask = null;
+            }
+
             try
             {
                 if (inferenceBackend == PoseInferenceBackend.OpenVinoCpuFp32)
                 {
-                    var detectorPath = Path.Combine(
-                        Application.streamingAssetsPath,
-                        OpenVinoModelDirectory,
-                        OpenVinoDetectorModelFileName);
-                    var landmarkPath = Path.Combine(
-                        Application.streamingAssetsPath,
-                        OpenVinoModelDirectory,
-                        OpenVinoLandmarkModelFileName);
-                    if (!File.Exists(detectorPath) || !File.Exists(landmarkPath))
-                    {
-                        throw new FileNotFoundException(
-                            "Generated OpenVINO detector/landmark files are missing. Run Tools/OpenVinoUnityPosePlugin/scripts/package_unity.ps1 before selecting the experimental backend.");
-                    }
-
-                    var bootstrapTask = Task.Run(() => OpenVinoPoseRuntime.Create(detectorPath, landmarkPath));
-                    _openVinoBootstrapTask = bootstrapTask;
-                    while (!bootstrapTask.IsCompleted)
-                    {
-                        yield return null;
-                    }
-                    _openVinoBootstrapTask = null;
                     if (bootstrapTask.IsCanceled)
                     {
                         throw new OperationCanceledException("OpenVINO pose runtime initialization was canceled.");
