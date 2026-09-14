@@ -1,0 +1,65 @@
+name: OpenVINO scheduling session-reset repair
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/repair_openvino_scheduling_session_reset.py'
+      - '.github/workflows/openvino-scheduling-session-reset-repair.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  repair-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fail-closed session-reset repair
+        run: python3 Tools/OpenVinoUnityPosePlugin/scripts/repair_openvino_scheduling_session_reset.py
+
+      - name: Validate reset and bounded scheduling invariants
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs')
+          text = p.read_text(encoding='utf-8')
+          required = [
+              'Interlocked.Exchange(ref _requestsInWindow, 0);',
+              'Interlocked.Exchange(ref _immediateLaunchesInWindow, 0);',
+              'Interlocked.Exchange(ref _openVinoWorkerContinuationLaunchesInWindow, 0);',
+              'Volatile.Write(ref _latestMainThreadFrameCount, 0);',
+              'Task.Run(OpenVinoWorkerLoop)',
+              '_poseLandmarker.DetectAsync(',
+              '_openVinoMailbox.TryTake(',
+              '_openVinoMailbox.Complete(frame);',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'missing repaired invariants: {missing}')
+          if 'Queue<' in text or 'ConcurrentQueue<' in text:
+              raise SystemExit('queue/backlog type introduced')
+          print('OPENVINO_SCHEDULING_SESSION_RESET_STATIC_AUDIT=PASS')
+          PY
+
+      - name: Commit repaired provider
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Session-reset repair already applied; nothing to commit.'
+            exit 0
+          fi
+          git config user.name 'Golden Needle Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs
+          git commit -m 'fix: reset OpenVINO scheduling session counters'
+          git push origin HEAD:engine/pose-tracking-spike
