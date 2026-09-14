@@ -1,0 +1,76 @@
+name: R2 compile repair
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - '.github/workflows/r2-compile-repair.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Repair malformed R2 telemetry string and generator source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          provider_path = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs')
+          provider = provider_path.read_text(encoding='utf-8')
+          old_provider = '                        ? $"\nCPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +'
+          new_provider = '                        ? $"\\nCPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +'
+          if provider.count(old_provider) != 1:
+              raise SystemExit(f'provider malformed telemetry marker count={provider.count(old_provider)}')
+          provider = provider.replace(old_provider, new_provider, 1)
+          provider_path.write_text(provider, encoding='utf-8')
+
+          generator_path = Path('Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_readback_r2.py')
+          generator = generator_path.read_text(encoding='utf-8')
+          old_generator = r'? $"\nCPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +'
+          new_generator = r'? $"\\nCPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +'
+          if generator.count(old_generator) != 1:
+              raise SystemExit(f'generator telemetry marker count={generator.count(old_generator)}')
+          generator = generator.replace(old_generator, new_generator, 1)
+          generator_path.write_text(generator, encoding='utf-8')
+          PY
+
+      - name: Verify repair
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          provider = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs').read_text(encoding='utf-8')
+          generator = Path('Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_readback_r2.py').read_text(encoding='utf-8')
+          malformed = '? $"\nCPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +'
+          fixed = '? $"\\nCPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +'
+          if malformed in provider:
+              raise SystemExit('provider still contains literal newline inside interpolated string')
+          if provider.count(fixed) != 1:
+              raise SystemExit('provider fixed telemetry string missing or duplicated')
+          if generator.count(r'? $"\\nCPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +') != 1:
+              raise SystemExit('generator escaping repair missing or duplicated')
+          print('R2_TELEMETRY_STRING_REPAIR=PASS')
+          PY
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name 'Golden Needle Orchestrator'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs \
+            Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_readback_r2.py
+          git commit -m 'fix: repair R2 telemetry string literal'
+          git push origin HEAD:engine/pose-tracking-spike
