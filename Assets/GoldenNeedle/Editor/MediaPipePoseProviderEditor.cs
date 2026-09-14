@@ -19,6 +19,7 @@ namespace GoldenNeedle.Editor
         private SerializedProperty _cameraStartupTimeoutSeconds;
         private SerializedProperty _manualRotationOverride;
         private SerializedProperty _mirrorFrontFacingDisplay;
+        private SerializedProperty _inferenceBackend;
         private SerializedProperty _targetInferenceFps;
         private SerializedProperty _readbackTimeoutSeconds;
         private SerializedProperty _trustSettings;
@@ -43,6 +44,8 @@ namespace GoldenNeedle.Editor
                 serializedObject.FindProperty("manualRotationOverride");
             _mirrorFrontFacingDisplay =
                 serializedObject.FindProperty("mirrorFrontFacingDisplay");
+            _inferenceBackend =
+                serializedObject.FindProperty("inferenceBackend");
             _targetInferenceFps =
                 serializedObject.FindProperty("targetInferenceFps");
             _readbackTimeoutSeconds =
@@ -142,6 +145,11 @@ namespace GoldenNeedle.Editor
                 "Pose Landmarker",
                 EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(
+                _inferenceBackend,
+                new GUIContent(
+                    "Inference Backend",
+                    "Select stock MediaPipe/TFLite CPU or the experimental OpenVINO CPU FP32 backend for A/B QA."));
+            EditorGUILayout.PropertyField(
                 _targetInferenceFps,
                 new GUIContent(
                     "Target Inference FPS",
@@ -220,6 +228,9 @@ namespace GoldenNeedle.Editor
                 EditorGUILayout.LabelField(
                     "Body Input",
                     $"{provider.BodyInferenceWidth}x{provider.BodyInferenceHeight} {(provider.BodyInferenceUsesScaledTexture ? "scaled" : "native")}");
+                EditorGUILayout.LabelField(
+                    "Backend",
+                    provider.ActiveInferenceBackendLabel);
                 EditorGUILayout.LabelField(
                     "Immediate Launch",
                     provider.ImmediateInferenceLaunchAfterReadbackEnabled ? "On" : "Off");
