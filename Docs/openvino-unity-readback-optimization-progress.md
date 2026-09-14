@@ -1,166 +1,149 @@
 # Golden Needle — Camera/Readback Latency Optimization Progress
 
-This is the rolling resume point for the next approved Golden Needle performance optimization after the OpenVINO scheduling optimization.
+This is the rolling resume point for the readback-latency investigation that follows the accepted OpenVINO scheduling optimization.
 
-A replacement Web Builder should read this file first, verify current remote `engine/pose-tracking-spike` HEAD, inspect the actual provider/runtime code, and continue from the first unfinished action. Do not restart completed OpenVINO work.
+A replacement Web Builder must read this file first and treat it as newer authority than the original broad readback handoff.
 
 ## Current authorization and status
 
-- USER authorization: **APPROVED**.
+- USER authorization for the readback investigation: **APPROVED**.
 - Branch: `engine/pose-tracking-spike`.
 - Gate A OpenVINO model compatibility: **PASS**.
 - Gate B MediaPipe/OpenVINO semantic parity: **PASS WITH NOTES**.
 - Unity OpenVINO integration correctness: **PASS**.
-- OpenVINO scheduling optimization: **USER ACCEPTED — PASS, scheduling gain accepted**.
-- Stock MediaPipe/TFLite CPU remains available and default-safe; do not remove it.
+- OpenVINO scheduling optimization: **USER ACCEPTED — PASS**.
+- Readback optimization R1 architecture audit: **COMPLETE — READ-ONLY**.
+- Readback optimization R2 implementation: **NOT AUTHORIZED YET**.
+- Stock MediaPipe/TFLite CPU remains available and default-safe.
 - Phase 5A remains **NOT USER ACCEPTED**.
 - Phase 6 remains **NOT STARTED**.
 - No merge to `main` without explicit USER approval.
 
-## Accepted scheduling evidence entering this optimization
+## Repository safety / overstep recovery
 
-The prior OpenVINO scheduling issue was approximately:
+The read-only audit originally started from:
 
-```text
-Prep->launch ~19.9 ms
-frame delta = 1
-origin = Update
-immediate/fast launches ~7.9/s
-```
+`748a5ec1b30cdfc01b8441b3e6d01c64733e0e08`
 
-After the bounded persistent-worker/latest-frame mailbox optimization, USER runtime evidence showed approximately:
+During a continuation after an execution-limit interruption, experimental implementation was started prematurely. The USER stopped that work and required the Builder to clean the branch.
 
-```text
-Camera ~28.4 FPS
-Pose results ~12.7/s
-Readback ~50 ms
-Frame->result ~105 ms
-Prep->launch = 0.0 ms
-frame delta = 0
-origin = RB
-fast launches ~12.7/s
-U/RB/OVW = 0/59/5
-ovw ~2.9/s
-pending = 0
-active = 1
-buffers = 2
-```
+Safe cleanup checkpoint:
 
-The USER reported OpenVINO now feels substantially better and more responsive in F12/avatar control.
+`3cb7752715e4e41d67087f5d02afa54373cb3628`
 
-This is enough to accept the scheduling optimization. Do not reopen it absent new evidence.
+GitHub comparison between `748a5ec...` and `3cb7752...` reports **zero changed files**, and both commits point to the same tree. The abandoned experimental commits remain only in history. Do not continue from them and do not rewrite shared history merely to remove them.
 
-## New bottleneck evidence
+The durable audit is recorded in:
 
-The current DirectCPU readback telemetry is now the dominant visible upstream latency component. Recent USER evidence showed approximately:
+`Docs/openvino-unity-readback-audit.md`
+
+## Accepted bottleneck evidence
+
+Post-scheduling USER evidence is approximately:
 
 ```text
-DirectCPU submit->callback median ~42.7 ms
-DirectCPU submit->callback p95 ~54.8 ms
+Camera ~28-30 FPS
+Fresh pose results ~12-13/s
+Body input 320x240
+Frame->result ~100-105 ms
+
+DirectCPU readback:
+submit->callback ~42.7 ms median / ~54.8 ms p95
 callback->poll ~0.8 ms median / ~1.3 ms p95
 poll->publish ~0.2 ms median / ~0.4 ms p95
 ```
 
 Interpretation:
 
-- callback polling overhead is already small;
-- publish/continuation overhead is already small;
-- the expensive interval is overwhelmingly GPU readback submission -> GPU callback;
-- further optimization of callback polling or OpenVINO worker continuation is not the priority;
-- the next target is the camera/body-pose input path before inference, especially the GPU->CPU transfer/readback architecture.
+- OpenVINO inference itself is already faster than stock TFLite;
+- OpenVINO worker/mailbox scheduling has been accepted and should not be reopened absent new evidence;
+- callback polling and publication are already small;
+- the remaining dominant pre-inference stage is GPU/readback completion.
 
-Current practical end-to-end observations are still roughly:
+## R1 audit result
 
-- camera: ~28-30 FPS;
-- fresh pose results: ~12-13/s;
-- body input: 320x240;
-- readback: commonly ~43-55+ ms;
-- OpenVINO graph/inference side: materially faster than stock TFLite, but total frame->result remains around ~100 ms because upstream frame acquisition/readback dominates.
+The read-only audit evaluated the existing DirectCPU path, Homuler/MediaPipeUnityPlugin CPU read modes, Unity webcam CPU pixel access, graphics-transfer alternatives, and native Windows capture.
 
-## Goal
+### Rejected / deferred
 
-Determine and implement, if justified by evidence, the lowest-risk architecture that materially reduces the camera/body-pose input latency before OpenVINO while preserving Golden Needle's accepted motion semantics and low-end CPU-first product constraint.
+- Further coroutine/callback optimization: rejected as primary direction; it does not remove the measured GPU completion interval.
+- Standard Homuler CPUAsync: rejected; it retains the same AsyncGPUReadback architecture.
+- Homuler synchronous CPU texture read: do not adopt without hardware measurement because it may trade latency for a main/render-thread stall.
+- D3D12/global graphics API switch: rejected for now.
+- Native Windows/Media Foundation camera stack: deferred until lower-risk Unity mechanisms are measured and shown insufficient.
 
-The practical question is:
+### Highest-priority candidate
 
-> Can we substantially reduce the current ~43-55 ms GPU readback stage, ideally by avoiding or restructuring the GPU round-trip, without breaking webcam compatibility, orientation/mirroring semantics, 320x240 pose input, partial-body behavior, frame freshness policy, Unity stability, or the stock fallback path?
+`WebCamTexture.GetPixels32(Color32[] reusableBuffer)` plus reusable CPU 640x480 -> 320x240 resize/flip preparation.
 
-## Architectural invariants
+Conceptual candidate path:
 
-- Keep all work on `engine/pose-tracking-spike`.
-- Do not merge to `main`.
-- Keep stock MediaPipe/TFLite CPU fully functional.
-- Keep OpenVINO CPU FP32 selectable and preserve the accepted persistent-worker/latest-frame mailbox scheduling.
-- Preserve one active readback max, one active inference max, one replaceable latest pending frame max; no backlog/history/replay/catch-up queue.
-- Preserve canonical mapping, stabilization, confidence, calibration, retargeting, locomotion, F12 presentation behavior and partial-body semantics.
-- Keep full-resolution camera/display behavior unchanged unless a measured implementation explicitly proves an equivalent presentation path.
-- Keep initial body inference target at 320x240 for fair A/B comparison.
-- Preserve orientation, rotation and H/V flip semantics exactly.
-- Preserve camera-switch/restart/teardown safety.
-- Do not force D3D12 globally.
-- Do not densify/convert detector models.
-- Do not refactor fixed 33-landmark provider or 20-joint canonical structures during this performance spike.
-- Do not touch USER-owned scene YAML merely for convenience.
-- Do not casually clean/revert local dirty files.
+```text
+WebCamTexture
+  -> GetPixels32(reused camera-sized Color32[])
+  -> reusable CPU resize/H-V transform to 320x240 RGBA
+  -> existing bounded OpenVINO latest-frame mailbox
+  -> existing OpenVINO worker
+```
 
-## Required investigation order
+Why it is promising:
 
-The next Web Builder should audit before implementing.
+- reuses Unity's current camera/device lifecycle;
+- preserves full-resolution `WebCamTexture` for presentation;
+- can avoid per-frame camera-array allocation;
+- may bypass the RenderTexture -> AsyncGPUReadback round trip;
+- requires no OpenVINO model/native ABI changes;
+- can remain optional and easily abandoned if measurement is poor.
 
-At minimum inspect:
+Key uncertainty:
 
-1. Current `MediaPipePoseProvider.cs` readback path and accepted DirectCPU implementation.
-2. `TextureFrame`, `TextureFramePool`, `ReadTextureAsync`, Homuler's image-source/readback helpers, and any native image/frame APIs available in MediaPipeUnityPlugin 0.16.3.
-3. Unity `WebCamTexture` data-access options actually available in Unity 6.5, including whether CPU pixel access is synchronous/copy-heavy and what thread restrictions exist.
-4. The current 640x480 camera -> 320x240 body RenderTexture/blit -> `AsyncGPUReadback.RequestIntoNativeArray` flow.
-5. Whether avoiding GPU readback is realistically possible while preserving webcam/display behavior, for example through:
-   - direct CPU camera pixels if Unity exposes them efficiently;
-   - one CPU-owned webcam/frame buffer reused across frames;
-   - CPU downscale/conversion measured against GPU readback cost;
-   - native Windows camera capture only if there is a mature reusable path and it does not duplicate large camera/orientation semantics unnecessarily;
-   - any lower-latency Unity/graphics transfer API supported on this hardware.
-6. Whether the existing ~43-55 ms submit->callback is actual GPU transfer latency, render/GPU synchronization, coroutine observation artifact, or a combination. Instrument only if the current telemetry cannot distinguish this.
+`GetPixels32` may still synchronize/copy expensively on the USER's Windows webcam/driver. Only same-machine runtime measurement can determine whether the candidate is actually lower latency.
 
-## Reuse-first rule
+## Invariants for any later R2 experiment
 
-Do not immediately write a custom Windows camera stack.
+If the USER/Orchestrator explicitly approves R2 implementation later:
 
-Prefer mature existing Unity/Homuler/MediaPipe mechanisms if they can expose a lower-latency CPU frame path. A native capture path is justified only if evidence shows Unity's current texture/readback architecture is the unavoidable bottleneck and a mature alternative can be integrated without destabilizing camera/orientation/device handling.
+- keep existing DirectCPU/Homuler paths available as fallback and A/B baseline;
+- keep OpenVINO worker/mailbox scheduling unchanged downstream;
+- preserve max one active inference and one replaceable newest pending frame; no FIFO/history/replay/catch-up queue;
+- use persistent/reusable buffers only;
+- keep initial body input at 320x240;
+- preserve `InferenceFlipHorizontally`, `InferenceFlipVertically`, `InferenceRotationDegrees`, display mirroring and canonical left/right semantics;
+- preserve camera switching/restart/teardown safety;
+- preserve canonical, stabilization, calibration, retargeting, locomotion and partial-body semantics;
+- no detector conversion/densification;
+- no native OpenVINO rebuild unless native inputs actually change;
+- expose active acquisition/readback mode and explicit fallback reason in telemetry.
 
-## Development flow
+## Measurement required if R2 is later approved
 
-Checkpoints are recovery markers, not stop-and-wait gates.
+Compare current DirectCPU against the CPU-webcam candidate with the same camera, OpenVINO backend, 320x240 body target, lighting/framing and downstream settings.
 
-The Web Builder should work continuously through:
+Measure separately:
 
-1. architecture/readback audit;
-2. targeted measurement if necessary;
-3. implementation of the best justified candidate;
-4. boundedness/ownership/lifecycle verification;
-5. telemetry updates needed for fair A/B;
-6. USER runtime-QA preparation.
-
-At coherent recovery points, commit/push and update this file. Stop only for a genuine blocker, USER hardware/runtime QA, or execution-limit risk.
-
-## Success criteria for implementation stage
-
-Do not set an arbitrary final latency threshold before measurement. A candidate is worth USER QA if it:
-
-- preserves correctness and all scheduling/lifecycle invariants;
-- measurably reduces the pre-inference camera/readback stage or removes the expensive GPU round-trip;
-- does not introduce per-frame unbounded allocation;
-- does not create a second frame queue/backlog;
-- keeps frame freshness/latest-frame-wins semantics;
-- retains stock fallback;
-- provides enough diagnostics to distinguish capture/prep/readback/copy/inference latency.
-
-The USER/orchestrator owns final runtime acceptance.
+- `GetPixels32` acquisition time;
+- CPU resize/flip preparation time;
+- total camera -> prepared CPU frame time;
+- prepared -> OpenVINO worker launch;
+- OpenVINO graph/inference time;
+- frame -> result latency;
+- fresh results/s and pose age;
+- camera/render FPS;
+- bounded buffer/allocation behavior;
+- F12 fast-arm responsiveness and partial-body recovery.
 
 ## Exact next action
 
-1. Verify remote branch HEAD and read `AGENTS.md` plus the current scheduling/readback implementation.
-2. Perform a reuse-first architecture audit of alternatives to the current GPU->CPU body-frame readback.
-3. If needed, add narrowly scoped diagnostics to distinguish GPU completion latency from Unity observation/copy overhead.
-4. Implement the lowest-risk promising path, keeping the current DirectCPU/Homuler path available as fallback/comparison.
-5. Continue through managed/static/build verification and prepare a concise USER A/B test.
-6. Do not start Phase 6 or merge to `main`.
+**STOP at the R1 decision boundary.**
+
+Do not implement the `GetPixels32` candidate merely because the old broad handoff originally allowed continuous R1->R2 development.
+
+The next action is for the USER/Orchestrator to review the completed audit and explicitly decide whether R2 implementation of the small selectable CPU-camera experiment is authorized.
+
+Until that explicit approval:
+
+- no readback implementation changes;
+- no custom camera stack;
+- no OpenVINO/native changes;
+- no Phase 6;
+- no merge to `main`.
