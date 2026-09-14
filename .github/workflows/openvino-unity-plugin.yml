@@ -11,6 +11,7 @@ on:
       - 'Tools/OpenVinoUnityPosePlugin/scripts/package_unity.ps1'
       - 'Tools/MediaPipeOpenVinoParity/scripts/prepare_models.py'
       - 'Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes'
+      - '.github/workflows/openvino-unity-plugin.yml'
   workflow_dispatch:
 
 permissions:
