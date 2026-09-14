@@ -2905,6 +2905,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             Interlocked.Exchange(ref _totalResultCallbacks, 0);
             Interlocked.Exchange(ref _resultsInWindow, 0);
             Interlocked.Exchange(ref _callbacksInWindow, 0);
+            Interlocked.Exchange(ref _requestsInWindow, 0);
+            Interlocked.Exchange(ref _immediateLaunchesInWindow, 0);
+            Interlocked.Exchange(ref _openVinoWorkerContinuationLaunchesInWindow, 0);
+            Volatile.Write(ref _latestMainThreadFrameCount, 0);
             _cameraFramesInWindow = 0;
             _skippedInWindow = 0;
             _noFreshFrameWaitsInWindow = 0;
