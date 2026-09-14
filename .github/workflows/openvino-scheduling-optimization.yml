@@ -1,0 +1,136 @@
+name: OpenVINO Unity scheduling optimization
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_scheduling_optimization.py'
+      - '.github/workflows/openvino-scheduling-optimization.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Repair generator boundary markers
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_scheduling_optimization.py')
+          text = p.read_text(encoding='utf-8')
+          fixes = {
+              'new_ov_methods + old_ov_method_end,': 'new_ov_methods,',
+              'new_cleanup + old_cleanup_end,': 'new_cleanup,',
+          }
+          changed = 0
+          for old, new in fixes.items():
+              if old in text:
+                  text = text.replace(old, new, 1)
+                  changed += 1
+              elif new not in text:
+                  raise SystemExit(f'generator boundary marker missing: {old}')
+          p.write_text(text, encoding='utf-8', newline='\n')
+          print(f'GENERATOR_BOUNDARY_FIXES={changed}')
+          PY
+
+      - name: Apply fail-closed scheduling transformation
+        run: python3 Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_scheduling_optimization.py
+
+      - name: Validate bounded scheduling invariants
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          provider_path = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs')
+          tests_path = Path('Assets/GoldenNeedle/Tests/Editor/MediaPipeInferenceSchedulingTests.cs')
+          provider = provider_path.read_text(encoding='utf-8')
+          tests = tests_path.read_text(encoding='utf-8')
+          required_provider = [
+              'inferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;',
+              'PoseInferenceBackend.OpenVinoCpuFp32',
+              'public sealed class OpenVinoLatestFrameMailbox',
+              'private Task _openVinoWorkerTask;',
+              'Task.Run(OpenVinoWorkerLoop)',
+              '_openVinoMailbox.TryTake(',
+              '_openVinoMailbox.Complete(frame);',
+              'PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation',
+              'LaunchPreparedOpenVinoInference(',
+              '_openVinoPoseRuntime.ProcessRgba(',
+              '_poseLandmarker.DetectAsync(',
+              'StopAcceptingAndClear()',
+              'PauseOpenVinoMailboxAndDiscardPending();',
+              'U/RB/OVW=',
+              'sched pending=',
+          ]
+          missing = [item for item in required_provider if item not in provider]
+          if missing:
+              raise SystemExit(f'missing provider invariants: {missing}')
+          forbidden = [
+              'Queue<',
+              'ConcurrentQueue<',
+              'Task.Run(() =>\n                        runtime.ProcessRgba(',
+          ]
+          present = [item for item in forbidden if item in provider]
+          if present:
+              raise SystemExit(f'forbidden scheduling constructs remain: {present}')
+          if provider.count('Task.Run(OpenVinoWorkerLoop)') != 1:
+              raise SystemExit('expected exactly one persistent OpenVINO worker task start')
+          if provider.count('new Frame(') != 2:
+              raise SystemExit('mailbox must own exactly two reusable frame slots')
+          required_tests = [
+              'OpenVinoMailboxReplacesPendingWithoutGrowing',
+              'OpenVinoMailboxDropsStaleCoordinateConvention',
+              'OpenVinoMailboxStopClearsPendingAndRejectsNewFrames',
+              'OpenVinoTimestampPolicyIsStrictlyMonotonic',
+              'InferenceContinuationTimingAcceptsOpenVinoWorkerOrigin',
+          ]
+          missing_tests = [item for item in required_tests if item not in tests]
+          if missing_tests:
+              raise SystemExit(f'missing scheduling tests: {missing_tests}')
+          print('OPENVINO_SCHEDULING_STATIC_AUDIT=PASS')
+          PY
+
+      - name: Validate changed-file scope
+        shell: bash
+        run: |
+          allowed='^(Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs|Assets/GoldenNeedle/Tests/Editor/MediaPipeInferenceSchedulingTests.cs|Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_scheduling_optimization.py)$'
+          bad="$(git diff --name-only | grep -Ev "$allowed" || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected files changed:"
+            echo "$bad"
+            exit 1
+          fi
+
+      - name: Show implementation diff summary
+        shell: bash
+        run: |
+          git diff --stat
+          git diff -- Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs | sed -n '1,260p'
+
+      - name: Commit generated scheduling optimization
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Scheduling optimization already applied; nothing to commit.'
+            exit 0
+          fi
+          git config user.name 'Golden Needle Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs \
+            Assets/GoldenNeedle/Tests/Editor/MediaPipeInferenceSchedulingTests.cs \
+            Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_scheduling_optimization.py
+          git commit -m 'perf: continue OpenVINO from latest-frame mailbox'
+          git push origin HEAD:engine/pose-tracking-spike
