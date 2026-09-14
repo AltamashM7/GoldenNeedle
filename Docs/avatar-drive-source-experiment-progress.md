@@ -7,11 +7,14 @@ A replacement Web Builder must read this file first together with `Docs/worker-b
 ## Current authorization and status
 
 - Branch: `engine/pose-tracking-spike`.
-- Starting remote HEAD for this experiment: `45e20cb7df3ea8acd4c6e2cdbce8450a87487971`.
+- Original experiment planning HEAD: `45e20cb7df3ea8acd4c6e2cdbce8450a87487971`.
+- Exact remote HEAD at the start of the authorized implementation run: `ee0db6d2497177d9b2cdab8887a435879665a4fd`.
 - OpenVINO Unity integration correctness: **PASS**.
 - OpenVINO scheduling optimization: **USER ACCEPTED — PASS**.
 - WebCamCPU/GetPixels32 R2 acquisition experiment: **USER ACCEPTED — PASS**.
 - Raw-vs-stabilized avatar-drive A/B experiment: **EXPLICITLY USER AUTHORIZED on 2026-09-14**.
+- Avatar-drive selector implementation: **COMPLETE — NON-HARDWARE VERIFICATION PASS**.
+- Current gate: **USER visual/runtime A/B QA REQUIRED**.
 - Phase 5A remains **NOT USER ACCEPTED**.
 - Phase 6 remains **NOT STARTED**.
 - No merge to `main` without explicit USER approval.
@@ -49,7 +52,7 @@ Interpretation:
 - further inference/readback work is not the immediate next target;
 - residual perceived lag is now small enough that downstream filtering can be visually observed.
 
-## New USER observation that motivates this experiment
+## Experiment motivation
 
 The Lab draws two canonical skeletons over the webcam:
 
@@ -57,19 +60,6 @@ The Lab draws two canonical skeletons over the webcam:
 - **cyan/blue** = `MotionEngineRuntime.StabilizedFrame`.
 
 The USER can visibly see the cyan/blue stabilized skeleton trail the yellow raw canonical skeleton slightly during motion.
-
-Repository inspection confirms the current production pipeline is:
-
-```text
-provider result
-  -> raw canonical
-  -> CanonicalPoseStabilizer / One Euro
-  -> stabilized canonical
-  -> calibration
-  -> rotation solver
-  -> kinematic target builder
-  -> HumanoidRetargeter
-```
 
 Current One Euro defaults remain the accepted Phase 3 values:
 
@@ -79,129 +69,222 @@ beta = 0.05
 derivativeCutoff = 1.0
 ```
 
-The user also tested the separate HumanoidRetargeter presentation-smoothing toggle and could not reliably distinguish the minute difference by eye at the current fast upstream rate. Therefore the next controlled question is whether the avatar can be driven from the raw canonical pose itself without unacceptable jitter or instability.
+The separate HumanoidRetargeter presentation-smoothing toggle was previously tested by the USER and the difference was too small to distinguish reliably at the current fast upstream rate. The authorized experiment therefore compares the two existing canonical endpoints directly without tuning One Euro or presentation smoothing.
 
-## Experiment goal
+## Implemented architecture
 
-Add a **narrow, selectable avatar-drive source** while keeping stabilization alive for calibration and locomotion.
-
-Required conceptual split:
+The runtime now exposes:
 
 ```text
-raw canonical (yellow)
-      |\
-      | \---- optional avatar-drive source
-      v
-stabilization
-      |
-stabilized canonical (cyan)
-      |\
-      | \---- default avatar-drive source
-      |
-      +------ calibration (MUST remain stabilized)
-      +------ locomotion/support-foot/cadence/heading (MUST remain stabilized)
+AvatarDrivePoseSource
+  StabilizedCanonical   [serialized/default]
+  RawCanonical          [experimental]
+
+MotionEngineRuntime.AvatarDriveSource
+MotionEngineRuntime.AvatarDriveFrame
+MotionEngineRuntime.AvatarDriveSourceLabel
 ```
 
-Then the retarget solve uses the selected avatar drive frame plus the same calibration profile:
+The effective data flow is:
 
 ```text
-[ StabilizedCanonical | RawCanonical ]
-        +
-stabilized-derived calibration profile
-        -> rotation solve
-        -> kinematic targets / IK
-        -> humanoid
+provider
+  -> raw canonical -----------------------------+
+  -> One Euro stabilization                     |
+  -> stabilized canonical                       |
+          |                                      |
+          +-> calibration (always stabilized)   |
+          +-> locomotion (always stabilized)     |
+                                                 |
+Avatar Drive Source selector --------------------+
+          |
+          +-> StabilizedCanonical [DEFAULT]
+          +-> RawCanonical [EXPERIMENTAL]
+          |
+          -> rotation solver
+          -> kinematic targets / IK
+          -> HumanoidRetargeter source/torso mapping
+          -> avatar
 ```
 
-## Required design invariants
+### Calibration invariant
 
-- `StabilizedCanonical` remains the serialized/default production behavior.
-- `RawCanonical` is experimental/selectable only.
-- Calibration must continue to update from `StabilizedFrame` in both modes.
-- `EmbodiedLocomotionController` and its root/cadence/heading inputs must continue using `runtime.StabilizedFrame` in both modes.
-- The yellow and cyan debug skeletons must continue to be generated/drawn simultaneously.
-- The selected avatar-drive frame must be used consistently for BOTH:
-  - rotation solving / kinematic-target generation; and
-  - HumanoidRetargeter torso/source-frame mapping.
-  Do not create a mixed raw-limbs/stabilized-torso comparison.
-- Do not modify One Euro parameters yet. This experiment tests the existing raw-vs-existing-stabilized endpoints first.
-- Do not modify OpenVINO, WebCamCPU, camera acquisition, inference cadence, mailbox scheduling, calibration thresholds, IK math, canonical coordinate semantics, or locomotion behavior.
-- Do not add queues/history/replay/prediction.
-- Do not edit USER-owned scene YAML merely to set the experimental selector.
-- No `main` merge. No Phase 6.
+`MotionEngineRuntime.Update()` still contains:
 
-## Intended implementation seam
+```text
+_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds)
+```
 
-Prefer the smallest reusable change in `MotionEngineRuntime`:
+The selector is resolved only after stabilization and calibration update. Both raw and stabilized avatar-drive modes therefore use the same stabilized-derived calibration profile.
 
-- introduce an enum similar to `AvatarDrivePoseSource { StabilizedCanonical, RawCanonical }`;
-- serialize the selector on `MotionEngineRuntime`, defaulting to `StabilizedCanonical`;
-- expose a read-only property returning the effective drive frame, e.g. `AvatarDriveFrame`;
-- keep `_calibration.Update(_stabilizedFrame, ...)` unchanged;
-- choose the frame passed to `_rotationSolver.Solve(...)` and `_kinematicTargetBuilder.Build(...)` based on the selector;
-- change `HumanoidRetargeter` to use the runtime's effective avatar-drive frame rather than hard-coding `runtime.StabilizedFrame` for torso/source mapping;
-- leave locomotion explicitly on `runtime.StabilizedFrame`.
+### Rotation / kinematic invariant
 
-Expose the active/requested drive source clearly in Inspector and/or F7 diagnostics so USER evidence cannot be misidentified.
+`MotionEngineRuntime.Update()` resolves one `avatarDriveFrame = AvatarDriveFrame`, and that same frame is passed to both:
 
-## Verification expectations before USER QA
+```text
+_rotationSolver.Solve(avatarDriveFrame, ...)
+_kinematicTargetBuilder.Build(avatarDriveFrame, ...)
+```
 
-Builder should verify at minimum:
+No mixed raw/stabilized limb solve was introduced.
 
-- default behavior remains stabilized;
-- raw mode actually selects `RawCanonicalFrame` for all avatar-retarget pose inputs;
-- calibration remains stabilized in raw mode;
-- locomotion remains stabilized in raw mode;
-- raw/stabilized debug skeletons remain unchanged;
-- presentation smoothing remains independent and unchanged;
-- no scene/package/project/native/OpenVINO changes;
-- no per-frame allocations introduced by the selector;
-- compile/static/unit/helper checks appropriate to the changed files pass.
+### HumanoidRetargeter torso/source invariant
 
-Checkpoints are recovery markers, not approval gates. Continue through implementation and non-hardware verification until genuine USER visual/runtime A/B QA is required, a real blocker appears, or execution-limit risk requires a handoff.
+`HumanoidRetargeter.LateUpdate()` now gets its source mapping frame from:
 
-## Planned USER A/B after Builder verification
+```text
+runtime.AvatarDriveFrame
+```
 
-Use the accepted best upstream path in both runs:
+Therefore torso/source-frame mapping uses the same selected canonical frame as rotation solving and kinematic-target generation.
+
+### Locomotion invariant
+
+`EmbodiedLocomotionController` was not modified. Root/support tracking, cadence, and heading continue to read `runtime.StabilizedFrame` directly in all avatar-drive modes.
+
+### Debug / presentation invariants
+
+- yellow raw canonical rendering remains `runtime.RawCanonicalFrame`;
+- cyan stabilized canonical rendering remains `runtime.StabilizedFrame`;
+- both skeletons continue to be generated/drawn simultaneously;
+- F7 now reports the effective avatar source as `RawCanonical` or `StabilizedCanonical`;
+- presentation-smoothing implementation and settings were not changed;
+- One Euro settings and implementation were not changed.
+
+## Implementation checkpoints
+
+### Runtime implementation
+
+Generated implementation commit:
+
+`100c3dc927314a2107b62a7acdf46037dc8f6738`
+
+Runtime files changed in that commit only:
+
+- `Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs`
+- `Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs`
+- `Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs`
+
+### Fail-closed audit tooling
+
+Audit/recovery tooling added:
+
+- `Tools/AvatarDriveExperiment/apply_avatar_drive_source_experiment.py`
+- `.github/workflows/avatar-drive-source-experiment.yml`
+
+The current-head transformer is idempotent so it can verify an already-applied implementation without trying to duplicate the selector.
+
+Verified pre-documentation checkpoint:
+
+`d12e7ad1aa420338f1233cd32b055373b3a1c267`
+
+## Verification performed
+
+GitHub Actions workflow `Avatar drive source experiment` performed a fail-closed static/diff-scope audit.
+
+Successful implementation run:
+
+- run `34852740425` — **PASS**.
+
+Successful current-HEAD/idempotent audit:
+
+- run `34852975877` — **PASS**.
+
+Verified conditions:
+
+- `StabilizedCanonical` is the serialized default;
+- `RawCanonical` resolves to the raw frame and stabilized mode resolves to the stabilized frame;
+- calibration remains hard-wired to `_stabilizedFrame`;
+- rotation solver and kinematic target builder consume the same selected `avatarDriveFrame`;
+- HumanoidRetargeter source/torso mapping consumes `runtime.AvatarDriveFrame`;
+- locomotion retains its direct `runtime.StabilizedFrame` consumers and has no raw/avatar-drive dependency;
+- raw and stabilized debug skeleton references remain intact;
+- presentation smoothing surface remains unchanged;
+- One Euro defaults remain `1.0 / 0.05 / 1.0`;
+- no queue/history/replay/prediction was added;
+- generated runtime diff is limited to the three intended runtime/debug files;
+- branch comparison from `ee0db6d...` to `d12e7ad...` shows no scene, `Packages`, `ProjectSettings`, OpenVINO, WebCamCPU, native plugin, model, locomotion, stabilizer, or IK-math edits.
+
+A transient second CI run failed only because the original one-shot transformer correctly refused to reapply to an already-modified tree. No runtime file changed in that failure. The transformer was then made explicitly idempotent and the current-HEAD audit passed.
+
+No full Unity Editor hardware/runtime test was run remotely. The remaining behavior question is intentionally visual and must be judged on the USER's camera/avatar setup.
+
+## USER A/B QA
+
+Use identical common settings in both runs:
 
 ```text
 Inference Backend = OpenVINO CPU FP32
 Frame Acquisition = WebCamCPU/GetPixels32
 Body input = 320x240
-Full-body framing = ~30 FPS camera where practical
+full-body framing where practical (~30 FPS capture)
+same camera / lighting / calibration / retarget settings
 ```
 
-Primary source-isolation comparison should keep presentation smoothing **the same in both runs**. Prefer OFF initially if practical so it does not mask source differences; if raw mode is visibly jittery, optionally repeat with presentation smoothing ON to judge whether minimal downstream smoothing makes raw drive usable.
+Keep Presentation Smoothing identical between runs. Prefer **OFF** for the primary source-isolation comparison if practical.
+
+### Run A — baseline
+
+```text
+MotionEngineRuntime
+  Avatar Drive Pose Source = StabilizedCanonical
+```
+
+Confirm F7 reports:
+
+```text
+Avatar source: StabilizedCanonical
+```
+
+### Run B — experimental
+
+```text
+MotionEngineRuntime
+  Avatar Drive Pose Source = RawCanonical
+```
+
+Confirm F7 reports:
+
+```text
+Avatar source: RawCanonical
+```
 
 Compare:
 
-A. `Avatar Drive Source = StabilizedCanonical` (existing/default)
-B. `Avatar Drive Source = RawCanonical` (experimental)
-
-Observe:
-
 - perceived motion-to-avatar latency;
-- fast arm/reach response;
+- fast arms/reaches;
 - torso response;
-- leg/knee response when visible;
+- legs/knees when visible;
 - idle jitter / micro-jitter;
-- sudden snapping or IK instability;
+- snapping or IK instability;
 - partial-body loss/recovery;
-- orientation and left/right correctness;
-- whether raw mode creates unacceptable instability that the cyan skeleton had been suppressing.
+- orientation and left/right parity.
 
-The decision is qualitative first because the remaining difference may be below easy human timing measurement. Phone video is acceptable and preferred over OBS if recording is useful.
+The yellow raw and cyan stabilized skeletons should still both be visible according to the existing debug toggles. The selector should affect only the avatar drive, not which debug skeletons exist.
+
+If raw mode is clearly faster but slightly noisy, an optional second comparison may repeat both source modes with Presentation Smoothing ON. Do not tune One Euro yet.
+
+Phone-recorded external video is preferred if recording helps; avoid OBS unless necessary.
+
+## Risks / interpretation
+
+- Static verification proves routing/invariants, not subjective stability or latency on the USER's avatar.
+- Raw canonical data intentionally bypasses One Euro positional smoothing for avatar pose solving, so increased micro-jitter or sharper loss/recovery behavior is possible and is exactly what the A/B must evaluate.
+- Calibration and locomotion remain protected by stabilized canonical input, so this test does not evaluate raw-drive suitability for those subsystems.
+- Do not accept RawCanonical solely because it feels faster; it must also remain acceptably stable.
 
 ## CONTINUE FROM HERE
 
-**STATUS: USER has authorized implementation.**
+**STATUS: IMPLEMENTATION COMPLETE; USER VISUAL/RUNTIME A/B QA IS THE NEXT GATE.**
 
-Next Builder action:
+Current verified code checkpoint before this documentation commit:
 
-1. inspect current remote HEAD and the exact `MotionEngineRuntime`/`HumanoidRetargeter`/locomotion data flow before editing;
-2. implement the narrow default-safe selector described above;
-3. preserve calibration and locomotion on stabilized canonical data;
-4. add explicit runtime diagnostics for the selected avatar-drive source;
-5. run appropriate managed/static/Unity-safe verification;
-6. checkpoint/push coherent recovery commits and update this file with exact SHAs and state;
-7. stop only when genuine USER A/B visual QA is required, a real blocker appears, or execution-limit risk requires handoff.
+`d12e7ad1aa420338f1233cd32b055373b3a1c267`
+
+Next action:
+
+1. USER pulls the latest `engine/pose-tracking-spike` branch and lets Unity compile.
+2. Run the stabilized baseline and raw experiment exactly as described above.
+3. Capture F7 source label and report qualitative responsiveness/stability observations, plus screenshots/video if useful.
+4. On the next Builder/Orchestrator continuation, read this file first and evaluate the USER A/B evidence.
+5. Do not tune One Euro, alter presentation smoothing logic, reopen OpenVINO/WebCamCPU, merge to `main`, or start Phase 6 unless separately authorized.
