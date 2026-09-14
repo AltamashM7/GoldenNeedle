@@ -35,19 +35,20 @@ jobs:
           locomotion = Path('Assets/GoldenNeedle/Core/Motion/Locomotion/EmbodiedLocomotionController.cs').read_text(encoding='utf-8')
           presenter = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs').read_text(encoding='utf-8')
 
-          required_enum = [
+          def require(text, items, label):
+              missing = [item for item in items if item not in text]
+              if missing:
+                  raise SystemExit(f'{label}: missing {missing}')
+
+          require(runtime, [
               'StabilizedCanonical = 0,',
               'RawCanonical = 1,',
               'ResponsiveCanonicalA = 2,',
               'ResponsiveCanonicalB = 3,',
-          ]
-          missing = [x for x in required_enum if x not in runtime]
-          if missing:
-              raise SystemExit(f'enum serialization invariants missing: {missing}')
-          if 'avatarDrivePoseSource = AvatarDrivePoseSource.StabilizedCanonical;' not in runtime:
-              raise SystemExit('serialized/default avatar source is no longer stabilized')
+              'avatarDrivePoseSource = AvatarDrivePoseSource.StabilizedCanonical;',
+          ], 'enum/default serialization')
 
-          stable_defaults = [
+          require(settings, [
               'public float acquireConfidence = 0.60f;',
               'public float sustainConfidence = 0.40f;',
               'public int acquireSamples = 2;',
@@ -58,14 +59,10 @@ jobs:
               'public float derivativeCutoff = 1f;',
               'public float defaultDeltaTimeSeconds = 0.05f;',
               'public float maximumDeltaTimeSeconds = 0.25f;',
-          ]
-          missing = [x for x in stable_defaults if x not in settings]
-          if missing:
-              raise SystemExit(f'existing stable profile changed: {missing}')
-          if 'public void Stabilize(' not in stabilizer:
-              raise SystemExit('existing canonical stabilizer surface changed')
+          ], 'existing stable profile')
+          require(stabilizer, ['public void Stabilize('], 'existing stabilizer surface')
 
-          responsive_profile = [
+          require(runtime, [
               'private const float ResponsiveAMinCutoff = 1.5f;',
               'private const float ResponsiveABeta = 0.25f;',
               'private const float ResponsiveBMinCutoff = 2.0f;',
@@ -78,143 +75,119 @@ jobs:
               'resetAfterLossSeconds = 0.25f,',
               'defaultDeltaTimeSeconds = 0.05f,',
               'maximumDeltaTimeSeconds = 0.25f,',
-          ]
-          missing = [x for x in responsive_profile if x not in runtime]
-          if missing:
-              raise SystemExit(f'responsive profile constants/settings missing: {missing}')
+              'ResponsiveCanonicalA (1.5/0.25/1.0)',
+              'ResponsiveCanonicalB (2.0/0.50/1.0)',
+          ], 'responsive profiles/labels')
 
-          persistent = [
+          require(runtime, [
               'private CanonicalPoseStabilizer _responsiveStabilizerA;',
               'private CanonicalPoseStabilizer _responsiveStabilizerB;',
               'private readonly CanonicalPoseFrame _responsiveCanonicalFrameA = new CanonicalPoseFrame();',
               'private readonly CanonicalPoseFrame _responsiveCanonicalFrameB = new CanonicalPoseFrame();',
-          ]
-          missing = [x for x in persistent if x not in runtime]
-          if missing:
-              raise SystemExit(f'persistent responsive state missing: {missing}')
+              'new CanonicalPoseStabilizer(\n                CreateResponsiveAvatarSettings(ResponsiveAMinCutoff, ResponsiveABeta));',
+              'new CanonicalPoseStabilizer(\n                CreateResponsiveAvatarSettings(ResponsiveBMinCutoff, ResponsiveBBeta));',
+          ], 'persistent responsive state')
 
           update_start = runtime.index('        private void Update()')
           update_end = runtime.index('        public void BeginCalibration()', update_start)
           update = runtime[update_start:update_end]
           if 'new CanonicalPoseStabilizer' in update or 'new CanonicalPoseFrame' in update:
-              raise SystemExit('per-frame responsive filter/frame allocation detected')
+              raise SystemExit('per-frame stabilizer/frame allocation detected')
 
-          continuous = [
-              '_responsiveStabilizerA.Stabilize(\n                _rawCanonicalFrame,\n                _responsiveCanonicalFrameA,',
-              '_responsiveStabilizerB.Stabilize(\n                _rawCanonicalFrame,\n                _responsiveCanonicalFrameB,',
-          ]
-          missing = [x for x in continuous if x not in runtime]
-          if missing:
-              raise SystemExit(f'continuous raw->responsive updates missing: {missing}')
+          require(update, [
+              '_stabilizer.Stabilize(_rawCanonicalFrame, _stabilizedFrame, _lastEvaluationTimeSeconds);',
+              '_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);',
+              '_responsiveStabilizerA.Stabilize(',
+              '_responsiveCanonicalFrameA,',
+              '_responsiveStabilizerB.Stabilize(',
+              '_responsiveCanonicalFrameB,',
+              'var avatarDriveFrame = AvatarDriveFrame;',
+              '_rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);',
+              '_kinematicTargetBuilder.Build(avatarDriveFrame, _calibration.Profile, _kinematicTargets);',
+          ], 'continuous update/solve path')
+          stable_pos = update.index('_stabilizer.Stabilize(')
+          calibration_pos = update.index('_calibration.Update(_stabilizedFrame')
           a_pos = update.index('_responsiveStabilizerA.Stabilize(')
           b_pos = update.index('_responsiveStabilizerB.Stabilize(')
-          calibration_pos = update.index('_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);')
-          if not (a_pos < calibration_pos and b_pos < calibration_pos):
-              raise SystemExit('responsive stabilizers are not continuously updated before avatar selection/calibration solve')
+          select_pos = update.index('var avatarDriveFrame = AvatarDriveFrame;')
+          if not (stable_pos < calibration_pos < a_pos < select_pos and stable_pos < calibration_pos < b_pos < select_pos):
+              raise SystemExit('stable calibration ordering or continuous responsive warm-up ordering changed')
 
-          routing = [
+          require(runtime, [
               'case AvatarDrivePoseSource.RawCanonical:\n                        return _rawCanonicalFrame;',
               'case AvatarDrivePoseSource.ResponsiveCanonicalA:\n                        return _responsiveCanonicalFrameA;',
               'case AvatarDrivePoseSource.ResponsiveCanonicalB:\n                        return _responsiveCanonicalFrameB;',
               'default:\n                        return _stabilizedFrame;',
-              'var avatarDriveFrame = AvatarDriveFrame;',
-              '_rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);',
-              '_kinematicTargetBuilder.Build(avatarDriveFrame, _calibration.Profile, _kinematicTargets);',
-          ]
-          missing = [x for x in routing if x not in runtime]
-          if missing:
-              raise SystemExit(f'avatar source routing missing: {missing}')
-
-          if '_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);' not in runtime:
-              raise SystemExit('calibration no longer consumes stabilized frame')
-          forbidden_calibration = [
+          ], 'four-way AvatarDriveFrame routing')
+          if any(x in runtime for x in [
               '_calibration.Update(AvatarDriveFrame',
               '_calibration.Update(_rawCanonicalFrame',
               '_calibration.Update(_responsiveCanonicalFrameA',
               '_calibration.Update(_responsiveCanonicalFrameB',
-          ]
-          if any(x in runtime for x in forbidden_calibration):
-              raise SystemExit('calibration was routed through experimental avatar source')
+          ]):
+              raise SystemExit('calibration routed through experimental avatar source')
 
           if locomotion.count('runtime.StabilizedFrame') < 3:
-              raise SystemExit('locomotion stable-frame consumers were changed')
+              raise SystemExit('locomotion stable-frame consumers changed')
           if any(x in locomotion for x in ['runtime.AvatarDriveFrame', 'runtime.RawCanonicalFrame', 'ResponsiveCanonical']):
-              raise SystemExit('locomotion was routed through experimental avatar source')
+              raise SystemExit('locomotion routed through experimental avatar source')
+          require(retargeter, ['var sourceFrame = runtime.AvatarDriveFrame;'], 'retarget source authority')
 
-          if 'var sourceFrame = runtime.AvatarDriveFrame;' not in retargeter:
-              raise SystemExit('HumanoidRetargeter does not use AvatarDriveFrame authority')
-
-          reset_requirements = [
-              'ResetResponsiveAvatarStabilizers();',
+          require(runtime, [
               '_responsiveStabilizerA?.Reset();',
               '_responsiveStabilizerB?.Reset();',
               '_responsiveCanonicalFrameA.Clear();',
               '_responsiveCanonicalFrameB.Clear();',
-          ]
-          missing = [x for x in reset_requirements if x not in runtime]
-          if missing:
-              raise SystemExit(f'responsive lifecycle reset/clear missing: {missing}')
+          ], 'responsive reset/clear')
           if runtime.count('ResetResponsiveAvatarStabilizers();') < 2:
-              raise SystemExit('responsive reset helper is not used for both coordinate and explicit calibration reset')
+              raise SystemExit('responsive reset helper not used by coordinate + explicit calibration reset')
 
-          debug_requirements = [
+          require(presenter, [
               'runtime.RawCanonicalFrame,',
               'runtime.StabilizedFrame,',
               'Avatar source: {(runtime == null ? "Unavailable" : runtime.AvatarDriveSourceLabel)}',
-          ]
-          missing = [x for x in debug_requirements if x not in presenter]
-          if missing:
-              raise SystemExit(f'raw/stable debug/F7 source diagnostic missing: {missing}')
-          label_requirements = [
-              'ResponsiveCanonicalA (1.5/0.25/1.0)',
-              'ResponsiveCanonicalB (2.0/0.50/1.0)',
-          ]
-          if any(x not in runtime for x in label_requirements):
-              raise SystemExit('responsive F7 labels do not expose exact profiles')
-
-          presentation_requirements = [
+          ], 'raw/stable debug and F7 source diagnostic')
+          require(retargeter, [
               'private bool enablePresentationSmoothing = true;',
               'private float presentationResponse = 45f;',
               'private float maxPresentationBlendSeconds = 0.05f;',
               'BoundedQuaternionPresentationSmoother',
-          ]
-          if any(x not in retargeter for x in presentation_requirements):
-              raise SystemExit('presentation smoothing implementation/default surface changed')
+          ], 'presentation smoothing preservation')
 
-          forbidden_history = ['Queue<', 'ConcurrentQueue<', 'frameHistory', 'Replay', 'Extrapolat', 'Predict']
-          if any(x in runtime for x in forbidden_history):
-              raise SystemExit('queue/history/replay/prediction-like state introduced in runtime')
+          if any(x in runtime for x in ['Queue<', 'ConcurrentQueue<', 'frameHistory', 'Replay', 'Extrapolat', 'Predict']):
+              raise SystemExit('queue/history/replay/prediction-like state introduced')
 
           print('RESPONSIVE_AVATAR_STABILIZER_STATIC_AUDIT=PASS')
-          print('ENUM_SERIALIZATION=PASS')
+          print('ENUM_SERIALIZATION_STABLE_0_RAW_1=PASS')
           print('STABLE_PROFILE_UNCHANGED=PASS')
-          print('RESPONSIVE_A_PROFILE=1.5/0.25/1.0 PASS')
-          print('RESPONSIVE_B_PROFILE=2.0/0.50/1.0 PASS')
-          print('CONTINUOUS_PARALLEL_UPDATES=PASS')
+          print('RESPONSIVE_A_1.5_0.25_1.0=PASS')
+          print('RESPONSIVE_B_2.0_0.50_1.0=PASS')
+          print('STABLE_CALIBRATION_ORDER_PRESERVED=PASS')
+          print('CONTINUOUS_PARALLEL_RESPONSIVE_UPDATES=PASS')
           print('CALIBRATION_STABLE_ONLY=PASS')
           print('LOCOMOTION_STABLE_ONLY=PASS')
           print('RETARGET_SOURCE_CONSISTENCY=PASS')
           print('RESET_LIFECYCLE=PASS')
-          print('DEBUG_AND_PRESENTATION_PRESERVED=PASS')
+          print('DEBUG_PRESENTATION_PRESERVED=PASS')
           PY
 
       - name: Validate experiment diff scope
         shell: bash
         run: |
           allowed='^(Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs|.github/workflows/responsive-avatar-stabilizer-audit.yml)$'
-          bad="$(git diff --name-only c07cea3801a11ba100d5a465935906895debbf63..HEAD | grep -Ev "$allowed" || true)"
+          changed="$(git diff --name-only c07cea3801a11ba100d5a465935906895debbf63..HEAD)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
           if [ -n "$bad" ]; then
-            echo 'Unexpected files changed in responsive avatar stabilizer implementation checkpoint:'
+            echo 'Unexpected files changed:'
             echo "$bad"
             exit 1
           fi
-          if git diff --name-only c07cea3801a11ba100d5a465935906895debbf63..HEAD | grep -Eq '(^|/)PoseTrackingSpike\.unity$|^ProjectSettings/|^Packages/|OpenVino|WebCamCpu|Plugins/|MediaPipePoseProvider|EmbodiedLocomotionController|HumanoidRetargetingMath|CanonicalPoseStabilizer\.cs|CanonicalStabilizerSettings\.cs'; then
-            echo 'Forbidden scene/project/package/OpenVINO/WebCam/provider/locomotion/IK/stable-stabilizer change detected'
+          if printf '%s\n' "$changed" | grep -Eq '(^|/)PoseTrackingSpike\.unity$|^ProjectSettings/|^Packages/|OpenVino|WebCamCpu|Plugins/|MediaPipePoseProvider|EmbodiedLocomotionController|HumanoidRetargetingMath|CanonicalPoseStabilizer\.cs|CanonicalStabilizerSettings\.cs'; then
+            echo 'Forbidden scope change detected'
             exit 1
           fi
 
       - name: Show focused diff
-        shell: bash
         run: |
           git diff --stat c07cea3801a11ba100d5a465935906895debbf63..HEAD
           git diff c07cea3801a11ba100d5a465935906895debbf63..HEAD -- Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs
