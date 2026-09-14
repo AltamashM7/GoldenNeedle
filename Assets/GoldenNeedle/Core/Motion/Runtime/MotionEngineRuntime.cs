@@ -150,7 +150,7 @@ namespace GoldenNeedle.Core.Motion.Runtime
         public bool IsRichSourceAvailable => _richSource != null;
         public string RichMotionSummary => _richSource == null
             ? "Rich: source unavailable"
-            : $"Rich v{_richMotionFrame.schemaVersion} basis={_richMotionFrame.validOrientationCount}/{RichMotionFrame.OrientationChannelCount} twist O/H/R/U={_richMotionFrame.observedTwistCount}/{_richMotionFrame.heldTwistCount}/{_richMotionFrame.referenceFallbackTwistCount}/{_richMotionFrame.unobservableTwistCount}";
+            : $"Rich v{_richMotionFrame.schemaVersion} basis={_richMotionFrame.validOrientationCount}/{GoldenNeedle.Core.Motion.Rich.RichMotionFrame.OrientationChannelCount} twist O/H/R/U={_richMotionFrame.observedTwistCount}/{_richMotionFrame.heldTwistCount}/{_richMotionFrame.referenceFallbackTwistCount}/{_richMotionFrame.unobservableTwistCount}";
 
         private void Awake()
         {
