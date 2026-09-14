@@ -2,11 +2,8 @@
 
 Authoritative current-state refresh: 2026-09-14.
 
-Last substantive runtime/code checkpoint before this documentation refresh:
-`4a20b6a00bb86a023cab764407ec8c148356529d` — verified responsive-avatar beta-sweep runtime/audit state.
-
-Last completed documentation checkpoint before the pre-Phase-5A foundation design:
-`334d6f66873fec29e7e42e4a6fc1c005692e8014` — `docs: defer final avatar smoothing fine tuning`.
+Latest substantive runtime/code checkpoint before this documentation refresh:
+`d21447fb9a99981ffa17c064e59333f22492ed20` — Foundation B camera presets plus read-only Foundation A/B verification hygiene.
 
 Working branch: `engine/pose-tracking-spike`.
 
@@ -29,28 +26,32 @@ This document records what is true **now**. Historical experiment details remain
 - Phase 3 — stabilization/confidence: **PASS**.
 - Phase 4 — humanoid retargeting/calibration/orientation: **USER ACCEPTED — PASS**.
 - Motion Engine latency/performance optimization milestone: **CURRENT MILESTONE COMPLETE; FURTHER TUNING DEFERRED**.
-- Pre-Phase-5A foundation track: **USER APPROVED / IMPLEMENTATION NOT STARTED**.
+- Foundation A — Unified Command System + modular speech input: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
+- Foundation B — Camera View / Focus Preset System: **IMPLEMENTED / USER MANUAL QA DEFERRED**. Builder automated/pure/static verification is green; independent Orchestrator diff audit is still required before treating the implementation checkpoint as reviewed.
+- Foundations C–E: **NOT STARTED**.
 - Phase 5A — support-foot locomotion / Lab-Game presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 
 The project is **not** blocked on further motion-engine latency optimization. The current engine is strong enough to continue normal development. Additional smoothing/performance tuning remains intentionally available later.
 
-The USER has now finalized the prerequisites to complete before returning to Phase 5A acceptance. The approved architecture and order are documented in `Docs/pre-phase5a-foundations.md`.
+The USER has chosen to continue Foundations A–E sequentially with focused implementation/code/automated verification, then perform one comprehensive manual Unity/runtime foundation QA pass after all five are built. This sequencing decision does **not** auto-accept any foundation, does not remove the deferred speech/camera QA requirements, and does not make visual/microphone behavior verified.
 
 ## Approved pre-Phase-5A foundation track
 
-The next development sequence is:
+The development sequence remains:
 
 ```text
-A — Unified Command System + modular speech input
+A — Unified Command System + modular speech input       IMPLEMENTED / manual QA deferred
     ↓
-B — Camera View / Focus Preset System
+B — Camera View / Focus Preset System                  IMPLEMENTED / manual QA deferred
     ↓
-C — Rich canonical motion/orientation architecture
+C — Rich canonical motion/orientation architecture     NOT STARTED
     ↓
-D — MediaPipe hand-landmark integration
+D — MediaPipe hand-landmark integration                NOT STARTED
     ↓
-E — Orientation-aware + optional hand/finger retargeting
+E — Orientation-aware + optional hand/finger retarget  NOT STARTED
+    ↓
+Comprehensive A–E manual/runtime QA
     ↓
 Return to Phase 5A locomotion acceptance/fixes
 ```
@@ -59,21 +60,40 @@ These are foundation tasks, not a replacement for Phase 5A. Phase 5A remains imp
 
 ### Foundation A — commands and speech
 
-- create one project-owned command/action layer;
-- keyboard, speech, UI and future inputs call the same underlying actions;
-- do not simulate keyboard presses from speech;
-- speech backend remains replaceable;
-- phrase→action mappings are Inspector-editable;
-- include cooldown/state guards, optional wake prefix and graceful unsupported-backend behavior;
-- first actions should cover calibration/reset/recenter/retry/presentation/camera actions where appropriate.
+Status: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
+
+Current implementation:
+
+- one project-owned `GoldenNeedleCommandRouter` shared by keyboard, speech, and future UI callers;
+- existing R/V/F1–F12/C/X/K keyboard meanings route through the command system rather than duplicating runtime behavior;
+- speech remains behind replaceable `ISpeechInputProvider`;
+- current Windows prototype uses platform-guarded Unity `KeywordRecognizer` without keyboard simulation;
+- phrase mappings, command parameters, confidence thresholds, cooldown, enablement, and optional wake prefix remain configurable;
+- calibration/reset/recenter/retry/Lab-Game presentation/capture-camera commands reuse their established runtime authorities;
+- Foundation A CI is now permanently read-only: `contents: read`, no migration execution, no commit/push behavior, no frozen pre-Foundation-A diff gate.
+
+Deferred USER QA still includes local Unity compilation, real microphone recognition, wake-prefix behavior, cooldown behavior, and keyboard/runtime equivalence. Do not mark speech USER-verified until that pass occurs.
 
 ### Foundation B — camera presets
 
-Use one primary gameplay/presentation camera with named, data-driven presets rather than many simultaneously rendering full-screen cameras.
+Status: **IMPLEMENTED / USER MANUAL QA DEFERRED**.
 
-Initial useful presets include Back, Front, Left, Right, FullBody, Hands, LeftHand and RightHand. Bone-relative focus must fall back safely when optional targets are missing.
+Current implementation:
 
-Speech invokes camera selection through the shared command layer.
+- the existing `ThirdPersonLabCamera` remains the single gameplay/presentation Camera authority;
+- no extra simultaneously rendering gameplay cameras and no `PoseTrackingSpike.unity` YAML migration were added;
+- presets are serialized/data-driven and Inspector-editable;
+- initial presets are `Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, and `RightHand`;
+- Back is seeded from the existing third-person compatibility values (`4.0` distance, `2.2` height, `1.15` look height, response `7.0`, FOV `55`) so existing Game View behavior remains the baseline;
+- placement is relative to the retained valid world/body heading; temporary heading loss retains the prior valid heading and no hard-coded global direction is invented before heading exists;
+- focus semantics support avatar/body, both hands, left hand, and right hand with safe hand→lower-arm/body/root fallbacks;
+- preset changes use independent exponential position/orientation/FOV response values;
+- `GoldenNeedleCommand.SelectCameraViewPreset` is live and parameterized; command routing contains no camera-transform math;
+- default speech mappings include `back/front/left/right/full body/hands/left hand/right hand view` while `game view` and `lab view` keep their existing meanings;
+- selecting a preset does **not** toggle Lab/Game mode; the selection is retained and applies when Game View is active;
+- F12 remains `ToggleLabGamePresentation -> ThirdPersonLabCamera.ToggleGameView()` and Lab still uses the persistent clear-only, culling-mask-zero Camera.
+
+Builder verification is green, including pure camera math/fallback smoke, command/speech regression smoke, static integration invariants, single-camera scene assertion, and read-only workflow checks. Unity Editor compilation, actual camera visuals/transitions, and speech-driven preset selection remain part of the deferred comprehensive USER QA pass.
 
 ### Foundation C — rich canonical orientation
 
@@ -345,7 +365,7 @@ Implemented pieces include:
 - safe recenter;
 - avatar root X/Z authority only;
 - F12 Lab/Game presentation;
-- third-person camera behavior;
+- third-person camera behavior plus Foundation B gameplay view presets;
 - diagnostics and world/grid views.
 
 Known USER QA findings that remain unresolved:
@@ -375,7 +395,7 @@ Sentis and earlier OpenVINO benchmark history remains documented in the dedicate
 
 ## Current development state
 
-The Motion Engine is sufficiently optimized for the current milestone, and the next track is fidelity/usability infrastructure:
+The Motion Engine is sufficiently optimized for the current milestone, and the current track is fidelity/usability infrastructure:
 
 ```text
 camera/input acquisition       strong baseline
@@ -384,7 +404,9 @@ scheduling                     accepted
 fresh pose throughput          near camera cadence on best tested path
 V1 canonical/retarget          accepted compatibility baseline
 avatar-drive latency tuning    preserved and deferrable
-pre-5A foundations             approved; implementation next
+Foundation A                   implemented; manual QA deferred
+Foundation B                   implemented; manual QA deferred; Orchestrator diff audit pending
+Foundations C-E                not started
 locomotion                     implemented, not accepted
 ```
 
@@ -396,7 +418,7 @@ For current project truth, use this order:
 
 1. `Docs/current-state.md` — current status and immediate governance.
 2. `Docs/decisions.md` — current architectural/product decisions.
-3. `Docs/pre-phase5a-foundations.md` — authoritative architecture/requirements for the next development track.
+3. `Docs/pre-phase5a-foundations.md` — authoritative architecture/requirements for the foundation development track.
 4. `Docs/architecture.md` and `Docs/motion-engine.md` — detailed accepted architecture/phase design; read together with the newer current-state/foundation docs when older phase wording appears.
 5. `Docs/openvino-unity-integration-progress.md` — OpenVINO integration history/current resolution.
 6. `Docs/openvino-unity-scheduling-optimization-progress.md` — scheduling optimization history/current resolution.
@@ -408,6 +430,7 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 ## Guardrails for the next Orchestrator / Builder
 
 - Do not merge to `main` without explicit USER approval.
+- Do not mark Foundations A or B USER accepted until the deferred comprehensive USER manual/runtime QA pass succeeds.
 - Do not mark Phase 5A accepted.
 - Do not start Phase 6.
 - Do not delete or weaken the stock MediaPipe/TFLite fallback.
@@ -425,8 +448,6 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 
 ## Immediate next step
 
-Begin **Foundation A — Unified Command System + modular speech input**.
+Foundation B implementation is complete at the Builder level and awaits independent Orchestrator diff audit; USER visual/runtime QA is intentionally deferred.
 
-Before editing code, inspect the current branch and identify the actual ownership/public entry points for calibration, calibration reset/cancel, recenter, retry/restart, F12 Lab/Game presentation and existing camera behavior. The command layer must unify those actions rather than duplicate key-handling logic.
-
-After Foundation A implementation and focused USER QA, proceed to Foundation B camera presets. Rich canonical/orientation and hand work follow in the approved staged order from `Docs/pre-phase5a-foundations.md`.
+After that audit, the next implementation target in the approved sequence is **Foundation C — rich canonical motion/orientation architecture**. Foundation C was not started as part of Foundation B.
