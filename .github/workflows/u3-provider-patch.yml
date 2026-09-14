@@ -6,6 +6,7 @@ on:
       - engine/pose-tracking-spike
     paths:
       - 'Tools/OpenVinoUnityPosePlugin/scripts/apply_u3_managed_provider.py'
+      - 'Tools/OpenVinoUnityPosePlugin/scripts/fix_u3_bootstrap_coroutine.py'
       - '.github/workflows/u3-provider-patch.yml'
 
 permissions:
@@ -24,6 +25,9 @@ jobs:
       - name: Apply fail-closed provider transformation
         run: python3 Tools/OpenVinoUnityPosePlugin/scripts/apply_u3_managed_provider.py
 
+      - name: Repair OpenVINO bootstrap coroutine compile structure
+        run: python3 Tools/OpenVinoUnityPosePlugin/scripts/fix_u3_bootstrap_coroutine.py
+
       - name: Validate generated diff
         shell: bash
         run: |
@@ -32,16 +36,17 @@ jobs:
           grep -q 'PoseInferenceBackend.OpenVinoCpuFp32' Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs
           grep -q 'LaunchPreparedOpenVinoInference' Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs
           grep -q 'OpenVINO CPU FP32' Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs
+          grep -q 'Task<OpenVinoPoseRuntime> bootstrapTask = null;' Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs
 
       - name: Commit generated U3 provider integration
         shell: bash
         run: |
           if git diff --quiet -- Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs; then
-            echo 'Provider already matches U3 integration; nothing to commit.'
+            echo 'Provider already matches U3 integration and coroutine repair; nothing to commit.'
             exit 0
           fi
           git config user.name 'Golden Needle Builder'
           git config user.email 'actions@users.noreply.github.com'
           git add Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs
-          git commit -m 'feat: wire U3 selectable OpenVINO pose backend'
+          git commit -m 'fix: move OpenVINO coroutine yield outside catchable try'
           git push origin HEAD:engine/pose-tracking-spike
