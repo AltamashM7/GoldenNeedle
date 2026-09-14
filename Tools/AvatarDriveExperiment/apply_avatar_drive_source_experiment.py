@@ -19,6 +19,20 @@ runtime = RUNTIME.read_text(encoding="utf-8")
 retargeter = RETARGETER.read_text(encoding="utf-8")
 presenter = PRESENTER.read_text(encoding="utf-8")
 
+already_applied = all(
+    marker in text
+    for marker, text in (
+        ("public enum AvatarDrivePoseSource", runtime),
+        ("avatarDrivePoseSource = AvatarDrivePoseSource.StabilizedCanonical;", runtime),
+        ("var avatarDriveFrame = AvatarDriveFrame;", runtime),
+        ("var sourceFrame = runtime.AvatarDriveFrame;", retargeter),
+        ("Avatar source: {(runtime == null ? \"Unavailable\" : runtime.AvatarDriveSourceLabel)}", presenter),
+    )
+)
+if already_applied:
+    print("AVATAR_DRIVE_SOURCE_TRANSFORM=ALREADY_APPLIED")
+    raise SystemExit(0)
+
 runtime = replace_once(
     runtime,
     """namespace GoldenNeedle.Core.Motion.Runtime
