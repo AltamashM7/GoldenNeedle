@@ -3402,8 +3402,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                         : string.Empty;
                 var webCamCpuTimingSummary =
                     bodyFrameAcquisitionMode == BodyFrameAcquisitionMode.WebCamCpuPixels
-                        ? $"
-CPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +
+                        ? $"\nCPU cam: n={WebCamCpuAcquisitionTimingSampleCount} " +
                           $"GetPixels32={FormatTimingPair(WebCamCpuGetPixelsMedianMilliseconds, WebCamCpuGetPixelsP95Milliseconds)}ms " +
                           $"prep={FormatTimingPair(WebCamCpuPreparationMedianMilliseconds, WebCamCpuPreparationP95Milliseconds)}ms " +
                           $"total={FormatTimingPair(WebCamCpuTotalMedianMilliseconds, WebCamCpuTotalP95Milliseconds)}ms"
