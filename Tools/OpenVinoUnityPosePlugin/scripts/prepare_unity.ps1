@@ -1,5 +1,6 @@
 param(
-    [switch]$Recreate
+    [switch]$Recreate,
+    [string]$ArtifactDir = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -11,8 +12,9 @@ $RepoRoot = (Resolve-Path (Join-Path $ToolRoot "..\..")).Path
 
 $Bootstrap = Join-Path $ScriptRoot "bootstrap.ps1"
 $Build = Join-Path $ScriptRoot "build.ps1"
+$Regression = Join-Path $ScriptRoot "run_regression.ps1"
 $Package = Join-Path $ScriptRoot "package_unity.ps1"
-foreach ($path in @($Bootstrap, $Build, $Package)) {
+foreach ($path in @($Bootstrap, $Build, $Regression, $Package)) {
     if (-not (Test-Path $path)) {
         throw "Required OpenVINO Unity preparation script is missing: $path"
     }
@@ -26,8 +28,16 @@ if ($Recreate) {
 }
 if ($LASTEXITCODE -ne 0) { throw "OpenVINO Unity bootstrap failed." }
 
-& $Build
-if ($LASTEXITCODE -ne 0) { throw "OpenVINO Unity native build/smoke failed." }
+if ($ArtifactDir) {
+    $ArtifactDir = [IO.Path]::GetFullPath($ArtifactDir)
+    Write-Host "[OpenVINO Unity] reusing preserved native artifact: $ArtifactDir"
+    & $Regression -ArtifactDir $ArtifactDir
+    if ($LASTEXITCODE -ne 0) { throw "OpenVINO Unity preserved-artifact regression failed." }
+} else {
+    Write-Host "[OpenVINO Unity] no preserved artifact supplied; performing full local native build."
+    & $Build
+    if ($LASTEXITCODE -ne 0) { throw "OpenVINO Unity native build/smoke failed." }
+}
 
 & $Package -RepoRoot $RepoRoot
 if ($LASTEXITCODE -ne 0) { throw "OpenVINO Unity additive package staging failed." }
