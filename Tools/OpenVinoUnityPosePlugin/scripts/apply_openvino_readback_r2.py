@@ -516,28 +516,6 @@ provider = replace_once(
     "acquisition telemetry variables",
 )
 
-provider = replace_once(
-    provider,
-    """                    $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
-""",
-    """                    $"Acq: {ActiveBodyFrameAcquisitionModeLabel} requested={RequestedBodyFrameAcquisitionModeLabel}{acquisitionFallbackSuffix}\n" +
-                    $"Prep→launch: {LastPreparedToInferenceLaunchMilliseconds:0.0} ms Δf={LastPreparedToInferenceLaunchFrameDelta} origin={LastAcceptedLaunchOriginLabel} fast={ImmediateLaunchesPerSecond:0.0}/s\n" +
-""",
-    "status acquisition telemetry",
-)
-
-provider = replace_once(
-    provider,
-    """                    inferenceContinuationTimingSummary +
-                    directTimingSummary +
-""",
-    """                    webCamCpuTimingSummary +
-                    inferenceContinuationTimingSummary +
-                    directTimingSummary +
-""",
-    "status cpu timing telemetry",
-)
-
 editor = replace_once(
     editor,
     """        private SerializedProperty _bodyInferenceLongEdge;

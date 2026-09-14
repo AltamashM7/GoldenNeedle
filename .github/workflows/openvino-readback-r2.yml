@@ -63,8 +63,6 @@ jobs:
               'PublishWebCamCpuPreparedOpenVinoFrame(',
               '_openVinoMailbox.Publish(',
               'PreparedInferenceLaunchOrigin.ReadbackContinuation',
-              'Acq: {ActiveBodyFrameAcquisitionModeLabel}',
-              'CPU cam: n={WebCamCpuAcquisitionTimingSampleCount}',
               'inferenceBackend = PoseInferenceBackend.MediaPipeTfliteCpu;',
               'PoseInferenceBackend.OpenVinoCpuFp32',
               'public sealed class OpenVinoLatestFrameMailbox',
@@ -165,4 +163,4 @@ jobs:
           git commit -m 'perf: add selectable webcam CPU acquisition'
           git push origin HEAD:engine/pose-tracking-spike
 
-# R2 workflow marker: rerun after fail-closed transform repair.
+# R2 workflow marker: repaired transform without status-string coupling.
