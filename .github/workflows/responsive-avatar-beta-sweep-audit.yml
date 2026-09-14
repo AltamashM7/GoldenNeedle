@@ -1,0 +1,240 @@
+name: Responsive avatar beta sweep audit
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - '.github/workflows/responsive-avatar-beta-sweep-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate beta sweep invariants
+        shell: bash
+        run: |
+          git diff --check 58f15d72f1dace179a09533fddd8eca089b8eef2..HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs').read_text(encoding='utf-8')
+          settings = Path('Assets/GoldenNeedle/Core/Motion/Stabilization/CanonicalStabilizerSettings.cs').read_text(encoding='utf-8')
+          stabilizer = Path('Assets/GoldenNeedle/Core/Motion/Stabilization/CanonicalPoseStabilizer.cs').read_text(encoding='utf-8')
+          retargeter = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs').read_text(encoding='utf-8')
+          locomotion = Path('Assets/GoldenNeedle/Core/Motion/Locomotion/EmbodiedLocomotionController.cs').read_text(encoding='utf-8')
+          presenter = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs').read_text(encoding='utf-8')
+
+          def require(text, items, label):
+              missing = [item for item in items if item not in text]
+              if missing:
+                  raise SystemExit(f'{label}: missing {missing}')
+
+          require(runtime, [
+              'StabilizedCanonical = 0,',
+              'RawCanonical = 1,',
+              'ResponsiveCanonicalA = 2,',
+              'ResponsiveCanonicalB = 3,',
+              'ResponsiveCanonicalC = 4,',
+              'ResponsiveCanonicalD = 5,',
+              'avatarDrivePoseSource = AvatarDrivePoseSource.StabilizedCanonical;',
+          ], 'enum/default serialization')
+
+          require(settings, [
+              'public float acquireConfidence = 0.60f;',
+              'public float sustainConfidence = 0.40f;',
+              'public int acquireSamples = 2;',
+              'public float lossGraceSeconds = 0.10f;',
+              'public float resetAfterLossSeconds = 0.25f;',
+              'public float minCutoff = 1f;',
+              'public float beta = 0.05f;',
+              'public float derivativeCutoff = 1f;',
+              'public float defaultDeltaTimeSeconds = 0.05f;',
+              'public float maximumDeltaTimeSeconds = 0.25f;',
+          ], 'existing stable profile')
+          require(stabilizer, ['public void Stabilize('], 'existing stabilizer surface')
+
+          require(runtime, [
+              'private const float ResponsiveAMinCutoff = 1.5f;',
+              'private const float ResponsiveABeta = 0.25f;',
+              'private const float ResponsiveBMinCutoff = 2.0f;',
+              'private const float ResponsiveBBeta = 0.50f;',
+              'private const float ResponsiveCMinCutoff = 1.0f;',
+              'private const float ResponsiveCBeta = 0.25f;',
+              'private const float ResponsiveDMinCutoff = 1.0f;',
+              'private const float ResponsiveDBeta = 0.50f;',
+              'private const float ResponsiveDerivativeCutoff = 1.0f;',
+              'ResponsiveCanonicalA (1.5/0.25/1.0)',
+              'ResponsiveCanonicalB (2.0/0.50/1.0)',
+              'ResponsiveCanonicalC (1.0/0.25/1.0)',
+              'ResponsiveCanonicalD (1.0/0.50/1.0)',
+          ], 'responsive profile constants/labels')
+
+          require(runtime, [
+              'acquireConfidence = 0.60f,',
+              'sustainConfidence = 0.40f,',
+              'acquireSamples = 2,',
+              'lossGraceSeconds = 0.10f,',
+              'resetAfterLossSeconds = 0.25f,',
+              'derivativeCutoff = ResponsiveDerivativeCutoff,',
+              'defaultDeltaTimeSeconds = 0.05f,',
+              'maximumDeltaTimeSeconds = 0.25f,',
+          ], 'responsive confidence/loss/timing semantics')
+
+          require(runtime, [
+              'private CanonicalPoseStabilizer _responsiveStabilizerA;',
+              'private CanonicalPoseStabilizer _responsiveStabilizerB;',
+              'private CanonicalPoseStabilizer _responsiveStabilizerC;',
+              'private CanonicalPoseStabilizer _responsiveStabilizerD;',
+              'private readonly CanonicalPoseFrame _responsiveCanonicalFrameA = new CanonicalPoseFrame();',
+              'private readonly CanonicalPoseFrame _responsiveCanonicalFrameB = new CanonicalPoseFrame();',
+              'private readonly CanonicalPoseFrame _responsiveCanonicalFrameC = new CanonicalPoseFrame();',
+              'private readonly CanonicalPoseFrame _responsiveCanonicalFrameD = new CanonicalPoseFrame();',
+              'CreateResponsiveAvatarSettings(ResponsiveAMinCutoff, ResponsiveABeta)',
+              'CreateResponsiveAvatarSettings(ResponsiveBMinCutoff, ResponsiveBBeta)',
+              'CreateResponsiveAvatarSettings(ResponsiveCMinCutoff, ResponsiveCBeta)',
+              'CreateResponsiveAvatarSettings(ResponsiveDMinCutoff, ResponsiveDBeta)',
+          ], 'persistent responsive state')
+
+          update_start = runtime.index('        private void Update()')
+          update_end = runtime.index('        public void BeginCalibration()', update_start)
+          update = runtime[update_start:update_end]
+          if 'new CanonicalPoseStabilizer' in update or 'new CanonicalPoseFrame' in update:
+              raise SystemExit('per-frame stabilizer/frame allocation detected')
+
+          stable_line = '_stabilizer.Stabilize(_rawCanonicalFrame, _stabilizedFrame, _lastEvaluationTimeSeconds);'
+          calibration_line = '_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);'
+          adjacency = stable_line + '\n            ' + calibration_line
+          if adjacency not in update:
+              raise SystemExit('stable stabilizer -> calibration literal adjacency changed')
+
+          require(update, [
+              '_responsiveStabilizerA.Stabilize(\n                _rawCanonicalFrame,\n                _responsiveCanonicalFrameA,',
+              '_responsiveStabilizerB.Stabilize(\n                _rawCanonicalFrame,\n                _responsiveCanonicalFrameB,',
+              '_responsiveStabilizerC.Stabilize(\n                _rawCanonicalFrame,\n                _responsiveCanonicalFrameC,',
+              '_responsiveStabilizerD.Stabilize(\n                _rawCanonicalFrame,\n                _responsiveCanonicalFrameD,',
+              'var avatarDriveFrame = AvatarDriveFrame;',
+              '_rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);',
+              '_kinematicTargetBuilder.Build(avatarDriveFrame, _calibration.Profile, _kinematicTargets);',
+          ], 'continuous warm update/solve path')
+
+          calibration_pos = update.index(calibration_line)
+          select_pos = update.index('var avatarDriveFrame = AvatarDriveFrame;')
+          for name in ['A', 'B', 'C', 'D']:
+              pos = update.index(f'_responsiveStabilizer{name}.Stabilize(')
+              if not (calibration_pos < pos < select_pos):
+                  raise SystemExit(f'Responsive {name} does not run after stable calibration and before avatar selection')
+
+          require(runtime, [
+              'case AvatarDrivePoseSource.RawCanonical:\n                        return _rawCanonicalFrame;',
+              'case AvatarDrivePoseSource.ResponsiveCanonicalA:\n                        return _responsiveCanonicalFrameA;',
+              'case AvatarDrivePoseSource.ResponsiveCanonicalB:\n                        return _responsiveCanonicalFrameB;',
+              'case AvatarDrivePoseSource.ResponsiveCanonicalC:\n                        return _responsiveCanonicalFrameC;',
+              'case AvatarDrivePoseSource.ResponsiveCanonicalD:\n                        return _responsiveCanonicalFrameD;',
+              'default:\n                        return _stabilizedFrame;',
+          ], 'six-way AvatarDriveFrame routing')
+
+          forbidden_calibration = [
+              '_calibration.Update(AvatarDriveFrame',
+              '_calibration.Update(_rawCanonicalFrame',
+              '_calibration.Update(_responsiveCanonicalFrameA',
+              '_calibration.Update(_responsiveCanonicalFrameB',
+              '_calibration.Update(_responsiveCanonicalFrameC',
+              '_calibration.Update(_responsiveCanonicalFrameD',
+          ]
+          if any(item in runtime for item in forbidden_calibration):
+              raise SystemExit('calibration routed through experimental avatar source')
+
+          if locomotion.count('runtime.StabilizedFrame') < 3:
+              raise SystemExit('locomotion stable-frame consumers changed')
+          if any(item in locomotion for item in ['runtime.AvatarDriveFrame', 'runtime.RawCanonicalFrame', 'ResponsiveCanonical']):
+              raise SystemExit('locomotion routed through experimental avatar source')
+
+          require(retargeter, ['var sourceFrame = runtime.AvatarDriveFrame;'], 'retarget source authority')
+
+          require(runtime, [
+              '_responsiveStabilizerA?.Reset();',
+              '_responsiveStabilizerB?.Reset();',
+              '_responsiveStabilizerC?.Reset();',
+              '_responsiveStabilizerD?.Reset();',
+              '_responsiveCanonicalFrameA.Clear();',
+              '_responsiveCanonicalFrameB.Clear();',
+              '_responsiveCanonicalFrameC.Clear();',
+              '_responsiveCanonicalFrameD.Clear();',
+          ], 'responsive reset/clear lifecycle')
+          if runtime.count('ResetResponsiveAvatarStabilizers();') < 2:
+              raise SystemExit('responsive reset helper not used by coordinate + explicit calibration reset')
+
+          source_unavailable_start = update.index('if (_source == null && !ResolveSource())')
+          convention_start = update.index('if (_source.CoordinateConventionVersion', source_unavailable_start)
+          unavailable_block = update[source_unavailable_start:convention_start]
+          require(unavailable_block, [
+              '_responsiveCanonicalFrameA.Clear();',
+              '_responsiveCanonicalFrameB.Clear();',
+              '_responsiveCanonicalFrameC.Clear();',
+              '_responsiveCanonicalFrameD.Clear();',
+          ], 'source-unavailable frame clear')
+
+          require(presenter, [
+              'runtime.RawCanonicalFrame,',
+              'runtime.StabilizedFrame,',
+              'Avatar source: {(runtime == null ? "Unavailable" : runtime.AvatarDriveSourceLabel)}',
+          ], 'raw/stable debug and F7 source diagnostic')
+          require(retargeter, [
+              'private bool enablePresentationSmoothing = true;',
+              'private float presentationResponse = 45f;',
+              'private float maxPresentationBlendSeconds = 0.05f;',
+              'BoundedQuaternionPresentationSmoother',
+          ], 'presentation smoothing preservation')
+
+          if any(item in runtime for item in ['Queue<', 'ConcurrentQueue<', 'frameHistory', 'Replay', 'Extrapolat', 'Predict']):
+              raise SystemExit('queue/history/replay/prediction-like state introduced')
+
+          print('RESPONSIVE_AVATAR_BETA_SWEEP_STATIC_AUDIT=PASS')
+          print('ENUM_SERIALIZATION_0_THROUGH_5=PASS')
+          print('STABLE_PROFILE_1.0_0.05_1.0=PASS')
+          print('RESPONSIVE_A_1.5_0.25_1.0=PASS')
+          print('RESPONSIVE_B_2.0_0.50_1.0=PASS')
+          print('RESPONSIVE_C_1.0_0.25_1.0=PASS')
+          print('RESPONSIVE_D_1.0_0.50_1.0=PASS')
+          print('STABLE_CALIBRATION_ADJACENCY=PASS')
+          print('CONTINUOUS_A_B_C_D_WARMING=PASS')
+          print('CALIBRATION_STABLE_ONLY=PASS')
+          print('LOCOMOTION_STABLE_ONLY=PASS')
+          print('SIX_WAY_SOURCE_ROUTING=PASS')
+          print('RETARGET_SOURCE_CONSISTENCY=PASS')
+          print('RESET_LIFECYCLE=PASS')
+          print('DEBUG_PRESENTATION_PRESERVED=PASS')
+          PY
+
+      - name: Validate beta sweep diff scope
+        shell: bash
+        run: |
+          allowed='^(Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs|Docs/responsive-avatar-beta-sweep-progress.md|.github/workflows/responsive-avatar-beta-sweep-audit.yml)$'
+          changed="$(git diff --name-only 58f15d72f1dace179a09533fddd8eca089b8eef2..HEAD)"
+          bad="$(printf '%s\n' "$changed" | grep -Ev "$allowed" || true)"
+          if [ -n "$bad" ]; then
+            echo 'Unexpected files changed in beta sweep:'
+            echo "$bad"
+            exit 1
+          fi
+          if printf '%s\n' "$changed" | grep -Eq '(^|/)PoseTrackingSpike\.unity$|^ProjectSettings/|^Packages/|OpenVino|WebCamCpu|Plugins/|MediaPipePoseProvider|EmbodiedLocomotionController|HumanoidRetargeter|HumanoidRetargetingMath|CanonicalPoseStabilizer\.cs|CanonicalStabilizerSettings\.cs'; then
+            echo 'Forbidden scope change detected'
+            exit 1
+          fi
+
+      - name: Show focused beta sweep diff
+        shell: bash
+        run: |
+          git diff --stat 58f15d72f1dace179a09533fddd8eca089b8eef2..HEAD
+          git diff 58f15d72f1dace179a09533fddd8eca089b8eef2..HEAD -- Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs
