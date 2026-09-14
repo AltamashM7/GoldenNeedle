@@ -1,0 +1,148 @@
+name: Avatar drive source experiment
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Tools/AvatarDriveExperiment/apply_avatar_drive_source_experiment.py'
+      - '.github/workflows/avatar-drive-source-experiment.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply fail-closed avatar-drive selector
+        run: python3 Tools/AvatarDriveExperiment/apply_avatar_drive_source_experiment.py
+
+      - name: Validate selector and preserved invariants
+        shell: bash
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs').read_text(encoding='utf-8')
+          retargeter = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs').read_text(encoding='utf-8')
+          locomotion = Path('Assets/GoldenNeedle/Core/Motion/Locomotion/EmbodiedLocomotionController.cs').read_text(encoding='utf-8')
+          presenter = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs').read_text(encoding='utf-8')
+          stabilizer = Path('Assets/GoldenNeedle/Core/Motion/Stabilization/CanonicalPoseStabilizer.cs').read_text(encoding='utf-8')
+          settings = Path('Assets/GoldenNeedle/Core/Motion/Stabilization/CanonicalStabilizerSettings.cs').read_text(encoding='utf-8')
+
+          required_runtime = [
+              'public enum AvatarDrivePoseSource',
+              'StabilizedCanonical,',
+              'RawCanonical,',
+              'avatarDrivePoseSource = AvatarDrivePoseSource.StabilizedCanonical;',
+              'public CanonicalPoseFrame AvatarDriveFrame =>',
+              'avatarDrivePoseSource == AvatarDrivePoseSource.RawCanonical',
+              '_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);',
+              'var avatarDriveFrame = AvatarDriveFrame;',
+              '_rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);',
+              '_kinematicTargetBuilder.Build(avatarDriveFrame, _calibration.Profile, _kinematicTargets);',
+          ]
+          missing = [item for item in required_runtime if item not in runtime]
+          if missing:
+              raise SystemExit(f'missing runtime avatar-drive invariants: {missing}')
+
+          if '_rotationSolver.Solve(_stabilizedFrame' in runtime:
+              raise SystemExit('rotation solver still hard-wired to stabilized frame')
+          if '_kinematicTargetBuilder.Build(_stabilizedFrame' in runtime:
+              raise SystemExit('kinematic target builder still hard-wired to stabilized frame')
+          if '_calibration.Update(avatarDriveFrame' in runtime or '_calibration.Update(_rawCanonicalFrame' in runtime:
+              raise SystemExit('calibration was rerouted away from stabilized canonical data')
+
+          if 'var sourceFrame = runtime.AvatarDriveFrame;' not in retargeter:
+              raise SystemExit('HumanoidRetargeter does not use selected avatar-drive frame')
+          if 'var sourceFrame = runtime.StabilizedFrame;' in retargeter:
+              raise SystemExit('HumanoidRetargeter torso/source mapping remains hard-wired to stabilized frame')
+
+          if locomotion.count('runtime.StabilizedFrame') < 3:
+              raise SystemExit('locomotion stabilized-frame consumers were changed')
+          if 'runtime.AvatarDriveFrame' in locomotion or 'runtime.RawCanonicalFrame' in locomotion:
+              raise SystemExit('locomotion was incorrectly routed through avatar-drive/raw source')
+
+          required_debug = [
+              'runtime.RawCanonicalFrame,',
+              'runtime.StabilizedFrame,',
+              'Avatar source: {(runtime == null ? "Unavailable" : runtime.AvatarDriveSourceLabel)}',
+          ]
+          missing_debug = [item for item in required_debug if item not in presenter]
+          if missing_debug:
+              raise SystemExit(f'missing debug invariants: {missing_debug}')
+
+          required_presentation = [
+              'private bool enablePresentationSmoothing = true;',
+              'BoundedQuaternionPresentationSmoother',
+              'ApplyMotionFrameForPresentation(',
+          ]
+          if any(item not in retargeter for item in required_presentation):
+              raise SystemExit('presentation smoothing surface changed unexpectedly')
+
+          required_filter_defaults = [
+              'public float minCutoff = 1f;',
+              'public float beta = 0.05f;',
+              'public float derivativeCutoff = 1f;',
+          ]
+          if any(item not in settings for item in required_filter_defaults):
+              raise SystemExit('One Euro defaults changed')
+          if 'public void Stabilize(' not in stabilizer:
+              raise SystemExit('canonical stabilization implementation changed unexpectedly')
+
+          print('AVATAR_DRIVE_SOURCE_STATIC_AUDIT=PASS')
+          print('CALIBRATION_STABILIZED=PASS')
+          print('LOCOMOTION_STABILIZED=PASS')
+          print('RETARGET_SOURCE_CONSISTENCY=PASS')
+          print('RAW_STABILIZED_DEBUG_PRESERVED=PASS')
+          print('PRESENTATION_SMOOTHING_PRESERVED=PASS')
+          print('ONE_EURO_DEFAULTS_PRESERVED=PASS')
+          PY
+
+      - name: Validate generated diff scope
+        shell: bash
+        run: |
+          allowed='^(Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs|Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs|Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs)$'
+          bad="$(git diff --name-only | grep -Ev "$allowed" || true)"
+          if [ -n "$bad" ]; then
+            echo "Unexpected generated files changed:"
+            echo "$bad"
+            exit 1
+          fi
+          if git diff --name-only | grep -Eq '(^|/)PoseTrackingSpike\.unity$|^ProjectSettings/|^Packages/|OpenVino|WebCamCpu|Plugins/'; then
+            echo 'Forbidden scene/project/package/OpenVINO/WebCam/native change detected'
+            exit 1
+          fi
+
+      - name: Show focused implementation diff
+        shell: bash
+        run: |
+          git diff --stat
+          git diff -- Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs
+          git diff -- Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs
+          git diff -- Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs
+
+      - name: Commit generated implementation
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'Avatar-drive selector already applied; nothing to commit.'
+            exit 0
+          fi
+          git config user.name 'Golden Needle Builder'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs \
+            Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs \
+            Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs
+          git commit -m 'feat: add selectable avatar drive source'
+          git push origin HEAD:engine/pose-tracking-spike
