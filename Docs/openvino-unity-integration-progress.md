@@ -12,9 +12,9 @@ A replacement Builder should read this file first, verify the current remote `en
 - Gate B: **PASS WITH NOTES**
 - U0 plan/recovery scaffold: **COMPLETE**
 - U1 architecture resolution/native lifecycle skeleton: **COMPLETE**
-- U2 native OpenVINO backend: **IMPLEMENTED; NATIVE BUILD HAS SUCCEEDED TWICE; REUSABLE BUILD-ARTIFACT PROOF IN PROGRESS; LATEST PRODUCER RETRY FIXES A PINNED-ZLIB FETCH FAILURE; POST-BUILD LOADER REGRESSION STILL OPEN**
-- U3 Unity selection/telemetry: **IMPLEMENTED; MANAGED ABI/STATIC VALIDATION PASS; NATIVE PACKAGE PROOF + UNITY RUNTIME QA PENDING**
-- U4 USER A/B runtime QA: **READY PROCEDURE WRITTEN; NOT STARTED**
+- U2 native OpenVINO backend: **COMPLETE — WINDOWS NATIVE BUILD, LIFECYCLE, REAL-FRAME 33-LANDMARK SEMANTIC SMOKE AND ADDITIVE PACKAGE PROOF PASS**
+- U3 Unity selection/telemetry: **COMPLETE FOR IMPLEMENTATION / PRE-USER VALIDATION — MANAGED ABI, PROVIDER WIRING AND NATIVE PACKAGE PROOF PASS; LIVE UNITY QA REMAINS U4**
+- U4 USER A/B runtime QA: **READY; NOT STARTED**
 - U5 cleanup/production recommendation: **NOT STARTED**
 
 ## Proven evidence entering Unity integration
@@ -33,7 +33,7 @@ These are offline VIDEO-mode measurements, not Unity LIVE_STREAM end-to-end resu
 ## Integration invariants
 
 - Keep stock MediaPipe/TFLite CPU fully functional as fallback and serialized/default backend until USER acceptance.
-- OpenVINO remains explicitly selectable experimental CPU FP32.
+- OpenVINO remains explicitly selectable experimental CPU FP32 until U4 USER acceptance.
 - Reuse MediaPipe 0.10.22 preprocessing/postprocessing/tracking/world-landmark semantics.
 - Do not recreate those semantics manually in C#.
 - Do not change canonical/stabilization/calibration/retarget/locomotion semantics for this experiment.
@@ -41,8 +41,8 @@ These are offline VIDEO-mode measurements, not Unity LIVE_STREAM end-to-end resu
 - Keep latest-useful-frame scheduling and no-backlog semantics.
 - Do not densify/convert detector.
 - Do not force D3D12.
-- Do not refactor the current fixed 33-landmark provider or 20-joint canonical topology in this spike.
-- Runtime performance builds must not execute the Gate B shadow-TFLite neural inference.
+- Do not refactor the fixed 33-landmark provider or 20-joint canonical topology in this spike.
+- Runtime performance builds must not execute Gate B shadow-TFLite neural inference.
 - No merge to `main` without explicit USER approval.
 - Phase 5A remains not USER accepted; Phase 6 remains not started.
 
@@ -55,55 +55,79 @@ These are offline VIDEO-mode measurements, not Unity LIVE_STREAM end-to-end resu
 - MediaPipe/Homuler pins: `0.10.22` / `0.16.3`.
 - Authoritative verification: GitHub Actions run `34765719400`, job `103746202060`, Windows 2022 success.
 - OpenVINO archive SHA-256: `4b26374eb342c3e0e4488b230cf8a16b6327e22b1ef12e45e5533cead06a66e3`.
-- Build-directory and packaged `Load/Version/SelfTest/Unload` passed.
 
-## U2 — IMPLEMENTED; WINDOWS PROOF IN PROGRESS
+## U2 — COMPLETE
+
+### Implementation
 
 - Starting SHA: `fb1e58e175c34a777ee86344b18aec33e4fe231d`.
 - Main implementation SHA: `e2efe61013fbfa14a43c2d451a21087530ae3d7e` (`feat: implement U2 MediaPipe OpenVINO native backend`).
 - Native architecture: Bazel-build a renamed/additive MediaPipe/OpenVINO DLL so graph/calculator registration and the OpenVINO inference calculator live in the same native image. Stock `mediapipe_c.dll` remains untouched.
 - Reused semantics: MediaPipe 0.10.22 `PoseLandmarkerGraph`, preprocessing, detector decode/NMS, ROI/tracking, landmark decode/refinement, visibility/presence, world-landmark and projection semantics.
-- Replaced execution only: detector and landmark neural inference use in-process OpenVINO `CPU`, latency-oriented FP32 through the proven inference seam.
-- Runtime calculator does **not** execute Gate B shadow TFLite/raw-parity inference. TFLite is metadata-only for exact tensor names/order required by MediaPipe's `InferenceIoMapper`.
+- Replaced execution only: detector and landmark neural inference use in-process OpenVINO `CPU`, latency-oriented FP32.
+- Runtime calculator does **not** execute Gate B shadow TFLite/raw-parity inference. TFLite is metadata-only for exact tensor naming/order required by MediaPipe's `InferenceIoMapper`.
 - ABI v1.1 exposes pose-engine lifecycle and synchronous RGBA processing with exactly 33 normalized/world landmarks, visibility/presence flags, backend identity, detector-run state and graph/inference/copy timings.
 - Exact detector/landmark model files are extracted from the existing production task bundle and identity-checked; no conversion, densification or alternate weights.
 
-### U2 CI history
+### Build/recovery history
 
-1. Run `34767029284`, job `103749712693`: failed before C++ build because hosted MSYS2 lacked `git`, `patch`, `unzip`, `zip`; fixed.
-2. Run `34767075477`, job `103749841159`: bootstrap reached Bazel but `bazelisk` resolved to a PowerShell shim; fixed by pinning native Bazelisk.
-3. Run `34767143321`, job `103750021491`: actual native build was cancelled by the 60-minute workflow limit; no compiler/link/runtime failure surfaced before cancellation.
-4. Run `34769414654`, job `103756144884`: another 60-minute run entered native build and was superseded.
-5. Commit `43e5a888b80874ace1643dcdcfc4cb5a35eb919e` widened the workflow limit from 60 to 120 minutes without changing source/pins/models/backend.
-6. Run `34770530769`, job `103759179464`: first full-budget build exposed the first genuine compiler failure. MSVC could not create an object at the generated MediaPipe path because the Bazel output path was too long.
-7. Commit `36342d0982617e85972ddc4ebd36d0fe6012cb32` shortened the hosted-runner Bazel output root to `C:\b` only. Run `34795710675` then completed the entire Bazel build successfully (**3,675 actions**) and linked `golden_needle_openvino_pose.dll`, proving the path-length build blocker fixed. Post-build lifecycle smoke failed before `gnovpose_create` with `LoadLibraryExW` Win32 error 126.
-8. Commit `42c8a9a8372088285da99d5d4547223900ad20a4` imported the full proven OpenVINO `setupvars.bat` process environment before lifecycle smoke. Run `34800169484` again completed the entire Bazel build successfully (**3,675 actions**) but produced the same immediate `LoadLibraryExW` error 126. Therefore the current open functional issue is a post-build dependency/loader problem, not compilation and not yet an inference-semantic failure.
-9. The recovery workflow was split so successful native builds can be reused instead of recompiling for every loader/smoke/package-only fix. The first artifact-producing run `34804276926`, job `103852914474`, failed **before compilation** during Bazel repository analysis because Homuler's pinned `http://zlib.net/fossils/zlib-1.2.13.tar.gz` fetch returned bytes with SHA-256 `8e378e...` instead of the pinned expected `b3a24de97a8fdbc835b9833169501030b8977031bcb54b3b3ac13740f846ab30`. No native artifact was produced and this is not a compiler/backend regression.
-10. Commit `d4c126e6f4eff089c4f3c0f433a140bd5e3bddfc` keeps zlib **1.2.13 and the exact expected SHA unchanged**, downloads the official `madler/zlib` GitHub release archive, verifies the SHA fail-closed, and supplies it to Bazel via `--distdir`. This only fixes delivery of the already-pinned dependency; it does not alter source semantics, versions, compiler settings, OpenVINO backend, or models.
+1. Run `34767029284`, job `103749712693`: hosted MSYS2 lacked required build utilities; fixed.
+2. Run `34767075477`, job `103749841159`: Bazelisk resolved to an incompatible PowerShell shim; fixed with pinned native Bazelisk.
+3. Runs `34767143321` / `34769414654`: 60-minute CI budget was insufficient; no semantic failure established.
+4. Commit `43e5a888b80874ace1643dcdcfc4cb5a35eb919e` widened native build budget to 120 minutes.
+5. Run `34770530769`, job `103759179464`: first genuine compiler failure was MSVC object-path length.
+6. Commit `36342d0982617e85972ddc4ebd36d0fe6012cb32` shortened hosted Bazel output root to `C:\b`; subsequent native builds completed all **3,675 actions** and linked the plugin.
+7. Runs `34795710675` and `34800169484`: native build succeeded, but lifecycle smoke exposed Win32 loader error 126.
+8. Recovery was split into an expensive immutable native build artifact plus reusable fast regression/package proof. Native artifact manifest records source SHA, dependency pins and SHA-256 hashes; regression fails closed on mismatch or native-input drift.
+9. First artifact-producer run `34804276926` failed before compilation because the legacy zlib 1.2.13 URL returned bytes not matching the pinned SHA. Commit `d4c126e6f4eff089c4f3c0f433a140bd5e3bddfc` supplies the **same pinned zlib 1.2.13 archive and SHA** through Bazel `--distdir` from the official zlib GitHub release.
 
-### U2 recovery-method split — CURRENT
+### Authoritative preserved native build proof
 
-Repeated one-hour rebuilds are no longer required for loader/smoke/package-only fixes after one successful preserved artifact exists.
-
-Implemented recovery split:
-- `2b531bfb3d9ba5603640418df8eb7f635abbf2fc`: repurposed the old monolithic workflow into a regression consumer.
-- `4d93c639e755eeb16ce12ada2f419685fcde9294`: added `scripts/build_native.ps1`, which performs only the expensive native Bazel build and writes an immutable manifest containing source SHA, exact dependency pins and SHA-256 hashes.
-- `84d6e478bb9cb37b86c1d9e802af11de8b8bdede`: added `scripts/run_regression.ps1`, which restores/verifies a preserved build, rebuilds only the tiny lifecycle host, emits `dumpbin /DEPENDENTS` diagnostics when available, and runs lifecycle + exact-model + real-frame smoke.
-- `78459d886ea4003b40d354e08e5fb894f6ffc7b4`: kept `scripts/build.ps1` as a compatibility wrapper that composes native build + regression for local preparation.
-- `9d4d3230f0440116ee6892e1ee0c73b335cf6a10`: added workflow `OpenVINO Unity native build artifact`, which uploads the successful native DLL/runtime-smoke pair plus manifest as `golden-needle-u2-native` for 14 days.
-- `683bfcee06fe378ddb9afee42b29c58ab59f2586`: configured `OpenVINO Unity regression proof` so regression-only changes download the latest successful native artifact instead of rebuilding MediaPipe/OpenVINO.
-- The regression runner fails closed if artifact hashes/pins mismatch, if the artifact source is not an ancestor, or if native-impacting files changed after the preserved build.
-
-Current artifact-producing retry:
+GitHub Actions:
 - Workflow: `OpenVINO Unity native build artifact`
 - Run: `34805228184`
-- Build source SHA: `d4c126e6f4eff089c4f3c0f433a140bd5e3bddfc`
-- Trigger reason: verified zlib 1.2.13 distdir fix after run `34804276926` failed during dependency fetch/analysis.
-- At last check: **QUEUED**.
+- Job: `103855703203`
+- Source SHA: `d4c126e6f4eff089c4f3c0f433a140bd5e3bddfc`
+- Result: **SUCCESS**
+- Bazel build: **3,675 actions, build completed successfully**.
+- Artifact: `golden-needle-u2-native`, artifact ID `10334182410`, retained for 14 days.
+- Artifact ZIP SHA-256: `c8a5dfd7e50885f78ac9f8f0e7d935dce663b211d2a62e1562e709fd1d1b9af7`.
+- Plugin SHA-256: `f259186a84dd1762da99a02381cb8db7ec668f548054429476fb6bb5d580f550`.
+- `runtime_pose_smoke.exe` SHA-256: `8ee5cad15a2acd30c61f10129d7191c5bade9fc5d0735d1c3a187e1a143aac8e`.
 
-U2 remains **NOT COMPLETE** until preserved native build + lifecycle smoke + exact model identity + real-frame 33-landmark semantic smoke + additive Unity package smoke all pass.
+### Authoritative fast regression + package proof
 
-## U3 — IMPLEMENTED; MANAGED VALIDATION PASS; UNITY RUNTIME QA PENDING
+GitHub Actions:
+- Workflow: `OpenVINO Unity regression proof`
+- Run: `34810742137`
+- Job: `103871415840`
+- Head SHA: `1e54b84911003841448002fdad5990c1d8bc1f76`
+- Result: **SUCCESS**
+- Reused the immutable native artifact from run `34805228184`; no MediaPipe/OpenVINO native rebuild occurred.
+
+Proofs in that run:
+- Native artifact source/pins/hashes verified fail-closed.
+- Direct dependency diagnostics emitted with `dumpbin /DEPENDENTS`.
+- Lifecycle: `GNOVPOSE_LOAD_VERSION_SELFTEST_UNLOAD=PASS`.
+- Runtime identity: plugin `0.2.0`, ABI `1.1`, backend `OPENVINO_CPU_FP32`, OpenVINO `2026.3.0`, device `CPU`.
+- Exact production model identity PASS:
+  - detector size `2959078`, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
+  - landmark size `2818390`, SHA-256 `ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58`.
+- Exact pinned MediaPipe `pose.jpg` fixture identity PASS, SHA-256 `c8a830ed683c0276d713dd5aeda28f415f10cd6291972084a40d0d8b934ed62b`.
+- Real-frame stream-mode semantic smoke PASS: `GNOVPOSE_U2_REAL_FRAME_33_NORMALIZED_WORLD=PASS`.
+- Frame 1: graph `38.3346 ms`, detector `17.1675 ms`, landmark `14.9312 ms`, detector ran, `33` landmarks.
+- Frame 2: graph `12.1136 ms`, detector `0 ms`, landmark `10.1009 ms`, detector skipped through tracking, `33` landmarks.
+- Both frames satisfied exact 33 normalized landmarks + finite world coordinates.
+- Additive Unity package smoke PASS.
+- Staged CPU runtime set: `golden_needle_openvino_pose.dll`, `openvino.dll`, `openvino_intel_cpu_plugin.dll`, `openvino_tensorflow_lite_frontend.dll`, `tbb12.dll`, `tbbbind_2_5.dll`, `tbbmalloc.dll`.
+- CPU-only `plugins.xml` PASS.
+- GPU/NPU/AUTO/HETERO exclusion guard PASS.
+- Exact detector/landmark runtime models staged.
+- Stock MediaPipe/TFLite plugin files were not replaced or renamed.
+
+The temporary System32/MSVC DLL staging in the regression workflow exists only to let the already-preserved pre-fix semantic test executable resolve standard Windows runtimes. Those system DLLs are **not** included by `package_unity.ps1`; final package loading is independently proven with the corrected lifecycle host and the explicit CPU-only runtime package.
+
+## U3 — COMPLETE FOR IMPLEMENTATION / PRE-USER VALIDATION
 
 ### Managed interop/runtime wrapper
 
@@ -123,31 +147,32 @@ U2 remains **NOT COMPLETE** until preserved native build + lifecycle smoke + exa
 - Explicit OpenVINO sessions do not silently fall back to another backend.
 - Restart/teardown waits native inference/bootstrap work before disposing native state.
 
-### U3 managed validation
+### U3 validation
 
 - `Tools/OpenVinoUnityPosePlugin/tests/ManagedAbiSmoke/` compiles the real `OpenVinoPoseNative.cs` source with .NET 8.
-- Authoritative validation run `34769239438`: success.
+- Authoritative managed validation run `34769239438`: success.
 - `GNOVPOSE_MANAGED_ABI_SMOKE=PASS`.
 - ABI = `65537` / v1.1; landmark count = 33; native result layout = **1280 bytes**.
 - Provider static integration invariants passed.
-- This does not replace Unity Editor/Windows hardware validation.
+- U2 native package/lifecycle/real-frame proof now also passes as recorded above.
 
-### U3/U4 preparation
+This completes U3 only for implementation and pre-USER validation. It does **not** establish live Unity behavior, end-to-end latency, sustained throughput, tracking quality, teardown behavior on the USER machine, or production acceptance.
 
-- One-command local preparation: `Tools/OpenVinoUnityPosePlugin/scripts/prepare_unity.ps1`.
-- USER A/B procedure: `Docs/openvino-unity-ab-qa.md`.
-- The A/B procedure preserves stock/default backend and identical camera/readback/320x240/downstream settings; it captures F7 backend/result-rate/latency/pressure telemetry, OpenVINO timings, fast-motion fidelity, partial-body recovery and restart/teardown behavior.
-- Generated native/model/package artifacts remain ignored/untracked.
+## U4 — MANDATORY USER A/B RUNTIME QA
+
+Procedure: `Docs/openvino-unity-ab-qa.md`.
+
+USER must now prepare the generated native package locally with Unity closed, then compare the stock `MediaPipeTfliteCpu` backend against explicitly selected `OpenVinoCpuFp32` under the same camera/readback/320x240/downstream settings. Capture F7 telemetry and physical movement behavior for both runs, including fast motion, torso movement, partial-body/occlusion recovery, restart and teardown.
+
+Only USER/Orchestrator may classify U4 PASS / PASS WITH NOTES / FAIL. Do not claim OpenVINO production acceptance before this evidence.
 
 Primary handoff: `Docs/worker-briefs/openvino-unity-integration-handoff.md`.
 Execution plan: `Docs/openvino-unity-integration-checkpoints.md`.
 
 ## Exact next action
 
-1. Follow native-artifact retry run `34805228184` from source SHA `d4c126e6f4eff089c4f3c0f433a140bd5e3bddfc` to completion.
-2. Verify the log prints the exact zlib 1.2.13 distdir checksum PASS before Bazel analysis. If it fails, treat the first new failure as source of truth.
-3. If the native build succeeds, confirm artifact `golden-needle-u2-native` exists and record its manifest/source SHA/hashes. This should be the last expensive rebuild unless a native-impacting input changes.
-4. Run `OpenVINO Unity regression proof` against that preserved artifact. Use the emitted `dumpbin /DEPENDENTS` and loader output to identify the specific missing dependency behind Win32 error 126; make loader/test/package-only fixes without rebuilding the native DLL.
-5. Continue fast regression-only iterations until lifecycle, exact model identity, real-frame 33-landmark smoke and package smoke pass.
-6. Only then mark U2 COMPLETE and U3 COMPLETE for implementation/pre-USER validation, and stop at the genuine U4 USER Windows/Unity A/B boundary.
-7. Do not start U5 from CI alone. Do not merge to `main`. Do not start Phase 6.
+1. **STOP automated implementation at the U4 USER boundary.**
+2. USER follows `Docs/openvino-unity-ab-qa.md` and supplies Run A (stock TFLite CPU) + Run B (OpenVINO CPU FP32) evidence.
+3. Evaluate live tracking fidelity, fresh-result rate, pose age, request/frame latency, readback, render/CPU pressure, OpenVINO internal timings, detector cadence, partial-body recovery and restart/teardown behavior.
+4. Only after USER evidence may U4 be classified and U5 recommendation/cleanup be considered.
+5. Do not merge to `main` without explicit USER approval. Do not start Phase 6.
