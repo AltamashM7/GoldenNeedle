@@ -13,6 +13,8 @@ namespace GoldenNeedle.Core.Motion.Runtime
         RawCanonical = 1,
         ResponsiveCanonicalA = 2,
         ResponsiveCanonicalB = 3,
+        ResponsiveCanonicalC = 4,
+        ResponsiveCanonicalD = 5,
     }
 
     /// <summary>
@@ -27,12 +29,18 @@ namespace GoldenNeedle.Core.Motion.Runtime
         private const float ResponsiveABeta = 0.25f;
         private const float ResponsiveBMinCutoff = 2.0f;
         private const float ResponsiveBBeta = 0.50f;
+        private const float ResponsiveCMinCutoff = 1.0f;
+        private const float ResponsiveCBeta = 0.25f;
+        private const float ResponsiveDMinCutoff = 1.0f;
+        private const float ResponsiveDBeta = 0.50f;
         private const float ResponsiveDerivativeCutoff = 1.0f;
 
         private const string StabilizedAvatarDriveLabel = "StabilizedCanonical";
         private const string RawAvatarDriveLabel = "RawCanonical";
         private const string ResponsiveAAvatarDriveLabel = "ResponsiveCanonicalA (1.5/0.25/1.0)";
         private const string ResponsiveBAvatarDriveLabel = "ResponsiveCanonicalB (2.0/0.50/1.0)";
+        private const string ResponsiveCAvatarDriveLabel = "ResponsiveCanonicalC (1.0/0.25/1.0)";
+        private const string ResponsiveDAvatarDriveLabel = "ResponsiveCanonicalD (1.0/0.50/1.0)";
 
         [SerializeField] private MonoBehaviour canonicalSourceBehaviour;
         [SerializeField] private CanonicalStabilizerSettings stabilizerSettings = new CanonicalStabilizerSettings();
@@ -46,6 +54,8 @@ namespace GoldenNeedle.Core.Motion.Runtime
         private CanonicalPoseStabilizer _stabilizer;
         private CanonicalPoseStabilizer _responsiveStabilizerA;
         private CanonicalPoseStabilizer _responsiveStabilizerB;
+        private CanonicalPoseStabilizer _responsiveStabilizerC;
+        private CanonicalPoseStabilizer _responsiveStabilizerD;
         private MotionCalibrationSession _calibration;
         private CanonicalRotationSolver _rotationSolver;
         private CanonicalKinematicTargetBuilder _kinematicTargetBuilder;
@@ -53,6 +63,8 @@ namespace GoldenNeedle.Core.Motion.Runtime
         private readonly CanonicalPoseFrame _stabilizedFrame = new CanonicalPoseFrame();
         private readonly CanonicalPoseFrame _responsiveCanonicalFrameA = new CanonicalPoseFrame();
         private readonly CanonicalPoseFrame _responsiveCanonicalFrameB = new CanonicalPoseFrame();
+        private readonly CanonicalPoseFrame _responsiveCanonicalFrameC = new CanonicalPoseFrame();
+        private readonly CanonicalPoseFrame _responsiveCanonicalFrameD = new CanonicalPoseFrame();
         private readonly CanonicalRotationFrame _rotationFrame = new CanonicalRotationFrame();
         private readonly CanonicalKinematicTargets _kinematicTargets = new CanonicalKinematicTargets();
         private double _lastEvaluationTimeSeconds;
@@ -63,6 +75,8 @@ namespace GoldenNeedle.Core.Motion.Runtime
         public CanonicalPoseFrame StabilizedFrame => _stabilizedFrame;
         public CanonicalPoseFrame ResponsiveCanonicalAFrame => _responsiveCanonicalFrameA;
         public CanonicalPoseFrame ResponsiveCanonicalBFrame => _responsiveCanonicalFrameB;
+        public CanonicalPoseFrame ResponsiveCanonicalCFrame => _responsiveCanonicalFrameC;
+        public CanonicalPoseFrame ResponsiveCanonicalDFrame => _responsiveCanonicalFrameD;
         public AvatarDrivePoseSource AvatarDriveSource => avatarDrivePoseSource;
         public CanonicalPoseFrame AvatarDriveFrame
         {
@@ -76,6 +90,10 @@ namespace GoldenNeedle.Core.Motion.Runtime
                         return _responsiveCanonicalFrameA;
                     case AvatarDrivePoseSource.ResponsiveCanonicalB:
                         return _responsiveCanonicalFrameB;
+                    case AvatarDrivePoseSource.ResponsiveCanonicalC:
+                        return _responsiveCanonicalFrameC;
+                    case AvatarDrivePoseSource.ResponsiveCanonicalD:
+                        return _responsiveCanonicalFrameD;
                     default:
                         return _stabilizedFrame;
                 }
@@ -94,6 +112,10 @@ namespace GoldenNeedle.Core.Motion.Runtime
                         return ResponsiveAAvatarDriveLabel;
                     case AvatarDrivePoseSource.ResponsiveCanonicalB:
                         return ResponsiveBAvatarDriveLabel;
+                    case AvatarDrivePoseSource.ResponsiveCanonicalC:
+                        return ResponsiveCAvatarDriveLabel;
+                    case AvatarDrivePoseSource.ResponsiveCanonicalD:
+                        return ResponsiveDAvatarDriveLabel;
                     default:
                         return StabilizedAvatarDriveLabel;
                 }
@@ -102,6 +124,8 @@ namespace GoldenNeedle.Core.Motion.Runtime
 
         public CanonicalStabilizerSettings ResponsiveCanonicalASettings => _responsiveStabilizerA?.Settings;
         public CanonicalStabilizerSettings ResponsiveCanonicalBSettings => _responsiveStabilizerB?.Settings;
+        public CanonicalStabilizerSettings ResponsiveCanonicalCSettings => _responsiveStabilizerC?.Settings;
+        public CanonicalStabilizerSettings ResponsiveCanonicalDSettings => _responsiveStabilizerD?.Settings;
         public CanonicalRotationFrame RotationFrame => _rotationFrame;
         public CanonicalKinematicTargets KinematicTargets => _kinematicTargets;
         public CanonicalRotationSolver RotationSolver => _rotationSolver;
@@ -116,6 +140,10 @@ namespace GoldenNeedle.Core.Motion.Runtime
                 CreateResponsiveAvatarSettings(ResponsiveAMinCutoff, ResponsiveABeta));
             _responsiveStabilizerB = new CanonicalPoseStabilizer(
                 CreateResponsiveAvatarSettings(ResponsiveBMinCutoff, ResponsiveBBeta));
+            _responsiveStabilizerC = new CanonicalPoseStabilizer(
+                CreateResponsiveAvatarSettings(ResponsiveCMinCutoff, ResponsiveCBeta));
+            _responsiveStabilizerD = new CanonicalPoseStabilizer(
+                CreateResponsiveAvatarSettings(ResponsiveDMinCutoff, ResponsiveDBeta));
             _calibration = new MotionCalibrationSession(calibrationSettings);
             _rotationSolver = new CanonicalRotationSolver();
             _kinematicTargetBuilder = new CanonicalKinematicTargetBuilder();
@@ -130,6 +158,8 @@ namespace GoldenNeedle.Core.Motion.Runtime
                 _stabilizedFrame.Clear();
                 _responsiveCanonicalFrameA.Clear();
                 _responsiveCanonicalFrameB.Clear();
+                _responsiveCanonicalFrameC.Clear();
+                _responsiveCanonicalFrameD.Clear();
                 _rotationFrame.Clear();
                 _kinematicTargets.Clear();
                 return;
@@ -163,6 +193,14 @@ namespace GoldenNeedle.Core.Motion.Runtime
                 _rawCanonicalFrame,
                 _responsiveCanonicalFrameB,
                 _lastEvaluationTimeSeconds);
+            _responsiveStabilizerC.Stabilize(
+                _rawCanonicalFrame,
+                _responsiveCanonicalFrameC,
+                _lastEvaluationTimeSeconds);
+            _responsiveStabilizerD.Stabilize(
+                _rawCanonicalFrame,
+                _responsiveCanonicalFrameD,
+                _lastEvaluationTimeSeconds);
 
             var avatarDriveFrame = AvatarDriveFrame;
             _rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);
@@ -189,8 +227,12 @@ namespace GoldenNeedle.Core.Motion.Runtime
         {
             _responsiveStabilizerA?.Reset();
             _responsiveStabilizerB?.Reset();
+            _responsiveStabilizerC?.Reset();
+            _responsiveStabilizerD?.Reset();
             _responsiveCanonicalFrameA.Clear();
             _responsiveCanonicalFrameB.Clear();
+            _responsiveCanonicalFrameC.Clear();
+            _responsiveCanonicalFrameD.Clear();
         }
 
         private bool ResolveSource()
