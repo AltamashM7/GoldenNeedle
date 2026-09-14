@@ -127,68 +127,6 @@ Do not immediately write a custom Windows camera stack.
 
 Prefer mature existing Unity/Homuler/MediaPipe mechanisms if they can expose a lower-latency CPU frame path. A native capture path is justified only if evidence shows Unity's current texture/readback architecture is the unavoidable bottleneck and a mature alternative can be integrated without destabilizing camera/orientation/device handling.
 
-## Architecture audit checkpoint — COMPLETE
-
-Audit performed against the current branch implementation plus Unity 6.x and Homuler 0.16.3 APIs.
-
-### Existing Golden Needle path
-
-The active DirectCPU path is:
-
-```text
-WebCamTexture
-  -> persistent body RenderTexture (320x240 in the current configuration)
-  -> persistent orientation staging RenderTexture when H/V flip is required
-  -> AsyncGPUReadback.RequestIntoNativeArray
-  -> pooled TextureFrame RGBA32 CPU storage
-```
-
-The USER's last run reported `DirectCPU stage=V`, so that run used both the body downscale blit and the vertical-flip staging blit before readback.
-
-The existing high-resolution telemetry is sufficient to localize the dominant delay: submit->callback is about 42.7 ms median while callback->coroutine observation is sub-millisecond. Therefore a callback-only/coroutine scheduling rewrite is not justified.
-
-### Homuler 0.16.3 audit
-
-`TextureFrame.ReadTextureAsync` does not provide a hidden lower-latency webcam CPU path. Its no-flip path uses `AsyncGPUReadback.RequestIntoNativeArray`; with flips it additionally allocates a temporary RenderTexture and blits before the same async readback. After completion it calls `LoadRawTextureData` and `Apply` on the pooled Texture2D.
-
-Golden Needle's accepted DirectCPU path is already leaner than that because it writes the readback directly into the pooled TextureFrame raw storage and avoids Homuler's post-readback `LoadRawTextureData`/`Apply` copy/upload.
-
-Homuler's `WebCamSource` remains a `WebCamTexture` wrapper and does not expose a separate native/CPU capture buffer that Golden Needle can reuse.
-
-### Unity 6.x audit
-
-Unity's `WebCamTexture` exposes `GetPixels32(Color32[])`. Supplying a correctly sized caller-owned array allows reuse rather than allocating a new array every frame. Pixel rows use normal Unity texture-coordinate ordering (left-to-right, bottom-to-top).
-
-Unity's `AsyncGPUReadback` documentation explicitly describes the API as avoiding CPU/GPU stalls at the cost of a few frames of latency. That behavior is consistent with the measured ~42.7 ms submit->callback interval and supports treating the current delay as an architectural async GPU transfer/frame-availability cost rather than coroutine polling overhead.
-
-No `WebCamTexture.GetPixelData<T>`-style direct NativeArray API was found in the audited Unity 6.x webcam surface.
-
-### Selected implementation candidate
-
-Implement a bounded **WebCam CPU frame path** before the existing GPU readback path:
-
-```text
-WebCamTexture.GetPixels32(reused Color32[])
-  -> CPU resize + exact H/V transform into pooled TextureFrame RGBA32 raw NativeArray
-  -> existing TFLite BuildCPUImage OR existing OpenVINO latest-frame mailbox
-```
-
-Properties of the candidate:
-
-- keeps the existing `WebCamTexture`; this is not a custom camera stack;
-- leaves full-resolution camera/display presentation untouched;
-- uses one reusable source `Color32[]`; resize only occurs when camera dimensions change;
-- writes directly into the existing pooled TextureFrame CPU buffer; no `Texture2D.Apply` is needed for the inference consumers because both stock `BuildCPUImage` and OpenVINO consume the TextureFrame raw CPU bytes;
-- preserves inference rotation as the existing MediaPipe/OpenVINO rotation option and applies only the same H/V transform currently performed by the GPU staging blit;
-- retains the existing DirectCPU AsyncGPUReadback path as automatic fallback/comparison;
-- retains Homuler CPUAsync as the lower fallback;
-- does not change OpenVINO worker/mailbox scheduling or add any queue/readback/inference concurrency;
-- records CPU acquisition and resize/orientation time separately so USER QA can determine whether synchronous webcam CPU access is actually a net win on the target laptop.
-
-CPU resize must be bilinear and use destination pixel centers mapped to source texture coordinates. H/V mapping must match the existing GPU scale/offset convention for None/H/V/HV. A same-size/no-flip fast copy is allowed.
-
-If `GetPixels32` or CPU preparation fails on a camera/driver, disable only this candidate for the current provider session and immediately retain the proven DirectCPU GPU path; do not fail the provider or silently alter orientation semantics.
-
 ## Development flow
 
 Checkpoints are recovery markers, not stop-and-wait gates.
@@ -220,12 +158,9 @@ The USER/orchestrator owns final runtime acceptance.
 
 ## Exact next action
 
-Architecture audit is complete. Continue directly with implementation:
-
-1. Add an isolated/testable CPU RGBA resize + H/V transform helper.
-2. Add the WebCam CPU candidate to the provider without changing the accepted readback/inference scheduling gates.
-3. Retain DirectCPU AsyncGPUReadback and Homuler fallback paths.
-4. Add path/acquire/resize telemetry needed for USER A/B.
-5. Run managed/static verification and update this document with exact commit/result evidence.
-6. Stop only when USER runtime A/B is genuinely required.
-7. Do not start Phase 6 or merge to `main`.
+1. Verify remote branch HEAD and read `AGENTS.md` plus the current scheduling/readback implementation.
+2. Perform a reuse-first architecture audit of alternatives to the current GPU->CPU body-frame readback.
+3. If needed, add narrowly scoped diagnostics to distinguish GPU completion latency from Unity observation/copy overhead.
+4. Implement the lowest-risk promising path, keeping the current DirectCPU/Homuler path available as fallback/comparison.
+5. Continue through managed/static/build verification and prepare a concise USER A/B test.
+6. Do not start Phase 6 or merge to `main`.
