@@ -9,6 +9,7 @@ on:
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs'
       - 'Assets/GoldenNeedle/Tests/Editor/MediaPipeInferenceSchedulingTests.cs'
       - 'Tools/OpenVinoUnityPosePlugin/tests/ManagedAbiSmoke/**'
+      - 'Tools/OpenVinoUnityPosePlugin/tests/ManagedSchedulingSmoke/**'
       - '.github/workflows/u3-managed-validation.yml'
   workflow_dispatch:
 
@@ -22,6 +23,12 @@ jobs:
 
       - name: Compile real managed wrapper and assert ABI layout
         run: dotnet run --configuration Release --project Tools/OpenVinoUnityPosePlugin/tests/ManagedAbiSmoke/ManagedAbiSmoke.csproj
+
+      - name: Extract and execute actual bounded scheduling helpers
+        shell: bash
+        run: |
+          python3 Tools/OpenVinoUnityPosePlugin/tests/ManagedSchedulingSmoke/extract_provider_scheduling.py
+          dotnet run --configuration Release --project Tools/OpenVinoUnityPosePlugin/tests/ManagedSchedulingSmoke/ManagedSchedulingSmoke.csproj
 
       - name: Validate provider integration and bounded scheduling invariants
         shell: bash
