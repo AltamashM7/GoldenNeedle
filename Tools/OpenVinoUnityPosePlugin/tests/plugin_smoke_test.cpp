@@ -66,8 +66,14 @@ int wmain(int argc, wchar_t** argv) {
     }
   }
 
+  // Keep dependency resolution fail-closed to the plugin directory, explicitly
+  // registered runtime directories and Windows System32. System32 is required for
+  // the normal MSVC runtime dependencies (MSVCP/VCRUNTIME/CONCRT) and was
+  // accidentally excluded by the previous explicit LoadLibraryExW search mask.
   HMODULE module = LoadLibraryExW(
-      dll_path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS);
+      dll_path.c_str(), nullptr,
+      LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_USER_DIRS |
+          LOAD_LIBRARY_SEARCH_SYSTEM32);
   if (module == nullptr) {
     std::cerr << "LoadLibraryExW failed: " << GetLastError() << "\n";
     RemoveSearchDirectories(&cookies);
