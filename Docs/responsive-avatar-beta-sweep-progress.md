@@ -1,22 +1,26 @@
 # Golden Needle — Responsive Avatar Beta Sweep Progress
 
-This is the rolling resume point for the USER-authorized avatar-only beta sweep. Read this file first, then `Docs/worker-briefs/responsive-avatar-beta-sweep-handoff.md`.
+This file records the current resolution of the USER-authorized avatar-only beta sweep.
 
-## Current authorization and status
+Current status refresh: 2026-09-14.
+
+## Current status
 
 - Branch: `engine/pose-tracking-spike`.
-- Exact remote branch HEAD when this implementation began: `58f15d72f1dace179a09533fddd8eca089b8eef2`.
-- Runtime implementation checkpoint: `a58014c6e301395d2334b59373ad2fba540b1be9` — `feat: add responsive avatar beta sweep candidates`.
-- Implementation recovery-doc checkpoint: `b3c099672c0ab6b85cbacc15798b54bf380c84f9`.
-- Verified pre-final-documentation checkpoint: `4a20b6a00bb86a023cab764407ec8c148356529d` — includes runtime implementation + progress checkpoint + dedicated read-only audit workflow.
-- Focused audit run: `34862536608` — **SUCCESS**.
-- Responsive C/D implementation + focused non-hardware verification: **COMPLETE**.
-- Current gate: **genuine USER visual/runtime QA**.
-- OpenVINO integration/scheduling and WebCamCPU/GetPixels32 remain USER ACCEPTED and out of scope.
-- Responsive A/B USER QA is complete; this C/D beta-only sweep remains experimental pending USER comparison.
-- Phase 5A remains NOT USER ACCEPTED.
-- Phase 6 remains NOT STARTED.
+- Implementation start HEAD: `58f15d72f1dace179a09533fddd8eca089b8eef2`.
+- C/D runtime implementation checkpoint: `a58014c6e301395d2334b59373ad2fba540b1be9`.
+- Verified runtime/audit checkpoint: `4a20b6a00bb86a023cab764407ec8c148356529d`.
+- Final pre-documentation USER-QA checkpoint: `83ab2d15206e4563c3302cdcdccc2121ceddd741`.
+- Focused audit run `34862536608`: **SUCCESS**.
+- Responsive C/D implementation: **COMPLETE**.
+- Non-hardware verification: **PASS**.
+- Final C/D winner/default selection: **DEFERRED BY USER**.
+- Motion-engine smoothing fine-tuning: **PRESERVED FOR LATER; NOT A CURRENT BLOCKER**.
+- Phase 5A remains **NOT USER ACCEPTED**.
+- Phase 6 remains **NOT STARTED**.
 - No merge to `main` without explicit USER approval.
+
+Older wording in this file that required immediate USER C/D comparison before development could continue is superseded by the decision below: the tuning system is preserved, but final fine-tuning is intentionally deferred.
 
 ## Preserved serialized avatar source meanings
 
@@ -29,27 +33,20 @@ ResponsiveCanonicalC  = 4
 ResponsiveCanonicalD  = 5
 ```
 
-`StabilizedCanonical` remains the serialized/default avatar source. Existing values 0-3 were not reordered, renamed, or repurposed.
+`StabilizedCanonical` remains the serialized/default avatar source. Existing enum values were not reordered, renamed or repurposed.
 
-## Profiles
-
-Existing profiles remain unchanged:
+## Preserved profiles
 
 ```text
-Stable: 1.0 / 0.05 / 1.0
-A:      1.5 / 0.25 / 1.0
-B:      2.0 / 0.50 / 1.0
-Raw:    no canonical positional filtering
+Stable  = 1.0 / 0.05 / 1.0
+A       = 1.5 / 0.25 / 1.0
+B       = 2.0 / 0.50 / 1.0
+C       = 1.0 / 0.25 / 1.0
+D       = 1.0 / 0.50 / 1.0
+Raw     = no canonical positional filtering
 ```
 
-New beta-only candidates are exactly:
-
-```text
-C: 1.0 / 0.25 / 1.0
-D: 1.0 / 0.50 / 1.0
-```
-
-Both C and D retain the accepted confidence/loss/timing values:
+All filtered responsive candidates retain the accepted confidence/loss/timing values:
 
 ```text
 acquireConfidence       0.60
@@ -61,165 +58,102 @@ defaultDeltaTimeSeconds 0.05
 maximumDeltaTimeSeconds 0.25
 ```
 
-## Final implementation architecture
+## Architecture
 
-Runtime implementation changed only `Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs`.
+C and D each use their own persistent/preallocated `CanonicalPoseStabilizer` and `CanonicalPoseFrame`.
 
-Implemented:
+All responsive filters run continuously from the raw canonical frame so live switching does not cold-start a selected filter.
 
-- appended `ResponsiveCanonicalC = 4` and `ResponsiveCanonicalD = 5`;
-- added exact C/D fixed profile constants and F7/source labels;
-- added one persistent `CanonicalPoseStabilizer` and one persistent/preallocated `CanonicalPoseFrame` for each of C and D;
-- C/D are constructed once in `Awake()` via the existing `CanonicalPoseStabilizer` and existing responsive settings factory;
-- the accepted stable ordering remains literally adjacent and unchanged:
+The stable path remains literally authoritative for calibration:
 
 ```csharp
 _stabilizer.Stabilize(_rawCanonicalFrame, _stabilizedFrame, _lastEvaluationTimeSeconds);
 _calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);
 ```
 
-- after that stable calibration update, A/B/C/D all run continuously from `_rawCanonicalFrame` every runtime update before avatar selection/solve, so live switching is warm;
-- `AvatarDriveFrame` now routes Stable/Raw/A/B/C/D through one authority;
-- rotation solver and kinematic-target builder still consume the same local `avatarDriveFrame` selected from that authority;
-- `HumanoidRetargeter` was not modified and still consumes `runtime.AvatarDriveFrame` for source/torso mapping;
-- C/D were added to the same responsive reset helper used on coordinate-convention change and `ResetCalibration()`;
-- source-unavailable clearing now includes C/D output frames;
-- no per-frame stabilizer or pose-frame construction was introduced;
-- no queues/history/replay/prediction/catch-up logic was introduced.
+Only after stable calibration do A/B/C/D update.
 
-## Preserved boundaries
+`AvatarDriveFrame` remains the single selected-source authority for:
 
-No changes were made to:
+- `CanonicalRotationSolver`;
+- `CanonicalKinematicTargetBuilder`;
+- `HumanoidRetargeter` source/torso mapping.
 
-- `CanonicalPoseStabilizer` algorithm;
-- `CanonicalStabilizerSettings` defaults;
-- Stable/A/B profile values;
-- Raw semantics;
-- calibration math/settings;
-- `EmbodiedLocomotionController` or Phase 5A locomotion semantics;
-- `HumanoidRetargeter` / IK / retarget math;
-- Presentation Smoothing implementation/defaults;
-- OpenVINO/WebCamCPU/provider/native/model/camera code;
-- existing yellow Raw / cyan Stable debug skeleton paths;
-- scenes / USER scene YAML;
-- `Packages`;
-- `ProjectSettings`;
-- Phase 6.
+Phase 5A locomotion continues to consume `runtime.StabilizedFrame` directly.
 
-Calibration remains stable-only:
+No queue/history/replay/prediction/catch-up system was added.
 
-```csharp
-_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);
-```
+## Why C/D were added
 
-Locomotion root tracking, cadence and heading remain direct consumers of `runtime.StabilizedFrame`.
+USER testing of the earlier A/B sweep found:
 
-## Focused non-hardware verification
+- A and B are more responsive/effective than Stable;
+- A and B still have minor jitter relative to Stable.
 
-Dedicated workflow:
-
-`.github/workflows/responsive-avatar-beta-sweep-audit.yml`
-
-Workflow run:
-
-`34862536608` — **SUCCESS**
-
-All workflow steps passed:
-
-1. checkout exact branch head;
-2. validate beta-sweep invariants;
-3. validate beta-sweep diff scope;
-4. show focused beta-sweep diff;
-5. cleanup/complete.
-
-The audit verified:
-
-- enum values 0-3 preserved; C=4 and D=5;
-- serialized default remains Stable;
-- stable defaults remain `1.0 / 0.05 / 1.0`;
-- A remains `1.5 / 0.25 / 1.0`;
-- B remains `2.0 / 0.50 / 1.0`;
-- C is exactly `1.0 / 0.25 / 1.0`;
-- D is exactly `1.0 / 0.50 / 1.0`;
-- C/D confidence/loss/timing settings remain accepted values;
-- A/B/C/D stabilizers and frames are persistent/preallocated;
-- no stabilizer/frame construction occurs in `Update()`;
-- Stable stabilization -> calibration literal adjacency is preserved;
-- A/B/C/D all run from raw after stable calibration and before avatar source selection;
-- calibration remains stable-only;
-- locomotion remains stable-only;
-- six-way `AvatarDriveFrame` routing is present;
-- rotation and kinematic targets share one selected frame;
-- `HumanoidRetargeter` still reads `runtime.AvatarDriveFrame`;
-- C/D reset and clear with A/B on lifecycle resets;
-- source-unavailable clearing includes A/B/C/D;
-- F7 continues to use `AvatarDriveSourceLabel`, with exact C/D labels;
-- raw/stable debug paths remain present;
-- Presentation Smoothing surface/defaults remain unchanged;
-- no queue/history/replay/prediction-like runtime state was introduced;
-- experiment diff scope contains only the runtime file, this progress file and the dedicated audit workflow.
-
-No unnecessary automated Unity scene run was performed. Static/CI verification cannot substitute for USER webcam/visual QA.
-
-## USER QA procedure
-
-Use one Play session with:
+The beta-only sweep therefore restored `minCutoff = 1.0` and varied beta only:
 
 ```text
-Inference Backend = OpenVINO CPU FP32
-Frame Acquisition = WebCamCPU/GetPixels32
-Body input = 320x240
-full-body framing where practical
-Presentation Smoothing = OFF
+C = 1.0 / 0.25 / 1.0
+D = 1.0 / 0.50 / 1.0
 ```
 
-Calibrate once. Then live-switch `MotionEngineRuntime -> Avatar Drive Pose Source`, primarily comparing:
+The intended hypothesis is:
+
+- keep stronger low-motion/idle smoothing from the stable minimum cutoff;
+- increase responsiveness during deliberate motion through beta.
+
+## USER decision after implementation
+
+The USER decided that final smoothing fine-tuning does **not** need to block ongoing development.
+
+The current requirement is to preserve the tuning system so the responsiveness/stability balance can be revisited later.
+
+Therefore:
+
+- no C/D winner is declared yet;
+- no new serialized/default avatar source is selected;
+- Stable/Raw/A/B/C/D remain available for engineering comparison;
+- Raw remains the subjective latency reference;
+- Stable remains the stability/calibration/locomotion reference;
+- final smoothing intensity/profile tuning is deferred.
+
+A future cleanup may replace the experimental preset list with a cleaner configurable smoothing profile or intensity control once the desired range is known. Do **not** perform that cleanup now merely for aesthetics.
+
+## Current engineering conclusion
+
+The motion-engine optimization milestone is considered complete enough to move forward:
 
 ```text
-StabilizedCanonical
-ResponsiveCanonicalC
-ResponsiveCanonicalD
-RawCanonical
+OpenVINO CPU FP32          strong best-tested backend
+WebCamCPU/GetPixels32      accepted acquisition path
+fresh pose rate            near 30 Hz camera cadence in healthy full-body test
+Raw avatar drive           near-instant subjective response
+Filtered avatar drive      adjustable via preserved Stable/A/B/C/D profiles
+final filter tuning        intentionally deferred
 ```
 
-A/B remain available as optional secondary references.
+The existence of tunable avatar-drive smoothing is now a preserved capability, not an unresolved gate.
 
-F7 should identify C/D as:
+## Boundaries that remain locked
 
-```text
-ResponsiveCanonicalC (1.0/0.25/1.0)
-ResponsiveCanonicalD (1.0/0.50/1.0)
-```
+Do not use later avatar smoothing work to change:
 
-Judge primarily:
-
-- perceived motion-to-avatar delay;
-- whether C/D feel essentially as immediate as Raw;
-- idle micro-jitter;
-- wrist/ankle endpoint jitter;
-- fast reach/arm response;
-- torso response;
-- knees/legs when visible;
-- snapping or IK instability;
-- partial-body loss/recovery;
-- left/right and orientation correctness.
-
-Decision target: choose the most stable filtered mode that still feels essentially as immediate as Raw.
-
-Do not automatically change the production/default source after QA. Return the USER result for the next decision. Do not invent additional tuning profiles without new authorization.
-
-## Remaining risk
-
-The only intended unresolved question is subjective/runtime behavior on USER hardware: whether C or D provides the best response/stability tradeoff. That cannot be resolved by static inspection or CI.
+- stable calibration input;
+- stable locomotion input;
+- OpenVINO scheduling/mailbox architecture;
+- WebCamCPU camera acquisition;
+- canonical coordinate semantics;
+- Phase 4 retarget/IK math;
+- Presentation Smoothing semantics;
+- partial-body behavior;
+- serialized enum meanings without migration planning.
 
 ## CONTINUE FROM HERE
 
-**IMPLEMENTATION + NON-HARDWARE VERIFICATION COMPLETE. STOP AT USER QA GATE.**
+**STATUS: IMPLEMENTED + VERIFIED; FINAL FINE-TUNING DEFERRED BY USER.**
 
-Verified code/audit checkpoint:
+No further smoothing experiment is required before normal development continues.
 
-`4a20b6a00bb86a023cab764407ec8c148356529d`
+Current next-step authority is `Docs/current-state.md`: pause motion-engine optimization and wait for the USER's pre-locomotion prerequisite list before returning to Phase 5A.
 
-Next action is USER visual/runtime comparison of Stable vs C vs D vs Raw using the procedure above. After receiving USER observations, record the result and return to the Orchestrator for acceptance/next decision.
-
-Do not retune further, change the default, merge `main`, or start Phase 6 without new authorization.
+Do not merge to `main`. Do not start Phase 6.
