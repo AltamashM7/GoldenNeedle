@@ -49,7 +49,14 @@ $env:HERMETIC_PYTHON_VERSION = "3.12"
 $env:PYTHON_BIN_PATH = $PythonExe
 $env:ANDROID_NDK_HOME = ""
 
-$OutputUserRoot = Join-Path $env:USERPROFILE "gnu2"
+# The hosted runner's USERPROFILE path makes the longest MediaPipe object path exceed
+# the legacy MSVC path limit. Keep CI's Bazel output root deliberately short while
+# preserving the existing local build root used by prepare_unity.ps1.
+if ($env:GITHUB_ACTIONS -eq "true") {
+    $OutputUserRoot = Join-Path $env:SystemDrive "b"
+} else {
+    $OutputUserRoot = Join-Path $env:USERPROFILE "gnu2"
+}
 New-Item -ItemType Directory -Force -Path $OutputUserRoot | Out-Null
 $PythonBazelPath = $PythonExe.Replace("\", "/")
 $MediaPipeBazelPath = $MediaPipe.Replace("\", "/")
