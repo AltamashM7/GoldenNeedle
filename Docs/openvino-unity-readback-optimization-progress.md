@@ -1,250 +1,171 @@
 # Golden Needle — Camera/Readback Latency Optimization Progress
 
-This is the rolling resume point for the readback-latency optimization that follows the accepted OpenVINO scheduling optimization.
+This file records the resolved state of the camera/readback-latency optimization that followed the accepted OpenVINO scheduling work.
 
-A replacement Web Builder must read this file first and treat it, plus `Docs/worker-briefs/openvino-unity-readback-r2-implementation-handoff.md`, as newer authority than the original broad readback handoff.
+Current status refresh: 2026-09-14.
 
-## Current authorization and status
+## Resolution
 
-- USER authorization for the readback investigation: **APPROVED**.
+- USER readback investigation authorization: **APPROVED**.
 - R1 architecture audit: **COMPLETE — READ-ONLY**.
-- R2 small selectable CPU-webcam implementation experiment: **EXPLICITLY USER AUTHORIZED on 2026-09-14**.
-- R2-A ownership seam inspection: **COMPLETE**.
-- R2-B selectable CPU webcam implementation: **COMPLETE**.
-- R2-C telemetry/fallback/lifecycle/boundedness verification: **COMPLETE pending USER runtime QA**.
-- R2-D managed/static/helper verification: **PASS; USER A/B QA is now the next genuine gate**.
-- Branch: `engine/pose-tracking-spike`.
-- Gate A OpenVINO model compatibility: **PASS**.
-- Gate B MediaPipe/OpenVINO semantic parity: **PASS WITH NOTES**.
-- Unity OpenVINO integration correctness: **PASS**.
+- R2 WebCamCPU/GetPixels32 experiment: **EXPLICITLY USER AUTHORIZED**.
+- R2 implementation/static/helper verification: **PASS**.
+- USER runtime validation: **PASS**.
+- Final classification: **USER ACCEPTED — PASS FOR CURRENT MILESTONE**.
 - OpenVINO scheduling optimization: **USER ACCEPTED — PASS**.
-- Stock MediaPipe/TFLite CPU remains available and default-safe.
+- Stock MediaPipe/TFLite CPU and ExistingReadback remain available as fallback/reference.
 - Phase 5A remains **NOT USER ACCEPTED**.
 - Phase 6 remains **NOT STARTED**.
 - No merge to `main` without explicit USER approval.
 
-## Repository safety / overstep recovery
+Older wording in this track that said USER webcam QA was still pending is superseded by this resolved status.
 
-The original read-only audit started from:
+## Why the experiment existed
 
-`748a5ec1b30cdfc01b8441b3e6d01c64733e0e08`
+After OpenVINO scheduling was fixed, the dominant remaining pre-inference cost was the GPU/readback path.
 
-During a continuation after an execution-limit interruption, experimental implementation was started prematurely. The USER stopped that work and required cleanup.
-
-Safe cleanup checkpoint:
-
-`3cb7752715e4e41d67087f5d02afa54373cb3628`
-
-GitHub comparison between `748a5ec...` and `3cb7752...` reports **zero changed files**, and both commits point to the same tree. The abandoned transient implementation commits remain only in branch history. Do not continue from them and do not rewrite shared history merely to erase them.
-
-The Orchestrator then added documentation-only decision checkpoints. No runtime/provider/native/scene implementation from the abandoned experiment was active when R2 began.
-
-Authorized R2 implementation started from safe remote HEAD:
-
-`f17577f10d4a2f78d46437705522dc271e6de18d`
-
-Durable R1 audit:
-
-`Docs/openvino-unity-readback-audit.md`
-
-Primary R2 implementation brief:
-
-`Docs/worker-briefs/openvino-unity-readback-r2-implementation-handoff.md`
-
-## Accepted bottleneck evidence
-
-Post-scheduling USER evidence is approximately:
+Representative accepted bottleneck evidence before R2:
 
 ```text
-Camera ~28-30 FPS
-Fresh pose results ~12-13/s
-Body input 320x240
-Frame->result ~100-105 ms
+camera               ~28-30 FPS
+fresh pose results   ~12-13/s
+frame->result        ~100-105 ms
 
 DirectCPU readback:
-submit->callback ~42.7 ms median / ~54.8 ms p95
-callback->poll ~0.8 ms median / ~1.3 ms p95
-poll->publish ~0.2 ms median / ~0.4 ms p95
+submit->callback     ~42.7 ms median / ~54.8 ms p95
+callback->poll       ~0.8 ms median / ~1.3 ms p95
+poll->publish        ~0.2 ms median / ~0.4 ms p95
 ```
 
-Interpretation:
+The conclusion was that callback polling/publication were already small. The major avoidable cost was waiting for GPU readback completion.
 
-- OpenVINO inference is already faster than stock TFLite;
-- OpenVINO worker/mailbox scheduling has been accepted and must not be reopened absent new evidence;
-- callback polling and publication are already small;
-- the remaining dominant pre-inference stage is GPU/readback completion.
+## R1 audit conclusion
 
-## R1 audit result
+The read-only audit rejected/deferred the following as primary next steps:
 
-R1 evaluated the existing DirectCPU path, Homuler/MediaPipeUnityPlugin CPU read modes, Unity webcam CPU pixel access, graphics-transfer alternatives and native Windows capture.
-
-Rejected/deferred:
-
-- further coroutine/callback optimization as primary direction;
-- standard Homuler CPUAsync because it retains AsyncGPUReadback;
-- synchronous Homuler CPU texture read without hardware measurement because it may simply trade latency for main/render-thread stall;
+- more coroutine/callback micro-optimization;
+- standard Homuler CPUAsync, because it still uses AsyncGPUReadback;
 - forcing D3D12;
-- custom/native Windows/Media Foundation capture until the lower-risk Unity CPU-pixel experiment is measured.
+- synchronous texture read without hardware measurement;
+- custom Windows/Media Foundation capture before measuring a lower-risk Unity CPU-pixel path.
 
-Highest-priority candidate:
+The selected candidate was:
 
-`WebCamTexture.GetPixels32(Color32[] reusableBuffer)` plus reusable CPU camera->320x240 resize/flip preparation.
+`WebCamTexture.GetPixels32(Color32[] reusableBuffer)` plus reusable CPU resize/flip preparation.
 
-Conceptual candidate path:
+## Implemented R2 architecture
 
 ```text
 WebCamTexture
   -> GetPixels32(reused camera-sized Color32[])
-  -> reusable CPU resize/H-V transform to 320x240 RGBA
-  -> existing bounded OpenVINO latest-frame mailbox
-  -> existing OpenVINO worker
+  -> reusable CPU resize / H-V transform
+  -> persistent 320x240 RGBA NativeArray<byte>
+  -> existing OpenVinoLatestFrameMailbox
+  -> existing persistent OpenVINO worker
 ```
 
-Why it is worth R2:
+The implementation preserves two acquisition modes:
 
-- reuses Unity camera/device lifecycle;
-- preserves full-resolution `WebCamTexture` presentation;
-- avoids per-frame camera-array allocation in Golden Needle code;
-- bypasses the RenderTexture -> AsyncGPUReadback round trip when selected and eligible;
-- requires no OpenVINO model/native ABI change;
-- remains optional and can be abandoned cleanly if measurement is poor.
+### `ExistingReadback`
 
-Key uncertainty remains runtime-specific:
+- existing RenderTexture/readback path;
+- DirectCPU/Homuler behavior retained;
+- fallback/reference path.
 
-`GetPixels32` may still synchronize/copy expensively on the USER's Windows webcam/driver. Same-machine runtime measurement is the purpose of the next QA gate.
+### `WebCamCpuPixels`
 
-## R2 implementation checkpoint
+- explicit/selectable;
+- active only for OpenVINO CPU FP32;
+- uses the reusable `GetPixels32(Color32[])` overload;
+- persistent/reused camera and body RGBA buffers;
+- 2:1 box-average fast path for 640x480 -> 320x240;
+- general bilinear fallback for other valid dimensions;
+- applies the existing inference H/V semantics;
+- publishes directly to the accepted OpenVINO mailbox;
+- adds no queue/history/replay/second worker;
+- exposes Get/Prep/Total CPU timing and fallback reason.
 
-Implementation checkpoint SHA:
+Implementation checkpoint:
 
-`2343e629ab00ff16b8a52b844697f11911ca6b82`
+`2343e629ab00ff16b8a52b844697f11911ca6b82` — `perf: add selectable webcam CPU acquisition`.
 
-The implementation was generated and verified by the R2 workflow from the authorized safe tree. The workflow passed its transform, managed CPU-helper smoke, accepted OpenVINO scheduling smoke, managed ABI smoke, static/boundedness invariants and changed-file-scope checks before committing the provider/Inspector changes.
+A later telemetry string-literal compile defect was repaired at:
 
-Files introduced for the authorized experiment and verification:
+`16831bc5a445c376704dd868240391e8a118394b` — `fix: repair R2 telemetry string literal`.
 
-- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs`
-- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs.meta`
-- `Assets/GoldenNeedle/Tests/Editor/WebCamCpuFramePreparationTests.cs`
-- `Assets/GoldenNeedle/Tests/Editor/WebCamCpuFramePreparationTests.cs.meta`
-- `Tools/OpenVinoUnityPosePlugin/tests/ManagedWebCamCpuSmoke/ManagedWebCamCpuSmoke.csproj`
-- `Tools/OpenVinoUnityPosePlugin/tests/ManagedWebCamCpuSmoke/UnityStubs.cs`
-- `Tools/OpenVinoUnityPosePlugin/tests/ManagedWebCamCpuSmoke/Program.cs`
-- `Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_readback_r2.py`
-- `.github/workflows/openvino-readback-r2.yml`
+The one-off repair workflow was then removed; the safe post-repair checkpoint was:
 
-Runtime integration files changed at the implementation checkpoint:
+`45e20cb7df3ea8acd4c6e2cdbce8450a87487971`.
 
-- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs`
-- `Assets/GoldenNeedle/Editor/MediaPipePoseProviderEditor.cs`
+## Runtime findings
 
-No scene YAML, `ProjectSettings`, `Packages`, native OpenVINO source/binary or Phase 6 files were changed.
+Early half-body tests already showed WebCamCPU acquisition around:
 
-### Implemented acquisition modes
+```text
+GetPixels32      ~0.3 ms
+CPU preparation  ~3.6 ms
+CPU total        ~3.9 ms
+```
 
-`BodyFrameAcquisitionMode.ExistingReadback`
+The USER also reported lower perceived latency than ExistingReadback.
 
-- remains the serialized default;
-- preserves the accepted existing RenderTexture/readback path;
-- preserves DirectCPU/Homuler behavior and settings as fallback/A-B baseline.
+A later full-body phone-recorded test, avoiding OBS overhead, provided the strongest evidence. Representative behavior was approximately:
 
-`BodyFrameAcquisitionMode.WebCamCpuPixels`
+```text
+camera capture          ~28.6-30.3 FPS
+fresh pose results      ~26.7-29.3/s
+render                  ~30-37 FPS
+CPU GetPixels32         ~0.3 ms
+CPU preparation         ~3.6 ms
+CPU acquisition total   ~3.9 ms
+OpenVINO graph/inference commonly ~25-35 ms
+frame->result           commonly ~33-62 ms
+```
 
-- is explicit/selectable;
-- is eligible only with active OpenVINO CPU FP32;
-- calls `WebCamTexture.GetPixels32(reused Color32[])` on the main thread;
-- prepares a persistent RGBA `NativeArray<byte>` at the existing body target size;
-- uses a dedicated 2:1 box-average fast path for the expected 640x480 -> 320x240 case and a general bilinear path for other valid source/target sizes;
-- applies the provider's existing inference horizontal/vertical flip semantics during CPU preparation;
-- passes the prepared RGBA bytes into the existing `OpenVinoLatestFrameMailbox` and existing persistent OpenVINO worker;
-- does not add a queue, history, replay or second worker;
-- exposes requested/active acquisition mode, last GetPixels32/preparation/total timing and explicit fallback reason in the custom Inspector.
+The camera returned to roughly 30 FPS when full body was visible. The earlier ~15 FPS half-body behavior was not caused by a Golden Needle capture-rate cap; it appears to be camera/environment behavior and is not a blocker for the accepted full-body path.
 
-### Fallback and lifecycle behavior
+## Interpretation
 
-- If the CPU mode is selected while OpenVINO is not active, the provider explicitly reports that the experiment requires OpenVINO and continues through `ExistingReadback`.
-- If CPU buffer setup, `GetPixels32`, preparation or mailbox publication throws, the CPU experiment is disabled for that provider session and `ExistingReadback` remains available.
-- CPU camera and prepared-RGBA buffers are persistent/reused while dimensions are stable.
-- CPU buffers are released on body-resource rebuild and provider cleanup.
-- CPU experiment availability, fallback reason and timing window reset with provider session state, so camera switch/restart starts from a clean acquisition session.
-- Existing camera-switch mailbox pause/discard and OpenVINO worker shutdown/join ordering remain unchanged.
+The R2 candidate removed the old dominant GPU/readback latency on the USER machine and exposed close to one fresh pose result per camera frame under healthy ~30 FPS full-body conditions.
 
-### Verification completed
+Compared with the earlier representative ~12-13 results/s and ~100 ms frame-to-result behavior:
 
-R2 workflow verification passed before `2343e629...` was pushed:
+- practical fresh-pose throughput roughly doubled;
+- frame-to-result latency was roughly halved in representative samples;
+- the old readback stage became effectively bypassed for the best-tested path;
+- OpenVINO + WebCamCPU now operates near the 30 Hz camera ceiling on the proof machine.
 
-- fail-closed provider/Inspector transform: PASS;
-- managed `WebCamCpuFramePreparation` smoke: PASS;
-- existing `ManagedSchedulingSmoke`: PASS;
-- existing `ManagedAbiSmoke`: PASS;
-- R2 static integration invariants: PASS;
-- boundedness checks: PASS;
-- exactly one persistent OpenVINO worker remains: PASS;
-- exactly two reusable mailbox frame slots remain: PASS;
-- no FIFO/ConcurrentQueue introduced: PASS;
-- reusable `GetPixels32(Color32[])` overload only: PASS;
-- CPU preparation helper performs no per-frame buffer construction: PASS;
-- generated runtime diff restricted to provider + custom Inspector: PASS.
+Final status: **USER ACCEPTED — PASS FOR CURRENT MILESTONE**.
 
-A native OpenVINO rebuild was intentionally not performed because the native inputs/ABI did not change.
+## Preserved invariants
 
-## R2 invariants
+- ExistingReadback remains available as fallback/reference.
+- Stock MediaPipe/TFLite remains available.
+- OpenVINO worker/mailbox scheduling remains unchanged and accepted.
+- At most one active inference + one replaceable newest pending frame.
+- No FIFO/history/replay/catch-up queue.
+- Persistent/reusable buffers only.
+- Body input remains 320x240 for the current baseline.
+- Camera rotation/H-V/display-mirror/canonical left-right semantics remain unchanged.
+- No native OpenVINO rebuild was required.
+- No custom Windows camera stack was introduced.
+- No calibration, retargeting, locomotion or partial-body semantics were changed.
 
-R2 implementation must continue to preserve:
+## What remains optional later
 
-- existing DirectCPU/Homuler path as explicit fallback and A/B baseline;
-- existing OpenVINO worker/mailbox scheduling downstream;
-- max one active inference and one replaceable newest pending frame; no FIFO/history/replay/catch-up queue;
-- persistent/reusable buffers only;
-- initial body input at 320x240;
-- inference H/V flip, rotation, display-mirror and canonical left/right semantics;
-- camera switching/restart/teardown safety;
-- canonical, stabilization, calibration, retargeting, locomotion and partial-body semantics;
-- no detector conversion/densification;
-- no native OpenVINO rebuild unless native inputs genuinely change;
-- visible active acquisition mode and explicit fallback reason;
-- no USER-owned scene YAML edits merely for convenience.
+Future hardware-specific work may still evaluate:
 
-## R2 required USER measurement
+- a custom/native camera stack if Unity CPU access regresses on another machine;
+- additional camera formats/resolutions;
+- stronger/discrete-GPU backend policy;
+- minor acquisition/inference refinements.
 
-Compare current DirectCPU against the CPU-webcam candidate with the same camera, OpenVINO backend, 320x240 body target, lighting/framing and downstream settings.
-
-Measure/observe:
-
-- `GetPixels32` acquisition time;
-- CPU resize/flip preparation time;
-- total camera -> prepared CPU frame time;
-- OpenVINO graph/inference time;
-- frame -> result latency;
-- fresh results/s and pose age;
-- camera/render FPS;
-- stable bounded behavior/no errors;
-- F12 fast-arm responsiveness and partial-body recovery;
-- orientation/left-right parity versus ExistingReadback.
+None of these is a current blocker.
 
 ## CONTINUE FROM HERE
 
-**STOP REASON: genuine USER webcam QA is now required.**
+**STATUS: CLOSED FOR CURRENT MILESTONE — USER ACCEPTED PASS.**
 
-Remote implementation checkpoint to validate:
+Do not reopen camera/readback optimization merely to chase small additional numbers while the current best path already approaches camera cadence.
 
-`2343e629ab00ff16b8a52b844697f11911ca6b82`
-
-Before QA, pull the latest `engine/pose-tracking-spike` branch and allow Unity to recompile. Do not edit the scene YAML just to set the experiment.
-
-USER A/B procedure:
-
-1. Open the existing Pose Tracking Spike Lab scene and select the object containing `MediaPipePoseProvider`.
-2. Keep `Inference Backend = OpenVinoCpuFp32`, body inference downscale enabled, long edge `320`, and the same camera/settings used for the accepted scheduling QA.
-3. Baseline run: set **Frame Acquisition = ExistingReadback**. Keep the existing Direct Body CPU Readback setting at the same value used in the accepted baseline (normally enabled for the current DirectCPU comparison). Run long enough for telemetry to stabilize and capture the usual F7/F12 evidence.
-4. Candidate run: stop Play Mode, set **Frame Acquisition = WebCamCpuPixels**, then run under the same lighting/framing. The Inspector should show active acquisition `WebCamCPU/GetPixels32`; if it falls back, capture the exact **Acquisition Fallback** text.
-5. For the candidate, record the Inspector `CPU Get/Prep/Total` values after warm-up plus the normal F7 metrics: camera FPS, fresh pose results/s, frame->result, graph/inference timing, pose age and any errors.
-6. Run F12 fast-arm motion and partial-body loss/recovery once on each mode. Confirm webcam presentation, skeleton orientation, left/right semantics and recovery remain equivalent.
-7. Send the baseline and candidate screenshots/metrics back to the Orchestrator/Builder. Do not accept R2 solely from managed/static tests; same-machine webcam latency is the experiment's decision evidence.
-
-Next Builder action after USER evidence:
-
-- independently compare DirectCPU/ExistingReadback vs WebCamCPU/GetPixels32;
-- reject/revert the candidate if it regresses latency, FPS, semantics, stability or boundedness;
-- if it clearly improves the dominant pre-inference latency without regressions, document the result and return to the Orchestrator for the next approval decision;
-- do not start custom Windows capture or Phase 6 from this checkpoint.
+Current project direction is governed by `Docs/current-state.md`.
