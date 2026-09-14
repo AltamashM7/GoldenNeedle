@@ -1,0 +1,220 @@
+name: Responsive avatar stabilizer audit
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - '.github/workflows/responsive-avatar-stabilizer-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate responsive avatar stabilizer invariants
+        shell: bash
+        run: |
+          git diff --check c07cea3801a11ba100d5a465935906895debbf63..HEAD
+          python3 - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs').read_text(encoding='utf-8')
+          settings = Path('Assets/GoldenNeedle/Core/Motion/Stabilization/CanonicalStabilizerSettings.cs').read_text(encoding='utf-8')
+          stabilizer = Path('Assets/GoldenNeedle/Core/Motion/Stabilization/CanonicalPoseStabilizer.cs').read_text(encoding='utf-8')
+          retargeter = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs').read_text(encoding='utf-8')
+          locomotion = Path('Assets/GoldenNeedle/Core/Motion/Locomotion/EmbodiedLocomotionController.cs').read_text(encoding='utf-8')
+          presenter = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs').read_text(encoding='utf-8')
+
+          required_enum = [
+              'StabilizedCanonical = 0,',
+              'RawCanonical = 1,',
+              'ResponsiveCanonicalA = 2,',
+              'ResponsiveCanonicalB = 3,',
+          ]
+          missing = [x for x in required_enum if x not in runtime]
+          if missing:
+              raise SystemExit(f'enum serialization invariants missing: {missing}')
+          if 'avatarDrivePoseSource = AvatarDrivePoseSource.StabilizedCanonical;' not in runtime:
+              raise SystemExit('serialized/default avatar source is no longer stabilized')
+
+          stable_defaults = [
+              'public float acquireConfidence = 0.60f;',
+              'public float sustainConfidence = 0.40f;',
+              'public int acquireSamples = 2;',
+              'public float lossGraceSeconds = 0.10f;',
+              'public float resetAfterLossSeconds = 0.25f;',
+              'public float minCutoff = 1f;',
+              'public float beta = 0.05f;',
+              'public float derivativeCutoff = 1f;',
+              'public float defaultDeltaTimeSeconds = 0.05f;',
+              'public float maximumDeltaTimeSeconds = 0.25f;',
+          ]
+          missing = [x for x in stable_defaults if x not in settings]
+          if missing:
+              raise SystemExit(f'existing stable profile changed: {missing}')
+          if 'public void Stabilize(' not in stabilizer:
+              raise SystemExit('existing canonical stabilizer surface changed')
+
+          responsive_profile = [
+              'private const float ResponsiveAMinCutoff = 1.5f;',
+              'private const float ResponsiveABeta = 0.25f;',
+              'private const float ResponsiveBMinCutoff = 2.0f;',
+              'private const float ResponsiveBBeta = 0.50f;',
+              'private const float ResponsiveDerivativeCutoff = 1.0f;',
+              'acquireConfidence = 0.60f,',
+              'sustainConfidence = 0.40f,',
+              'acquireSamples = 2,',
+              'lossGraceSeconds = 0.10f,',
+              'resetAfterLossSeconds = 0.25f,',
+              'defaultDeltaTimeSeconds = 0.05f,',
+              'maximumDeltaTimeSeconds = 0.25f,',
+          ]
+          missing = [x for x in responsive_profile if x not in runtime]
+          if missing:
+              raise SystemExit(f'responsive profile constants/settings missing: {missing}')
+
+          persistent = [
+              'private CanonicalPoseStabilizer _responsiveStabilizerA;',
+              'private CanonicalPoseStabilizer _responsiveStabilizerB;',
+              'private readonly CanonicalPoseFrame _responsiveCanonicalFrameA = new CanonicalPoseFrame();',
+              'private readonly CanonicalPoseFrame _responsiveCanonicalFrameB = new CanonicalPoseFrame();',
+          ]
+          missing = [x for x in persistent if x not in runtime]
+          if missing:
+              raise SystemExit(f'persistent responsive state missing: {missing}')
+
+          update_start = runtime.index('        private void Update()')
+          update_end = runtime.index('        public void BeginCalibration()', update_start)
+          update = runtime[update_start:update_end]
+          if 'new CanonicalPoseStabilizer' in update or 'new CanonicalPoseFrame' in update:
+              raise SystemExit('per-frame responsive filter/frame allocation detected')
+
+          continuous = [
+              '_responsiveStabilizerA.Stabilize(\n                _rawCanonicalFrame,\n                _responsiveCanonicalFrameA,',
+              '_responsiveStabilizerB.Stabilize(\n                _rawCanonicalFrame,\n                _responsiveCanonicalFrameB,',
+          ]
+          missing = [x for x in continuous if x not in runtime]
+          if missing:
+              raise SystemExit(f'continuous raw->responsive updates missing: {missing}')
+          a_pos = update.index('_responsiveStabilizerA.Stabilize(')
+          b_pos = update.index('_responsiveStabilizerB.Stabilize(')
+          calibration_pos = update.index('_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);')
+          if not (a_pos < calibration_pos and b_pos < calibration_pos):
+              raise SystemExit('responsive stabilizers are not continuously updated before avatar selection/calibration solve')
+
+          routing = [
+              'case AvatarDrivePoseSource.RawCanonical:\n                        return _rawCanonicalFrame;',
+              'case AvatarDrivePoseSource.ResponsiveCanonicalA:\n                        return _responsiveCanonicalFrameA;',
+              'case AvatarDrivePoseSource.ResponsiveCanonicalB:\n                        return _responsiveCanonicalFrameB;',
+              'default:\n                        return _stabilizedFrame;',
+              'var avatarDriveFrame = AvatarDriveFrame;',
+              '_rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);',
+              '_kinematicTargetBuilder.Build(avatarDriveFrame, _calibration.Profile, _kinematicTargets);',
+          ]
+          missing = [x for x in routing if x not in runtime]
+          if missing:
+              raise SystemExit(f'avatar source routing missing: {missing}')
+
+          if '_calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);' not in runtime:
+              raise SystemExit('calibration no longer consumes stabilized frame')
+          forbidden_calibration = [
+              '_calibration.Update(AvatarDriveFrame',
+              '_calibration.Update(_rawCanonicalFrame',
+              '_calibration.Update(_responsiveCanonicalFrameA',
+              '_calibration.Update(_responsiveCanonicalFrameB',
+          ]
+          if any(x in runtime for x in forbidden_calibration):
+              raise SystemExit('calibration was routed through experimental avatar source')
+
+          if locomotion.count('runtime.StabilizedFrame') < 3:
+              raise SystemExit('locomotion stable-frame consumers were changed')
+          if any(x in locomotion for x in ['runtime.AvatarDriveFrame', 'runtime.RawCanonicalFrame', 'ResponsiveCanonical']):
+              raise SystemExit('locomotion was routed through experimental avatar source')
+
+          if 'var sourceFrame = runtime.AvatarDriveFrame;' not in retargeter:
+              raise SystemExit('HumanoidRetargeter does not use AvatarDriveFrame authority')
+
+          reset_requirements = [
+              'ResetResponsiveAvatarStabilizers();',
+              '_responsiveStabilizerA?.Reset();',
+              '_responsiveStabilizerB?.Reset();',
+              '_responsiveCanonicalFrameA.Clear();',
+              '_responsiveCanonicalFrameB.Clear();',
+          ]
+          missing = [x for x in reset_requirements if x not in runtime]
+          if missing:
+              raise SystemExit(f'responsive lifecycle reset/clear missing: {missing}')
+          if runtime.count('ResetResponsiveAvatarStabilizers();') < 2:
+              raise SystemExit('responsive reset helper is not used for both coordinate and explicit calibration reset')
+
+          debug_requirements = [
+              'runtime.RawCanonicalFrame,',
+              'runtime.StabilizedFrame,',
+              'Avatar source: {(runtime == null ? "Unavailable" : runtime.AvatarDriveSourceLabel)}',
+          ]
+          missing = [x for x in debug_requirements if x not in presenter]
+          if missing:
+              raise SystemExit(f'raw/stable debug/F7 source diagnostic missing: {missing}')
+          label_requirements = [
+              'ResponsiveCanonicalA (1.5/0.25/1.0)',
+              'ResponsiveCanonicalB (2.0/0.50/1.0)',
+          ]
+          if any(x not in runtime for x in label_requirements):
+              raise SystemExit('responsive F7 labels do not expose exact profiles')
+
+          presentation_requirements = [
+              'private bool enablePresentationSmoothing = true;',
+              'private float presentationResponse = 45f;',
+              'private float maxPresentationBlendSeconds = 0.05f;',
+              'BoundedQuaternionPresentationSmoother',
+          ]
+          if any(x not in retargeter for x in presentation_requirements):
+              raise SystemExit('presentation smoothing implementation/default surface changed')
+
+          forbidden_history = ['Queue<', 'ConcurrentQueue<', 'frameHistory', 'Replay', 'Extrapolat', 'Predict']
+          if any(x in runtime for x in forbidden_history):
+              raise SystemExit('queue/history/replay/prediction-like state introduced in runtime')
+
+          print('RESPONSIVE_AVATAR_STABILIZER_STATIC_AUDIT=PASS')
+          print('ENUM_SERIALIZATION=PASS')
+          print('STABLE_PROFILE_UNCHANGED=PASS')
+          print('RESPONSIVE_A_PROFILE=1.5/0.25/1.0 PASS')
+          print('RESPONSIVE_B_PROFILE=2.0/0.50/1.0 PASS')
+          print('CONTINUOUS_PARALLEL_UPDATES=PASS')
+          print('CALIBRATION_STABLE_ONLY=PASS')
+          print('LOCOMOTION_STABLE_ONLY=PASS')
+          print('RETARGET_SOURCE_CONSISTENCY=PASS')
+          print('RESET_LIFECYCLE=PASS')
+          print('DEBUG_AND_PRESENTATION_PRESERVED=PASS')
+          PY
+
+      - name: Validate experiment diff scope
+        shell: bash
+        run: |
+          allowed='^(Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs|.github/workflows/responsive-avatar-stabilizer-audit.yml)$'
+          bad="$(git diff --name-only c07cea3801a11ba100d5a465935906895debbf63..HEAD | grep -Ev "$allowed" || true)"
+          if [ -n "$bad" ]; then
+            echo 'Unexpected files changed in responsive avatar stabilizer implementation checkpoint:'
+            echo "$bad"
+            exit 1
+          fi
+          if git diff --name-only c07cea3801a11ba100d5a465935906895debbf63..HEAD | grep -Eq '(^|/)PoseTrackingSpike\.unity$|^ProjectSettings/|^Packages/|OpenVino|WebCamCpu|Plugins/|MediaPipePoseProvider|EmbodiedLocomotionController|HumanoidRetargetingMath|CanonicalPoseStabilizer\.cs|CanonicalStabilizerSettings\.cs'; then
+            echo 'Forbidden scene/project/package/OpenVINO/WebCam/provider/locomotion/IK/stable-stabilizer change detected'
+            exit 1
+          fi
+
+      - name: Show focused diff
+        shell: bash
+        run: |
+          git diff --stat c07cea3801a11ba100d5a465935906895debbf63..HEAD
+          git diff c07cea3801a11ba100d5a465935906895debbf63..HEAD -- Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs
