@@ -22,26 +22,62 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Repair generator boundary markers
+      - name: Repair generator preflight
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
           p = Path('Tools/OpenVinoUnityPosePlugin/scripts/apply_openvino_scheduling_optimization.py')
           text = p.read_text(encoding='utf-8')
-          fixes = {
+
+          simple_fixes = {
               'new_ov_methods + old_ov_method_end,': 'new_ov_methods,',
               'new_cleanup + old_cleanup_end,': 'new_cleanup,',
           }
           changed = 0
-          for old, new in fixes.items():
+          for old, new in simple_fixes.items():
               if old in text:
                   text = text.replace(old, new, 1)
                   changed += 1
               elif new not in text:
                   raise SystemExit(f'generator boundary marker missing: {old}')
+
+          strict_requests = '''provider = replace_once(
+              provider,
+              "            _requestsInWindow = 0;\\n            _cameraFramesInWindow = 0;",
+              "            _cameraFramesInWindow = 0;",
+              "requests metric bottom reset removal",
+          )'''
+          first_requests = '''provider = provider.replace(
+              "            _requestsInWindow = 0;\\n            _cameraFramesInWindow = 0;",
+              "            _cameraFramesInWindow = 0;",
+              1,
+          )'''
+          if strict_requests in text:
+              text = text.replace(strict_requests, first_requests, 1)
+              changed += 1
+          elif first_requests not in text:
+              raise SystemExit('requests-window generator repair marker missing')
+
+          strict_immediate = '''provider = replace_once(
+              provider,
+              "            _preparedFrameReplacementsInWindow = 0;\\n            _immediateLaunchesInWindow = 0;\\n            _directReadbacksInWindow = 0;",
+              "            _preparedFrameReplacementsInWindow = 0;\\n            _directReadbacksInWindow = 0;",
+              "immediate metric bottom reset removal",
+          )'''
+          first_immediate = '''provider = provider.replace(
+              "            _preparedFrameReplacementsInWindow = 0;\\n            _immediateLaunchesInWindow = 0;\\n            _directReadbacksInWindow = 0;",
+              "            _preparedFrameReplacementsInWindow = 0;\\n            _directReadbacksInWindow = 0;",
+              1,
+          )'''
+          if strict_immediate in text:
+              text = text.replace(strict_immediate, first_immediate, 1)
+              changed += 1
+          elif first_immediate not in text:
+              raise SystemExit('immediate-window generator repair marker missing')
+
           p.write_text(text, encoding='utf-8', newline='\n')
-          print(f'GENERATOR_BOUNDARY_FIXES={changed}')
+          print(f'GENERATOR_PREFLIGHT_FIXES={changed}')
           PY
 
       - name: Apply fail-closed scheduling transformation
@@ -117,7 +153,7 @@ jobs:
         shell: bash
         run: |
           git diff --stat
-          git diff -- Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs | sed -n '1,260p'
+          git diff -- Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs | sed -n '1,300p'
 
       - name: Commit generated scheduling optimization
         shell: bash
