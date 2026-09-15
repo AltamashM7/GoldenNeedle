@@ -58,14 +58,22 @@ internal static class ProductionAxialPolicyGuard
         }
 
         var retargeter = File.ReadAllText(retargeterPath);
-        var phase4Index = retargeter.IndexOf(
-            "ApplyMotionFrame(\n                sourceFrame,",
+        var presentationStart = retargeter.IndexOf(
+            "private void ApplyMotionFrameForPresentation(",
             StringComparison.Ordinal);
-        var detailIndex = retargeter.IndexOf(
-            "ApplyPostSolveDetailLayers(deltaTime);",
-            phase4Index < 0 ? 0 : phase4Index,
-            StringComparison.Ordinal);
-        if (phase4Index < 0 || detailIndex < 0 || phase4Index > detailIndex)
+        var phase4Index = presentationStart < 0
+            ? -1
+            : retargeter.IndexOf(
+                "ApplyMotionFrame(",
+                presentationStart,
+                StringComparison.Ordinal);
+        var detailIndex = phase4Index < 0
+            ? -1
+            : retargeter.IndexOf(
+                "ApplyPostSolveDetailLayers(deltaTime);",
+                phase4Index,
+                StringComparison.Ordinal);
+        if (presentationStart < 0 || phase4Index < 0 || detailIndex < 0 || phase4Index > detailIndex)
         {
             throw new InvalidOperationException(
                 "Phase 4 no longer rebuilds the body solve before optional Foundation E detail");
