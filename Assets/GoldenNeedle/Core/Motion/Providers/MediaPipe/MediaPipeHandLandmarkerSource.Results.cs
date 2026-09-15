@@ -116,23 +116,15 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         {
             _lastCoordinateConventionVersion = _bodyProvider.CoordinateConventionVersion;
             _sessionResetCount++;
-            ShutdownHandTask(clearModelPath: false);
-            ClearSessionState();
-            if (handTrackingEnabled && !_initializing)
-            {
-                StartCoroutine(EnsureInitialized());
-            }
+            StopOptionalHandRuntime(clearModelPath: false, releaseBuffers: true);
+            StartOptionalHandRuntimeIfPossible();
         }
 
         private void RestartTaskAfterTimeout()
         {
             _sessionResetCount++;
-            ShutdownHandTask(clearModelPath: false);
-            ClearSessionState();
-            if (handTrackingEnabled && !_initializing)
-            {
-                StartCoroutine(EnsureInitialized());
-            }
+            StopOptionalHandRuntime(clearModelPath: false, releaseBuffers: true);
+            StartOptionalHandRuntimeIfPossible();
         }
 
         private void ClearSessionState()
@@ -184,24 +176,40 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private void EnsureBuffers(int cameraWidth, int cameraHeight)
         {
+            var byteCount = checked(checked(handInputWidth * handInputHeight) * 4);
+            if (!_slotA.IsCreated || _slotA.Length != byteCount || !_slotB.IsCreated || _slotB.Length != byteCount)
+            {
+                DisposePreparedBuffers();
+                _slotA = new NativeArray<byte>(byteCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                _slotB = new NativeArray<byte>(byteCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+            }
+
+            // Camera-sized managed capture storage has independent ownership from the prepared
+            // NativeArray slots. Recreating prepared slots must never invalidate this array.
             var pixelCount = checked(cameraWidth * cameraHeight);
             if (_capturePixels == null || _capturePixels.Length != pixelCount)
             {
                 _capturePixels = new Color32[pixelCount];
             }
-            var byteCount = checked(checked(handInputWidth * handInputHeight) * 4);
-            if (!_slotA.IsCreated || _slotA.Length != byteCount || !_slotB.IsCreated || _slotB.Length != byteCount)
+        }
+
+        private void DisposePreparedBuffers()
+        {
+            if (_slotA.IsCreated)
             {
-                DisposeBuffers();
-                _slotA = new NativeArray<byte>(byteCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
-                _slotB = new NativeArray<byte>(byteCount, Allocator.Persistent, NativeArrayOptions.UninitializedMemory);
+                _slotA.Dispose();
             }
+            if (_slotB.IsCreated)
+            {
+                _slotB.Dispose();
+            }
+            _slotA = default;
+            _slotB = default;
         }
 
         private void DisposeBuffers()
         {
-            if (_slotA.IsCreated) _slotA.Dispose();
-            if (_slotB.IsCreated) _slotB.Dispose();
+            DisposePreparedBuffers();
             _capturePixels = null;
         }
 

@@ -115,7 +115,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public const long OfficialModelSizeBytes = 7819105L;
 
         [Header("Foundation D Hands")]
-        [SerializeField] private bool handTrackingEnabled = true;
+        [SerializeField] private bool handTrackingEnabled = false;
         [SerializeField, Range(5f, 30f)] private float targetHandInferenceFps = 12f;
         [SerializeField, Min(64)] private int handInputWidth = 480;
         [SerializeField, Min(64)] private int handInputHeight = 360;
@@ -195,10 +195,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private void Start()
         {
             _started = true;
-            if (handTrackingEnabled && EnsureBodyTimeline())
-            {
-                StartCoroutine(EnsureInitialized());
-            }
+            StartOptionalHandRuntimeIfPossible();
         }
 
         private void OnValidate()
@@ -208,14 +205,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private void OnDisable()
         {
-            ShutdownHandTask(clearModelPath: false);
-            ClearSessionState();
+            StopOptionalHandRuntime(clearModelPath: false, releaseBuffers: true);
         }
 
         private void OnDestroy()
         {
-            ShutdownHandTask(clearModelPath: true);
-            DisposeBuffers();
+            StopOptionalHandRuntime(clearModelPath: true, releaseBuffers: true);
         }
 
         private void Update()
@@ -236,10 +231,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
             if (_landmarker == null)
             {
-                if (_started && !_initializing)
-                {
-                    StartCoroutine(EnsureInitialized());
-                }
+                StartOptionalHandRuntimeIfPossible();
                 return;
             }
 
@@ -282,15 +274,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             handTrackingEnabled = enabled;
             if (!enabled)
             {
-                StopAllCoroutines();
-                ShutdownHandTask(clearModelPath: false);
-                ClearSessionState();
+                StopOptionalHandRuntime(clearModelPath: false, releaseBuffers: true);
                 diagnosticSummary = "Hands: disabled (body unaffected)";
+                return;
             }
-            else if (_started && _landmarker == null && !_initializing && EnsureBodyTimeline())
-            {
-                StartCoroutine(EnsureInitialized());
-            }
+
+            StartOptionalHandRuntimeIfPossible();
         }
 
         public bool TryCopyLatestCanonicalHands(
@@ -321,11 +310,34 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             {
                 return;
             }
-            ShutdownHandTask(clearModelPath: false);
-            ClearSessionState();
-            if (_started && !_initializing && EnsureBodyTimeline())
+            StopOptionalHandRuntime(clearModelPath: false, releaseBuffers: true);
+            StartOptionalHandRuntimeIfPossible();
+        }
+
+        private void StartOptionalHandRuntimeIfPossible()
+        {
+            if (!handTrackingEnabled || !_started || !isActiveAndEnabled || _landmarker != null || _initializing)
+            {
+                return;
+            }
+            if (EnsureBodyTimeline())
             {
                 StartCoroutine(EnsureInitialized());
+            }
+        }
+
+        private void StopOptionalHandRuntime(bool clearModelPath, bool releaseBuffers)
+        {
+            StopAllCoroutines();
+            _initializing = false;
+
+            // Invalidate callbacks/scheduler state before disposing the task. Late callbacks from the
+            // previous session observe the bumped session version and are ignored.
+            ClearSessionState();
+            ShutdownHandTask(clearModelPath);
+            if (releaseBuffers)
+            {
+                DisposeBuffers();
             }
         }
 
@@ -347,7 +359,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private IEnumerator EnsureInitialized()
         {
-            if (_initializing || !handTrackingEnabled || !EnsureBodyTimeline())
+            if (_initializing || !handTrackingEnabled || !isActiveAndEnabled || !EnsureBodyTimeline())
             {
                 yield break;
             }
@@ -403,6 +415,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                     _initializing = false;
                     yield break;
                 }
+            }
+
+            // The stream can be disabled while model verification/download is in progress.
+            // Never create a HandLandmarker after that opt-out boundary.
+            if (!handTrackingEnabled || !isActiveAndEnabled)
+            {
+                _initializing = false;
+                yield break;
             }
 
             try

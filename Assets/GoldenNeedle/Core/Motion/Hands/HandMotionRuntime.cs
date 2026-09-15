@@ -30,6 +30,13 @@ namespace GoldenNeedle.Core.Motion.Hands
             ResolveSource();
         }
 
+        private void OnDisable()
+        {
+            // The optional detailed-hand stream can be disabled while Foundation E remains active.
+            // Clear cached hand data immediately so downstream detail cannot keep using a stale sample.
+            _handFrame.Clear();
+        }
+
         private void Update()
         {
             if (bodyRuntime == null)
