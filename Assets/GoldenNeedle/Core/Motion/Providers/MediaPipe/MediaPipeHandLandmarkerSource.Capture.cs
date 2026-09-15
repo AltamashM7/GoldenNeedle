@@ -17,10 +17,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 {
     public sealed partial class MediaPipeHandLandmarkerSource
     {
-        private void CaptureLatestHandFrame(double nowSeconds)
+        private void CaptureLatestHandFrame(double cadenceNowSeconds)
         {
             var cameraTexture = _bodyProvider.CameraTexture as WebCamTexture;
-            if (cameraTexture == null || !cameraTexture.isPlaying || cameraTexture.width <= 16 || cameraTexture.height <= 16)
+            if (cameraTexture == null || !cameraTexture.isPlaying || cameraTexture.width <= 16 || cameraTexture.height <= 16 || _bodyTimelineClock == null)
             {
                 _droppedCaptureCount++;
                 return;
@@ -42,9 +42,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 _bodyProvider.Orientation.InferenceFlipVertically);
             _lastAcquisitionMilliseconds = StopwatchElapsedMilliseconds(startTicks, Stopwatch.GetTimestamp());
 
+            // Hand Landmarker LIVE_STREAM timestamps are semantic/fusion timestamps, so they use
+            // the exact Stopwatch timeline owned by MediaPipePoseProvider. Unity unscaled time is
+            // intentionally limited to the local capture cadence in Update/CreateHandTask.
             var timestampMillisec = Math.Max(
-                _lastSubmittedTimestampMillisec + 1,
-                (long)Math.Round(nowSeconds * 1000d));
+                _lastSubmittedTimestampMillisec + 1L,
+                _bodyTimelineClock.ElapsedMilliseconds);
             _lastSubmittedTimestampMillisec = timestampMillisec;
             _scheduler.Offer(timestampMillisec, out var launchNow);
             if (launchNow)
@@ -86,6 +89,11 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
+            var callbackTicks = Stopwatch.GetTimestamp();
+            var receivedAtSeconds = _bodyTimelineClock == null
+                ? 0d
+                : _bodyTimelineClock.ElapsedTicks / (double)Stopwatch.Frequency;
+
             lock (_resultLock)
             {
                 if (callbackSession != _sessionVersion)
@@ -95,7 +103,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 _callbackSnapshot.Clear();
                 _callbackSnapshot.sessionVersion = callbackSession;
                 _callbackSnapshot.sourceTimestampMillisec = timestampMillisec;
-                _callbackSnapshot.callbackStopwatchTicks = Stopwatch.GetTimestamp();
+                _callbackSnapshot.receivedAtSeconds = receivedAtSeconds;
+                _callbackSnapshot.callbackStopwatchTicks = callbackTicks;
                 CopyTaskResult(result, timestampMillisec, _callbackSnapshot);
                 _hasPendingResult = true;
             }
@@ -105,7 +114,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 var start = Volatile.Read(ref _activeStartedStopwatchTicks);
                 if (start > 0)
                 {
-                    _lastInferenceMilliseconds = StopwatchElapsedMilliseconds(start, Stopwatch.GetTimestamp());
+                    _lastInferenceMilliseconds = StopwatchElapsedMilliseconds(start, callbackTicks);
                 }
                 Interlocked.Exchange(ref _completedSequence, timestampMillisec);
             }
