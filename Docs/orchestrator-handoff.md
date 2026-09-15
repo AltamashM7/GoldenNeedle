@@ -1,322 +1,391 @@
-# Golden Needle — Orchestrator Handoff
+# Golden Needle — New Orchestrator Handoff
 
-## 1. Governance
+Handoff date: 2026-09-15
 
 Repository: `AltamashM7/GoldenNeedle`
 
 Active branch: `engine/pose-tracking-spike`
 
-Do **not** merge to `main` without explicit USER approval. Do not force-push, rebase or rewrite branch history merely to clean experimental work.
+## 1. First actions for the new Orchestrator
 
-Known USER-local dirty files have repeatedly existed and must not be reverted, cleaned, staged or overwritten casually:
-- `M Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity`
-- `M GoldenNeedle.slnx`
-- `?? ProjectSettings/SceneTemplateSettings.json`
+Before changing anything:
 
-Unity/package resolution may also create legitimate USER-local package-lock changes. Inspect before touching them rather than assuming they are disposable.
+1. fetch/inspect the live remote `engine/pose-tracking-spike` branch;
+2. read `Docs/current-state.md` first;
+3. read this handoff;
+4. inspect any USER QA evidence supplied with the new conversation;
+5. independently verify repository/worker claims rather than accepting summaries at face value.
 
-The USER performs manual Unity/runtime QA. Use the intelligent Web Builder for broad inference/runtime architecture work; use Luna only for tightly scoped diagnostics, instrumentation or read-only follow-ups.
+At the time this handoff was prepared, the runtime/code checkpoint before documentation updates was:
 
-## 2. Current project status
+`ee5a64d479c0710a0548cdbe0bbb90bbe80efc40`
 
-- Phase 1 provider/raw overlays: **PASS WITH NOTES**.
-- Phase 2 canonical skeleton/debug: **PASS**.
-- Phase 3 stabilization/confidence: **PASS**.
-- Phase 4 humanoid retargeting/calibration/orientation: **USER ACCEPTED — PASS**.
-- Phase 5A locomotion/presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
+`Docs/current-state.md` was then refreshed in commit:
+
+`4315a0cbf29ae30a92c663b53f4e6079186e5ece`
+
+The live branch will be one documentation commit newer after this handoff file itself is written. Treat the actual live remote HEAD as authoritative and verify it before acting.
+
+## 2. Governance — do not violate
+
+- Do **not** merge to `main` without explicit USER approval.
+- Do not force-push, rebase, amend, reset, or rewrite shared history merely to make checkpoint history cleaner.
+- GitHub is shared authoritative state; USER normally works through GitHub Desktop.
+- One builder should mutate the long-lived engine branch at a time.
+- USER performs decisive Unity/manual/runtime QA.
+- Phase 4 is USER accepted and must be preserved.
+- Phase 5A is implemented but **NOT USER accepted**.
+- Phase 6 is **NOT STARTED**.
+- Do not resume Phase 5A work until the comprehensive Foundations A–E QA gate has been assessed.
+
+## 3. Current phase/foundation status
+
+- Phase 1: **PASS WITH NOTES**.
+- Phase 2: **PASS**.
+- Phase 3: **PASS**.
+- Phase 4: **USER ACCEPTED — PASS**.
+- Motion-engine latency/performance milestone: **CURRENT MILESTONE COMPLETE; further tuning deferred**.
+- Foundation A: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA PENDING**.
+- Foundation B: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA PENDING**.
+- Foundation C: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA PENDING**.
+- Foundation D: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA PENDING**.
+- Foundation E: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / UNITY COMPILATION PASS / USER MANUAL QA PENDING**.
+- Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
-- Current active track: responsiveness / inference-architecture proof.
 
-Do not mark Phase 5A accepted and do not start Phase 6 until the USER explicitly does so.
+The USER is about to run the single comprehensive A–E Unity/manual/runtime QA pass and will provide the results to the new Orchestrator.
 
-## 3. Accepted production motion path — keep frozen during inference experiments
+## 4. Current QA baseline — preserve for the first complete pass
 
-Unity baseline:
-- Unity 6.5 / `6000.5.0f1`;
-- URP 17.5.0;
-- MediaPipeUnityPlugin 0.16.3;
-- Windows experimental environment.
+The USER explicitly enabled and intends to keep the following fixed during the first comprehensive test pass:
 
-Production provider remains MediaPipe Pose Landmarker Lite CPU using:
-`Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes`
+- Body Reference Downscale: **ON**
+- Immediate Launch After Readback: **ON**
+- WebCam CPU Pixels: **ON**
+- Direct Body CPU Readback: **ON**
+- OpenVINO CPU: **ON**
+- Presentation Smoothing: **OFF**
 
-Production task semantics:
-- BaseOptions delegate CPU;
-- `RunningMode.LIVE_STREAM`;
-- one pose;
-- min pose detection confidence 0.5;
-- min pose presence confidence 0.5;
-- min tracking confidence 0.5;
-- segmentation false;
-- world landmarks required.
+Do not ask the USER to change these during the first pass merely to hide a failure.
 
-Current path:
+Presentation smoothing is intentionally OFF so real tracking/retarget behavior is visible directly.
+
+## 5. Important recent Unity compilation event
+
+The first true local Unity compilation gate caught problems that Builder-side deterministic/static CI had not caught.
+
+Unity version: `6000.5.0f1`.
+
+### First Safe Mode error
+
+`RichHumanoidDetailRetargeter.cs` failed because `CanonicalBoneId` was referenced without importing:
+
+`GoldenNeedle.Core.Motion.Rotation`
+
+This was fixed at:
+
+`a1a3071da5bda48b53ccfd875e3e569ed48bd6dc`
+
+### Second Safe Mode batch
+
+After that import was fixed, Unity exposed the remaining visible compiler errors:
+
+- two `Object` ambiguities in `ThirdPersonLabCamera.cs` (`System.Object` vs `UnityEngine.Object`);
+- three `Debug.LogWarning` namespace collisions against project namespace `GoldenNeedle.Debug` in:
+  - `HandMotionRuntime.cs`;
+  - `MediaPipeHandLandmarkerSource.Results.cs`;
+  - `HumanoidRetargeter.cs`;
+- two `CS8156` errors from passing property expression `hand.palmBasis` using `in` inside `RichHumanoidDetailRetargeter.cs`.
+
+They were fixed mechanically, without intended runtime-semantic redesign:
+
+- camera lookups use `UnityEngine.Object.FindAnyObjectByType(...)`;
+- warnings use `UnityEngine.Debug.LogWarning(...)`;
+- the illegal readonly-ref property argument pattern was removed while preserving the same E math call semantics.
+
+Final compile-fix checkpoint:
+
+`ee5a64d479c0710a0548cdbe0bbb90bbe80efc40`
+
+After pulling that checkpoint, the USER confirmed **Unity opens with zero red compilation errors**.
+
+Therefore local Unity compilation is currently **PASS**.
+
+The earlier Visual Studio/Unity UDP port `56662` warning was non-blocking IDE integration noise and was not the Safe Mode cause.
+
+## 6. Known CI hygiene issue at the current code checkpoint
+
+Foundation E workflow run:
+
+- run `34939309536`
+- head `ee5a64d479c0710a0548cdbe0bbb90bbe80efc40`
+- overall result: **FAILURE**
+
+This failure is presently understood as a static scope-guard false positive, not a deterministic regression.
+
+The workflow actually completed and passed:
+
+- Foundation A smoke;
+- Foundation B smoke;
+- Foundation C smoke;
+- Foundation D smoke;
+- Foundation E deterministic smoke;
+- all 24 E deterministic checks.
+
+It failed later because the historical Foundation E locked-scope allowlist treats three legitimate compile-fix files as forbidden scope:
+
+- `Assets/GoldenNeedle/Core/Motion/Hands/HandMotionRuntime.cs`
+- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.Results.cs`
+- `Assets/GoldenNeedle/Debug/PoseTrackingSpike/ThirdPersonLabCamera.cs`
+
+The exact failure was the E static audit reporting those files as unexpected Foundation-E scope.
+
+Do not broadly disable this guard. Update it narrowly after/alongside the QA assessment so these already-reviewed compile-only compatibility fixes are allowed while real protections remain intact:
+
+- body/OpenVINO paths;
+- CanonicalBodyV1;
+- Phase 4 compatibility solve;
+- Phase 5A;
+- scene YAML;
+- ProjectSettings/packages;
+- provider/application boundaries;
+- read-only workflow behavior.
+
+Foundation D run `34939208754` at `c44bd4137900876c38d2ceae475967ed53644e86` was **SUCCESS** after the relevant D-side compile corrections.
+
+## 7. Key accepted automated evidence before the compile corrections
+
+Retain these as useful provenance:
+
+- Foundation C correction: run `34919859131`, job `104225315113`, SHA `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`: **PASS**.
+- Foundation D correction: run `34920144300`, job `104226227007`, SHA `864b39a520c78db1a0572b87a7d42c9da5cedaa4`: **PASS**.
+- Foundation D E-compatible boundary migration: run `34930150745`, job `104256492165`, SHA `44a39d5ef566b800587a3be73345e843fffe5ac0`: **PASS**.
+- Foundation E palm-corrected exact-head verification: run `34933354209`, job `104265988449`, SHA `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`: **PASS**.
+- Foundation D compatibility at same SHA: run `34933354189`, job `104265988337`: **PASS**.
+- Foundation E runtime-wiring exact-head verification: run `34935841592`, job `104273421820`, SHA `c91574a7b3557bc749ed74c87e5a46107fd018c8`: **PASS**.
+- Foundation D compatibility at same SHA: run `34935841602`, job `104273421255`: **PASS**.
+
+Foundation E deterministic evidence included:
+
+- 24/24 smoke checks;
+- endpoint residual `0`;
+- repeated palm target drift `0°`;
+- stale palm residual `0°`;
+- parent-relative palm local drift `0°`;
+- bounded reacquisition step `2.68084192°`.
+
+These do not replace the USER's live Unity/webcam/avatar QA.
+
+## 8. Foundation A summary
+
+Purpose: one shared command/action layer for keyboard, speech and future UI.
+
+Important current behavior:
+
+- keyboard meanings R/V/F1–F12/C/X/K route through project command authority;
+- speech is a replaceable provider and current Windows implementation uses `KeywordRecognizer`;
+- speech does not synthesize key presses;
+- cooldown, confidence, optional wake prefix and mappings are configurable;
+- camera preset speech goes through the same command layer.
+
+USER QA should verify real microphone recognition, keyboard equivalence, cooldown and camera/calibration commands.
+
+## 9. Foundation B summary
+
+One `ThirdPersonLabCamera` remains the gameplay/presentation camera authority.
+
+Presets:
+
+- Back
+- Front
+- Left
+- Right
+- FullBody
+- Hands
+- LeftHand
+- RightHand
+
+Preset selection is orthogonal to F12 Lab/Game mode.
+
+Focus fallbacks should safely fall from hand targets to lower-arm/body/root as appropriate.
+
+Temporary heading loss should retain last valid heading rather than snap to a hard-coded global direction.
+
+## 10. Foundation C summary
+
+Foundation C adds provider-independent rich anatomical orientation while preserving CanonicalBodyV1 and the accepted Phase 4 positional path.
+
+Important boundaries:
+
+- `CanonicalAnatomicalBasis` is canonical orientation authority;
+- no canonical Quaternion authority;
+- no second body inference;
+- MediaPipe 33-landmark observation is reused;
+- legacy stable pose remains calibration/locomotion authority;
+- partial-body channels are independent;
+- twist observability states are `Observed`, `Held`, `ReferenceFallback`, `Unobservable`.
+
+USER QA should look for useful axial detail, no sudden twist flips, sensible ambiguity fallback and no endpoint corruption.
+
+## 11. Foundation D summary
+
+Separate MediaPipe Hand Landmarker alongside the accepted body provider.
+
+Important current design:
+
+- CPU `LIVE_STREAM`;
+- `numHands=2`;
+- approximately 12 Hz default hand cadence;
+- separate reusable 480x360 preparation;
+- one active + at most one replaceable newest pending hand frame;
+- no FIFO/history/replay;
+- project-owned 21-landmark semantic contract;
+- body-provider Stopwatch is shared semantic timing epoch;
+- independent left/right freshness;
+- bundled official model;
+- D produces hand data only and does not drive avatar transforms.
+
+USER QA should verify both hands, one-hand loss, body independence, stale behavior and association recovery.
+
+## 12. Foundation E summary
+
+Foundation E is additive and post-Phase-4.
+
+Execution concept:
 
 ```text
-camera/latest frame
--> body-only ~320x240 preparation
--> DirectCPU readback when enabled (Homuler fallback remains)
--> MediaPipe Pose Landmarker Lite CPU
--> PoseObservation
--> canonical mapping
--> stabilization/calibration
--> humanoid retargeting/locomotion
+exact Phase 4 positional/IK solve
+-> optional Foundation E detail
+-> presentation layer
 ```
 
-Scheduling invariants:
-- <=1 active readback;
-- <=1 replaceable prepared TextureFrame;
-- <=1 outstanding inference;
-- latest useful frame wins;
-- no camera-frame history;
-- no inference backlog;
-- no pose replay/catch-up queue.
+With presentation smoothing OFF for current QA, E output is exposed directly after the exact Phase 4 solve.
 
-Accepted production behavior that experimental inference work must not disturb:
-- canonical +X right, +Y up, +Z away;
-- MediaPipe world conversion `(x,-y,z)` pelvis-relative;
-- modular torso/arms/legs calibration and partial-body behavior;
-- Phase 4 orientation correction and swing-only limb alignment;
-- Phase 3 One Euro baseline: min 1.0, beta 0.05, deriv 1.0, acquire 0.60, sustain 0.40, 2 samples, grace 0.10 s, reset 0.25 s;
-- Phase 5A implementation remains frozen pending USER acceptance.
+Key implementation facts:
 
-Accepted responsiveness improvements:
-- body path downscale to ~320x240 gave a modest repeatable gain without obvious quality collapse;
-- Immediate Launch After Readback removed roughly one render-frame of artificial scheduling delay and is USER accepted;
-- DirectCPU readback is a modest accepted CPU-path optimization with a teardown lifetime guard.
+- generic `IHumanoidPostSolveDetailLayer` boundary;
+- code-owned `RichHumanoidDetailRetargeter` composition in `PoseTrackingSpikePresenter.Awake()`;
+- `HumanoidRetargeter.Start()` re-discovers optional detail layers;
+- `HumanoidRigBinding.IsBound` remains required-body semantics only;
+- optional detail/fingers never become required body validity;
+- production rich channels are exactly bilateral upper/lower arms and upper/lower legs;
+- pelvis/chest/feet remain deferred;
+- rich axial twist is signed-map aware and downstream compensated;
+- palm target is absolute/reference-based, not cumulative;
+- target palm reference is parent-relative and derived from real avatar finger geometry;
+- stale/master/category/reset paths remove E-owned palm/finger contribution;
+- reacquisition establishes a fresh zero-delta source reference;
+- no inference/camera/provider scheduling/history exists in E.
 
-## 4. Why the inference track exists
+USER QA should especially watch for:
 
-The USER reports fast body/arm movement is undersampled unless movement is performed somewhat more slowly.
+- E component auto-presence without manual Add Component;
+- no palm rotation accumulation while holding a fixed pose;
+- stale hand return;
+- controlled reacquisition;
+- independent left/right behavior;
+- sensible finger articulation where avatar finger bones exist;
+- E category/master toggles returning to Phase 4 baseline;
+- no limb endpoint displacement from axial detail.
 
-Representative production behavior before alternate-runtime experiments:
-- camera ~29–30 FPS;
-- fresh pose results ~10–12/s;
-- DirectCPU readback ~55–65 ms;
-- accepted MediaPipe request->callback commonly ~60–75+ ms;
-- frame->pose result often ~110–140 ms.
+## 13. Current accepted body runtime path
 
-At ~10–12 fresh pose samples/s, fast trajectories can move significantly between inference results. The objective is to reduce real latency and raise fresh pose sampling while preserving current MediaPipe semantics and a safe CPU fallback.
-
-## 5. Sentis result — useful evidence but rejected HD620 GPU backend
-
-Exact production submodels:
-- bundle: 5,777,746 bytes, SHA-256 `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`;
-- detector: `pose_detector.tflite`, 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
-- landmark: `pose_landmarks_detector.tflite`, 2,818,390 bytes, SHA-256 `ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58`.
-
-Sentis detector import fails on `DENSIFY`. Audit found 38 DENSIFY nodes with static sparse constants and concluded densification is a plausible storage rewrite **in principle**, not an approved change.
-
-Clean D3D12 USER landmark result:
-- Sentis CPU: 46.24 ms / 21.63/s;
-- GPUCompute fixed tensor: 60.48 ms / 16.53/s;
-- GPU-resident: 127.96 ms / 7.82/s;
-- repeated D3D12 fence-wait diagnostics occurred.
-
-Decision: Sentis GPUCompute is rejected as the low-end HD620 neural inference backend. This does **not** mean all GPU acceleration is impossible.
-
-## 6. OpenVINO landmark evidence — strong raw feasibility, not production approval
-
-USER machine:
-- Windows 10 build 19045 x64;
-- Intel Core i3-7100U @ 2.40 GHz;
-- Intel HD Graphics 620;
-- OpenVINO 2026.3.0.
-
-First exact-landmark proof:
-- CPU mean 11.062 ms / 90.403/s;
-- GPU.0 mean 9.067 ms / 110.284/s;
-- exact identity and tensor contract PASS;
-- output copy cost negligible.
-
-Precision-controlled follow-up:
-- `CPU_DEFAULT`: effective FP32/PERFORMANCE, mean **10.355 ms**, p95 12.233 ms, **96.569/s**;
-- `GPU_DEFAULT`: effective FP16/PERFORMANCE, mean **8.793 ms**, p95 9.131 ms, **113.726/s**;
-- `GPU_ACCURACY_FP32`: effective FP32/ACCURACY, mean **12.858 ms**, p95 14.012 ms, **77.775/s**.
-
-Representative human-image-derived consistency:
-- CPU FP32 vs GPU default FP16:
-  - `[1,195]` normalized MAE/RMS ~0.00337486 / ~0.00376357;
-  - `[1,117]` ~0.0129529 / ~0.0145266;
-- CPU FP32 vs GPU forced FP32:
-  - `[1,195]` ~1.00341e-06 / ~1.50298e-06;
-  - `[1,117]` ~2.09536e-06 / ~2.38752e-06.
-
-Interpretation:
-- OpenVINO raw-landmark performance feasibility: **PASS**;
-- Intel HD620 OpenVINO compatibility: **PASS**;
-- default GPU differences are predominantly reduced-precision behavior;
-- **OpenVINO CPU FP32 is the leading low-end candidate**;
-- GPU FP16 remains a possible accelerated profile for stronger hardware after end-to-end evidence;
-- GPU FP32 is not worthwhile on this HD620 because it is slower than CPU FP32;
-- raw neural timing is not complete MediaPipe pose-pipeline throughput;
-- production integration remains **NOT APPROVED**.
-
-## 7. Reuse-first architecture decision
-
-The USER explicitly requires reuse of mature framework/calculator components rather than manually recreating MediaPipe semantics when a practical reuse path exists.
-
-Authoritative architecture document:
-`Docs/inference-architecture-reuse-audit.md`
-
-Leading direction:
+The best-tested low-end path remains:
 
 ```text
-Current MediaPipe graph/calculators
-  preprocessing + detector decode/NMS + ROI/tracking
-        |
-        v
-replaceable inference node
-  existing TFLite CPU fallback
-  OpenVINO CPU FP32 (first HD620 candidate)
-  optional future accelerated OpenVINO profile
-        |
-        v
-Current MediaPipe landmark/refinement/presence/world/projection calculators
-        |
-        v
-schema-driven Provider Landmark Frame
-        |
-        v
-provider-specific semantic mapper
-        |
-        v
-versioned Canonical Skeleton Definition
-  CanonicalBodyV1 first
-        |
-        +--> stabilization/calibration
-        +--> retarget consumer profiles
-        +--> locomotion profiles
-        +--> gestures/future hand systems
+WebCamTexture
+-> WebCamCPU/GetPixels32
+-> reusable CPU body preparation/downscale to 320x240
+-> bounded latest-frame mailbox
+-> persistent OpenVINO CPU FP32 worker
+-> MediaPipe pose semantics
+-> 33 landmarks
+-> Golden Needle canonical body
+-> stable calibration/locomotion authority
+-> Phase 4 positional retarget
+-> optional E detail
+-> avatar
 ```
 
-Key decisions:
-- do not adopt Intel's old MediaPipe fork wholesale; it is based on 0.10.3 while Homuler 0.16.3 pins MediaPipe 0.10.22;
-- selectively adapt the in-process OpenVINO calculator concept into the current Homuler/MediaPipe generation;
-- OVMS sidecar is technically viable but rejected as the preferred local game path because process/IPC/startup/packaging overhead is unnecessary if in-process succeeds;
-- the archived TFLite/OpenVINO delegate is not a primary production route;
-- MediaPipe Holistic is the preferred future richer-MediaPipe provider to benchmark for hands/fingers/face;
-- RTMPose WholeBody remains a possible future rich-2D provider but lacks the current MediaPipe world-coordinate contract;
-- manual MediaPipe pipeline reimplementation is a last resort.
+Preserve:
 
-Modular design remains **DESIGN-ONLY**. Do not refactor production runtime yet:
-- provider frame uses schema/provider ID, semantic landmark IDs/groups, schema-driven count, optional normalized/depth/world channels, visibility/presence/confidence and capability flags;
-- canonical definitions are versioned/schema-driven;
-- `CanonicalBodyV1` means exactly today's accepted 20-joint topology/derived-joint semantics;
-- retarget/locomotion/gesture consumers declare only the semantic joints they require;
-- richer providers/topologies are additive and do not rewrite `CanonicalBodyV1`.
+- stock MediaPipe/TFLite fallback/reference;
+- ExistingReadback fallback/reference;
+- one active + one replaceable newest pending body frame;
+- no body backlog/history/replay;
+- OpenVINO CPU FP32 as best-tested low-end backend, not as reason to delete fallbacks;
+- stable Phase 3 filter for calibration/locomotion.
 
-## 8. Gate A — exact detector OpenVINO compatibility: COMPLETE / PASS
+## 14. Phase 5A known issues — do not misclassify during foundation QA
 
-Gate A is no longer a future task.
+Phase 5A is still unaccepted.
 
-Exact detector result:
-- identity PASS: 2,959,078 bytes, SHA-256 `46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9`;
-- OpenVINO 2026.3 direct `Core.read_model()` on unchanged TFLite: **SUCCESS**;
-- exact contract float32 `[1,224,224,3]` -> `[1,2254,12]` + `[1,2254,1]`: **TRUE**;
-- explicit CPU compile + finite-output inference: **SUCCESS**;
-- explicit GPU compile + finite-output inference: **SUCCESS**;
-- no conversion, densification, substitute model, AUTO/HETERO/MULTI or hidden fallback.
+Known pre-existing issues:
 
-Conclusion: the exact detector's DENSIFY problem is a Sentis importer limitation for Golden Needle's purposes. It is **not** an OpenVINO compatibility blocker.
+- planted-feet leaning can cause unwanted translation;
+- stationary cadence stepping is not robust enough.
 
-## 9. Gate B — MediaPipe/OpenVINO parity proof: scaffold implemented, USER run pending
+If the USER reports these again during the foundation pass, do not automatically classify them as new A–E regressions.
 
-Tracked proof location:
-`Tools/MediaPipeOpenVinoParity/`
+## 15. Expected USER handoff to the next Orchestrator
 
-Starting source pins are fail-closed:
-- Homuler MediaPipeUnityPlugin `v0.16.3` -> commit `cf4c11d8eef724fe24111b7cd795d55ba490aeec`;
-- that workspace pins Google MediaPipe `v0.10.22` -> commit `c54c06dd8c4314a316c14da31493bcc38ed302e2`;
-- Bazel 6.5.0;
-- OpenVINO Runtime C++ 2026.3.0, official Windows toolkit archive/checksum.
+The USER said they will provide the comprehensive testing result to the new Orchestrator.
 
-Read-only audit on the exact 0.10.22 generation confirmed the required seam: pose detector and pose landmark graphs isolate neural execution behind `AddInference(...)`, while MediaPipe calculators retain preprocessing, detector decode/NMS/ROI, tracking, landmark decode/refinement, pose presence, visibility/presence, world decode and projection.
+Likely evidence includes:
 
-Three proof modes are implemented:
-1. `TASKS_REFERENCE` — official MediaPipe 0.10.22 PoseLandmarker CPU, exact production task bundle, one pose, 0.5/0.5/0.5, segmentation false, deterministic VIDEO mode;
-2. `GRAPH_TFLITE_CPU` — expanded current MediaPipe graph with standard TFLite CPU inference;
-3. `GRAPH_OPENVINO_CPU_FP32` — the same graph/calculators, with **both detector and landmark neural inference** replaced by an in-process OpenVINO CPU FP32 calculator.
+- exact test SHA;
+- Unity compilation/Test Runner result;
+- Foundation A keyboard/speech behavior;
+- Foundation B preset/fallback behavior;
+- Foundation C partial-body/twist behavior;
+- Foundation D hand startup/both-hands/one-hand-loss behavior;
+- Foundation E auto-wiring, palm drift, stale return, reacquisition, finger articulation and toggle behavior;
+- performance/endurance notes;
+- screenshots/video/logs for failures.
 
-The OpenVINO bridge contract is `std::vector<mediapipe::Tensor> -> OpenVINO -> std::vector<mediapipe::Tensor>`. For this architecture proof it uses safe host copies and measures input/output bridge-copy cost separately. Model compilation occurs at graph open, not per frame; the infer request is reused and inference is synchronous to keep the VIDEO-mode comparison deterministic.
+Treat that USER evidence as the decisive runtime gate.
 
-The runner:
-- accepts a fixed recorded video or prepared frame sequence;
-- decodes a source video once and reuses the exact same ordered frames/timestamps for each backend;
-- keeps backend tracking state independent;
-- preserves full 33 normalized and world landmarks rather than prematurely mapping down to the current 20-joint canonical body;
-- records final landmark semantics, visibility/presence where available, auxiliary availability, next ROI, detector cadence where exposed, startup/first-frame/frame timing, and OpenVINO detector/landmark inference + bridge-copy timing;
-- labels VIDEO-mode timing as **offline graph-processing capacity**, not Unity LIVE_STREAM frame-to-result latency.
+## 16. Recommended next-Orchestrator decision flow
 
-The comparator reports A-vs-B, B-vs-C and A-vs-C:
-- pose presence agreement plus false-positive/false-negative frame indices;
-- normalized x/y/z MAE/RMS/p95/max, visibility/presence and per-landmark worst cases;
-- world x/y/z and 3D Euclidean error in meters;
-- ROI center/size/rotation comparisons where available;
-- detector-continuity/cadence comparisons where available;
-- startup, first-frame, steady-state mean/p50/p95/p99/min/max/population-stddev and processing rate;
-- OpenVINO detector/landmark inference and bridge-copy statistics.
+After reading the USER's QA result:
 
-It intentionally applies **no arbitrary Golden Needle PASS/FAIL threshold**. The Orchestrator decides semantic acceptance from the evidence.
+1. verify live branch and exact USER-tested SHA;
+2. record Unity Test Runner/compilation outcome;
+3. classify each failure as:
+   - foundation blocker;
+   - foundation major regression;
+   - minor/tuning issue;
+   - known Phase 5A issue;
+   - unrelated environment warning;
+4. inspect repository source before proposing a fix;
+5. use a Web Builder only for actual implementation work that is needed;
+6. independently audit Builder results;
+7. update the E workflow scope guard narrowly so the legitimate compile fixes no longer generate a false positive;
+8. once A–E QA genuinely passes, update docs and only then return to Phase 5A acceptance/fixes.
 
-USER video/frames, extracted models/sources, native build products, toolchain downloads and reports remain local/ignored.
+Do not mark A–E USER accepted merely because Unity compiles.
 
-Builder-side validation completed:
-- Python helper syntax compilation: PASS;
-- synthetic parity-comparator self-test: PASS;
-- exact source/model/version/mode static gates: inspected;
-- native Windows MSVC/Bazel/OpenVINO build and actual recorded-sequence run: **NOT run in the Builder environment** and must not be claimed as successful before USER evidence.
+## 17. Current documentation authority
 
-## 10. Current authoritative next step
+Read in this order:
 
-Keep Unity closed and run from repository root on the USER Windows machine:
+1. `Docs/current-state.md`
+2. `Docs/decisions.md`
+3. `Docs/orchestrator-handoff.md`
+4. `Docs/pre-phase5a-foundations.md`
+5. `Docs/architecture.md` + `Docs/motion-engine.md`
 
-```powershell
-.\Tools\MediaPipeOpenVinoParity\bootstrap.ps1
-.\Tools\MediaPipeOpenVinoParity\build.ps1
-.\Tools\MediaPipeOpenVinoParity\run.ps1 -InputVideo "C:\path\golden-needle-motion.mp4"
-```
+Where older documents describe pre-Foundation or pre-OpenVINO states, the newer current-state/handoff wins.
 
-Recommended sequence:
-- ~8–20 seconds;
-- one person;
-- full body mostly visible;
-- normal movement plus deliberately fast arm/body motion;
-- some torso turn/leg motion if practical;
-- brief partial loss/occlusion is useful but optional.
+## 18. What not to do immediately
 
-If the result is close/suspicious and a second order check is useful:
+- Do not merge to `main`.
+- Do not start Phase 6.
+- Do not resume Phase 5A before A–E QA is assessed.
+- Do not change the locked first-pass QA settings before evidence is collected.
+- Do not weaken CI guards broadly to make them green.
+- Do not replace Phase 4 endpoint/IK authority with rich orientation.
+- Do not make hand/finger tracking mandatory for body validity.
+- Do not reopen accepted OpenVINO body architecture unless USER evidence points to a real regression.
 
-```powershell
-.\Tools\MediaPipeOpenVinoParity\run.ps1 -InputVideo "C:\path\golden-needle-motion.mp4" -Order OpenVinoFirst
-```
-
-Return to the Orchestrator:
-1. newest `Tools/MediaPipeOpenVinoParity/results/parity-*.txt`;
-2. matching `parity-*.json`;
-3. console block from `=== GOLDEN NEEDLE MEDIAPIPE OPENVINO PARITY SUMMARY ===` through `=== END GOLDEN NEEDLE MEDIAPIPE OPENVINO PARITY SUMMARY ===`;
-4. any bootstrap/build/runtime error verbatim if the proof cannot complete.
-
-Do **not** declare Gate B semantic parity PASS until those reports are reviewed.
-
-## 11. Decision after USER Gate B evidence
-
-If semantic parity is strong and end-to-end offline graph capacity materially beats the current reference without hidden regressions, the Orchestrator may authorize the next isolated step: a Windows native-plugin/Unity coexistence proof with measured rendering contention and live frame-to-result behavior.
-
-If A-vs-B is poor, fix the custom graph/configuration before judging OpenVINO. If B-vs-C is poor while A-vs-B is strong, investigate the backend bridge/model output mapping/precision. If performance improvement disappears at full graph level, do not integrate merely because raw neural benchmarks were fast.
-
-Even a strong Gate B result does **not** itself approve production replacement.
-
-## 12. Hard stop list
-
-Until new evidence/USER approval:
-- no merge to `main`;
-- no Phase 5A acceptance claim;
-- no Phase 6 start;
-- no production OpenVINO/Sentis provider integration;
-- no canonical/provider runtime refactor;
-- no detector densification;
-- no duplicate CPU+GPU inference every frame;
-- no removal or weakening of current MediaPipe CPU fallback;
-- no global D3D12 production switch based on the Sentis spike;
-- no lowering model quality merely to hit an FPS number.
+The next meaningful input should be the USER's comprehensive A–E Unity/manual/runtime QA result.
