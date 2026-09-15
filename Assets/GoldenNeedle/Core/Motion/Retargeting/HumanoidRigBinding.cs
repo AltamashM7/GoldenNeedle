@@ -13,7 +13,8 @@ namespace GoldenNeedle.Core.Motion.Retargeting
     /// <summary>
     /// Caches the driven humanoid transforms, four kinematic chain endpoints, and their
     /// bind/reference measurements. Live retargeting may change rotations only; authored local
-    /// positions and local scales remain unchanged.
+    /// positions and local scales remain unchanged. Foundation E detail capability is additive and
+    /// deliberately does not participate in legacy IsBound/BoundBoneCount semantics.
     /// </summary>
     public sealed class HumanoidRigBinding : MonoBehaviour
     {
@@ -80,6 +81,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         private readonly Vector3[] _chainReferenceRootToTipParentLocal = new Vector3[ChainCount];
         private readonly Vector3[] _chainReferenceBendDirections = new Vector3[ChainCount];
         private readonly bool[] _chainAvailable = new bool[ChainCount];
+        private readonly HumanoidRigDetailCapabilities _detailCapabilities = new HumanoidRigDetailCapabilities();
         private Transform _boundAvatarRoot;
         private HumanoidBindingMode _bindingMode;
         private SignedAxisBasis _referenceBodyBasis;
@@ -93,6 +95,8 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             ? "Explicit Debug"
             : _bindingMode == HumanoidBindingMode.AnimatorHumanoid ? "Animator Humanoid" : "Unbound";
         public int BoundBoneCount { get; private set; }
+        public HumanoidRigDetailCapabilities DetailCapabilities => _detailCapabilities;
+        public int OptionalDetailBoneCount => _detailCapabilities.AvailableFingerBoneCount;
         public Transform AvatarRoot => _boundAvatarRoot;
         public Quaternion AvatarReferenceBodyRotation => _boundAvatarRoot == null ? Quaternion.identity : _boundAvatarRoot.rotation;
 
@@ -183,6 +187,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             {
                 _isBound = true;
                 BoundBoneCount = CanonicalRotationFrame.BoneCount;
+                BindOptionalDetailCapabilities();
                 CaptureReferencePose();
             }
             else
@@ -386,6 +391,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             BoundBoneCount = _isBound ? CanonicalRotationFrame.BoneCount : 0;
             if (_isBound)
             {
+                BindOptionalDetailCapabilities();
                 CaptureReferencePose();
             }
         }
@@ -469,6 +475,31 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             }
 
             return false;
+        }
+
+        private void BindOptionalDetailCapabilities()
+        {
+            _detailCapabilities.Clear();
+            if (_bindingMode == HumanoidBindingMode.AnimatorHumanoid)
+            {
+                _detailCapabilities.BindAnimator(animator);
+                return;
+            }
+
+            if (_bindingMode != HumanoidBindingMode.ExplicitDebug)
+            {
+                return;
+            }
+
+            var components = GetComponents<MonoBehaviour>();
+            for (var i = 0; i < components.Length; i++)
+            {
+                if (components[i] is IExplicitHumanoidDetailRigSource detailSource)
+                {
+                    _detailCapabilities.BindExplicit(detailSource);
+                    return;
+                }
+            }
         }
 
         private void CaptureReferencePose()
@@ -681,6 +712,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 _chainReferenceBendDirections[i] = Vector3.zero;
             }
 
+            _detailCapabilities.Clear();
             _referenceBodyBasis = default;
             _hasReferenceBodyBasis = false;
             _boundAvatarRoot = null;
