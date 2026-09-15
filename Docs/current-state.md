@@ -12,7 +12,7 @@ Active branch: `engine/pose-tracking-spike`
 - Do not force-push, rebase, amend, reset, or otherwise rewrite shared branch history.
 - GitHub is the shared authoritative project state; independently inspect the live branch before implementation work.
 - The USER is the decisive Unity/manual/runtime acceptance authority.
-- Motion Engine Completion uses the approved three-batch sequence recorded below. USER/runtime testing is deliberately deferred until the implementation batches are complete; Builder/static checks do not create USER acceptance.
+- Motion Engine Completion uses the approved staged sequence recorded below. USER/runtime testing is deliberately deferred until the implementation batches are complete; Builder/static checks do not create USER acceptance.
 - Phase 6 remains **NOT STARTED**.
 
 ## Current checkpoint and post-restoration result
@@ -25,11 +25,15 @@ Batch 2 started from the independently verified remote HEAD:
 
 `21184fe89d8f4c6f7b9ec387cdab84f884ad0e41`
 
-The Batch-2 implementation/tests/scene checkpoint before this documentation refresh is:
+Batch 2 completed at:
 
-`e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`
+`19e697695802459f97d488b64e7b62683c89512d`
 
-That Batch-2 implementation changes only Phase-5 locomotion code/tests plus the relevant Motion Engine Lab locomotion serialization. The accepted optimized body path, Phase 3 authority and Phase 4 production pose code remain untouched.
+Batch 2R started from that exact accepted Batch-2 HEAD. The Batch-2R source/test checkpoint before this documentation refresh is:
+
+`a96cbf06437004f3f44d53383601ec1be556d767`
+
+Batch 2R changes only the Phase-5 root tracker and Phase-5 deterministic tests, plus this minimal current documentation/handoff refresh. Cadence, the accepted optimized body path, Phase 3 authority and Phase 4 production pose code remain untouched.
 
 After the corrective restoration and compile-closure work, the USER reopened Unity with zero red errors and reports that low-end performance appears restored. The USER explicitly closed further performance work for the present hackathon milestone.
 
@@ -48,10 +52,10 @@ This is not a claim that performance can never be improved. Golden Needle remain
 | Phase 3 — stabilization/confidence/calibration foundation | **PASS** |
 | Phase 4 — humanoid retargeting | **USER ACCEPTED — PASS** |
 | Low-end optimization milestone | **USER SATISFIED / FROZEN FOR CURRENT MILESTONE** |
-| Phase 5A — locomotion | **BATCH 2 IMPLEMENTED / USER QA DEFERRED / NOT YET USER ACCEPTED** |
+| Phase 5A — locomotion | **BATCH 2R COMPLETE / USER QA DEFERRED / NOT YET USER ACCEPTED** |
 | Phase 6 — graybox vertical-slice integration | **NOT STARTED** |
 
-Do not describe Phase 5A or Motion Engine V1 as accepted yet.
+Do not describe Phase 5A or Motion Engine V1 as USER accepted yet.
 
 ## Current production body/pose pipeline
 
@@ -90,9 +94,7 @@ The current `MotionEngineRuntime` has no production `RichMotionFrame`, `MediaPip
 
 **RETAINED / WORKING OPERATIONAL FEATURE.**
 
-The shared command/action architecture remains. Keyboard and speech resolve into the same project command router. Real USER microphone QA succeeded: the Windows phrase system and `KeywordRecognizer` ran, configured spoken commands were recognized and dispatched, and noisy conditions frequently produced Low-confidence recognition while clearer/louder speech produced successful cases.
-
-Product policy now uses `SpeechRecognitionConfidence.Low` for **all 14 mappings created by `SpeechCommandConfiguration.CreateDefault()`**. The generic/custom `SpeechCommandMapping` default remains Medium. The wake prefix remains configurable and empty by default; it may be added later if accidental activation becomes a problem.
+The shared command/action architecture remains. Keyboard and speech resolve into the same project command router. Real USER microphone QA succeeded. Product policy uses `SpeechRecognitionConfidence.Low` for all 14 mappings created by `SpeechCommandConfiguration.CreateDefault()`. The generic/custom `SpeechCommandMapping` default remains Medium. The wake prefix remains configurable and empty by default.
 
 ### Foundation B — camera presets
 
@@ -108,71 +110,99 @@ Preset selection remains integrated with the shared command layer and remains or
 
 `DEFERRED / DORMANT RESEARCH — NOT PRODUCTION POSE AUTHORITY`
 
-The research contracts/solver may remain in the repository for history and future study, but the corrective restoration removed C from normal production composition. It is not the next required milestone.
+The research contracts/solver may remain in the repository for history and future study, but the corrective restoration removed C from normal production composition.
 
 ### Foundation D — detailed hands
 
 `DEFERRED`
 
-The independent MediaPipe Hand Landmarker experiment imposed unacceptable low-end cost in USER testing, with detailed-hand operation entering roughly the 10–15 FPS class while accepted body performance returned when that stream was disabled/disconnected. Existing research/lifecycle code may remain, but detailed hand inference is not normal production operation or a current hackathon requirement.
+The independent MediaPipe Hand Landmarker experiment imposed unacceptable low-end cost in USER testing. Existing research/lifecycle code may remain, but detailed hand inference is not normal production operation or a current hackathon requirement.
 
 ### Foundation E — rich post-Phase-4 detail
 
 `RETIRED FROM PRODUCTION / RESEARCH HISTORY ONLY`
 
-The production `RichHumanoidDetailRetargeter` was removed. Its obsolete Editor tests were subsequently removed at `f1819fda36547343bb32a972d39405d0a6be6f72`. Foundation-E historical research remains useful provenance, but production execution is not `Phase 4 -> E -> presentation`.
+The production `RichHumanoidDetailRetargeter` was removed. Foundation-E historical research remains useful provenance, but production execution is not `Phase 4 -> E -> presentation`.
 
 ### Coarse hands / former Batch 4A
 
 `DEFERRED`
 
-The zero-extra-inference coarse `Unknown/Open/Closed` experiment passed Builder/static checks but was rejected after USER runtime evaluation and rolled back. The project does not claim its arithmetic alone caused the performance drop; the USER rejected the feature/value tradeoff and chose to restore the known optimized body baseline. Coarse hand/fist control is not required for Motion Engine V1 completion.
+The zero-extra-inference coarse `Unknown/Open/Closed` experiment passed Builder/static checks but was rejected after USER runtime evaluation and rolled back. Coarse hand/fist control is not required for Motion Engine V1 completion.
 
-## Phase 5A — Batch 2 implemented state
+## Phase 5A — Batch 2 + Batch 2R implemented state
 
 Phase 5A horizontal infrastructure remains separate from pose reproduction. `EmbodiedLocomotionController` still consumes the stabilized Phase 3 frame, writes avatar-root **X/Z only**, and preserves current root Y and rotation.
 
 ### Support-aware physical translation
 
-The obsolete assumption that every two-foot midpoint change is room translation has been superseded. `CameraSpaceRootTracker` still forms trusted left/right support-foot measurements from ankle/heel/toe observations, but physical authority is now stateful:
+`CameraSpaceRootTracker` forms trusted left/right support-foot measurements from ankle/heel/toe observations and uses stateful physical authority:
 
 - near-equal normalized foot heights -> `Both` authority using the midpoint;
 - left foot clearly lower -> `Left` support authority;
 - right foot clearly lower -> `Right` support authority;
 - the hysteresis band retains the previous support authority instead of flapping.
 
-Batch-2 thresholds are `supportSingleFootEnter = 0.12` and `supportBothEnter = 0.06`, normalized by apparent/reference body scale. Moving a clearly raised swing foot therefore does not itself move the physical root while the lower planted foot remains the authority.
+Batch-2 thresholds remain `supportSingleFootEnter = 0.12` and `supportBothEnter = 0.06`, normalized by apparent/reference body scale. Moving a clearly raised swing foot therefore does not itself move the physical root while the lower planted foot remains the authority.
 
-Support-authority changes, landing, and support reacquisition use continuity rebasing: the newly selected raw support coordinate is offset to the last filtered displacement at the transition. Temporary support loss holds the last trusted displacement and marks the next valid sample for rebase. `Recenter()` still captures the current measurement as the new zero origin.
+Support-authority changes and support reacquisition still continuity-rebase the newly selected raw support coordinate to the last filtered displacement. Temporary support loss still holds the last trusted displacement and marks the next valid sample for rebase. `Recenter()` still captures the current measurement as the new zero origin.
 
-The existing common and differential foot signals remain available for diagnostics/depth reliability. Existing depth corroboration, signed mapping, heading, fusion and cadence-suppression architecture were not redesigned.
+### Batch 2R — alternating physical-step continuity correction
+
+Batch 2R fixes one remaining continuity problem in the accepted Batch-2 authority model.
+
+Before 2R, every authority transition permanently replaced `_supportAuthorityOffset` with `currentFiltered - newRawAuthority`. That correctly prevented transition snaps, but an ordinary alternating step could perform:
+
+`Both -> single support -> Both -> opposite single support -> Both`
+
+and finish with both feet genuinely relocated while the last Both-mode rebase still cancelled the new common displacement indefinitely.
+
+The 2R rule is:
+
+- keep the transition-frame rebase exactly as before so landing cannot teleport the root;
+- when entering `Both` from a single-support mode, check whether normalized left/right displacement agrees in both X and Y within the existing `supportBothEnter` tolerance;
+- only a coherent dual-support landing becomes eligible to release the temporary landing offset;
+- release occurs on a subsequent coherent `Both` sample, allowing the normal position filter to converge toward the genuinely relocated common support base rather than snapping on the transition frame;
+- asymmetric/one-foot relocation does not qualify;
+- a tracking-loss/reacquisition rebase is explicitly marked non-releasable, preserving the existing safe reacquisition behavior.
+
+Because the authority offset is a `Vector2`, the same coherent-release mechanism applies to the support displacement used by depth. Existing depth differential attenuation and torso-scale corroboration remain the gate for whether depth displacement is actually accepted; Batch 2R did not weaken or bypass those semantics.
 
 ### Batch-2 cadence baseline
 
-Cadence architecture remains the existing alternating ankle/knee rhythm detector. The active defaults are now:
+Cadence is unchanged by Batch 2R. The active Batch-2 defaults remain:
 
-- `eventThreshold = 0.07` — unchanged;
-- `acquisitionEvents = 2` — previously 3;
-- `acquireConfidence = 0.38` — previously 0.50;
-- `sustainConfidence = 0.25` — unchanged;
-- `stopTimeoutSeconds = 0.50` — unchanged;
-- `minimumStepRate = 0.8` / `maximumStepRate = 4.5` — unchanged;
-- `virtualStridePerStep = 0.60` — previously 0.42;
-- `maximumVirtualSpeed = 3.0` — previously 2.5.
+- `eventThreshold = 0.07`;
+- `acquisitionEvents = 2`;
+- `acquireConfidence = 0.38`;
+- `sustainConfidence = 0.25`;
+- `stopTimeoutSeconds = 0.50`;
+- `minimumStepRate = 0.8` / `maximumStepRate = 4.5`;
+- `virtualStridePerStep = 0.60`;
+- `maximumVirtualSpeed = 3.0`.
 
-The existing serialized fields remain compatible. Inspector presentation now labels `virtualStridePerStep` as **Distance Per Step** and `maximumVirtualSpeed` as **Maximum Cadence Speed**. The Motion Engine Lab scene contained old serialized overrides, so only the two new support thresholds and four changed cadence values were updated there.
+Inspector labels remain **Distance Per Step** and **Maximum Cadence Speed** for the existing serialized fields.
 
-### Batch-2 deterministic coverage and verification status
+### Deterministic coverage and verification status
 
-`Assets/GoldenNeedle/Tests/Editor/Phase5LocomotionTests.cs` now covers planted-feet lateral/scale lean suppression, clearly raised swing-foot suppression across multiple samples, genuine bilateral relocation, support transition/landing continuity, support loss/reacquisition, jogging-in-place with cadence, two-event default cadence acquisition, isolated-event rejection, cadence stop, distance-per-step/max-speed behavior, physical/cadence fusion, accepted front-camera mapping/heading, and recenter.
+Existing Batch-2 tests remain in place for planted-feet lateral/scale lean suppression, raised swing-foot isolation across multiple samples, genuine bilateral relocation, support transition/landing continuity, support loss/reacquisition, cadence acquisition/stop/travel tuning, physical/cadence fusion, accepted front-camera mapping/heading, and recenter.
 
-The superseded `SingleStepOnsetMovesSupportMidpointWithoutHardHolding` expectation was removed/reframed because USER runtime evidence established that an airborne/swing leg must not cause physical world translation.
+Batch 2R adds `AlternatingPhysicalStepEventuallyCommitsCoherentSupportBaseRelocation()`. Its sequence is:
 
-Verification status for this Builder environment:
+1. both feet at baseline;
+2. left foot swings +X while raised -> no root movement;
+3. left foot lands -> no landing jump;
+4. right foot swings +X while raised -> no swing-induced movement;
+5. right foot lands at the corresponding relocated position -> no landing jump;
+6. the next coherent dual-support sample must commit net +X physical displacement.
 
-`IMPLEMENTED / AUTOMATED-VERIFIED AS AVAILABLE / USER QA DEFERRED`
+Against the pre-2R `19e6976...` logic, step 6 remains at the old origin because the final Both-mode offset is never retired. The 2R tracker releases only the coherent landing rebase, so the same deterministic sequence can converge to the relocated support base while preserving all transition-frame continuity assertions.
 
-No Unity Editor/Test Runner is available in the current execution environment and GitHub reports no workflow/status run attached to the Batch-2 implementation checkpoint, so the updated deterministic tests were **not executed here**. Source, serialization, branch scope and net diffs were independently/static audited. This must not be reported as a passing Unity test run or USER acceptance.
+Verification status for this Builder environment remains:
+
+`IMPLEMENTED / STATICALLY VERIFIED / USER QA DEFERRED`
+
+No Unity Editor/Test Runner is available in the current execution environment. Therefore the C# Editor tests were **not executed here**. The old/new authority sequence was independently traced, source/test diffs were audited, and final GitHub scope/status is verified. This must not be reported as a passing Unity test run or USER acceptance.
 
 ## Motion Engine V1 vertical requirements
 
@@ -190,25 +220,27 @@ A real physical crouch must correspondingly lower/crouch the game character. The
 
 ### Batch 1 — documentation synchronization
 
-**COMPLETE.** Documentation only.
+**COMPLETE.**
 
 ### Batch 2 — horizontal locomotion completion
 
-**IMPLEMENTED / AUTOMATED-VERIFIED AS AVAILABLE / USER QA DEFERRED.**
+**ACCEPTED AS BASIS FOR 2R.** Completed at `19e697695802459f97d488b64e7b62683c89512d`.
 
-Implementation checkpoint before documentation: `e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`.
+### Batch 2R — alternating physical-step continuity correction
+
+**COMPLETE / USER QA DEFERRED / AWAITING ORCHESTRATOR REVIEW.**
+
+Source/test checkpoint before docs: `a96cbf06437004f3f44d53383601ec1be556d767`.
 
 ### Batch 3 — vertical locomotion + final Motion Engine V1 completion
 
 **NOT STARTED.** This is the next implementation batch only after Orchestrator review/authorization. It will add jump/crouch and prepare one final comprehensive USER Motion Engine QA.
 
-After Batch 3, all Motion Engine testing will be performed together. If that integrated USER QA is accepted, Motion Engine V1 will be considered essentially complete for the hackathon and the USER will provide the next game-development direction.
-
 ## Testing policy for the completion sequence
 
-The USER explicitly chose to defer USER/runtime testing until all three completion batches are implemented.
+The USER explicitly chose to defer USER/runtime testing until after Batch 3 implementation.
 
-- No Batch-2 USER runtime QA was requested.
+- No Batch-2R USER runtime QA is requested.
 - Builder-side compile/static/deterministic validation is useful but never substitutes for USER acceptance.
 - Untested runtime behavior must not be marked USER accepted.
 - Batch 3 prepares the final integrated QA.
@@ -217,4 +249,4 @@ The USER explicitly chose to defer USER/runtime testing until all three completi
 
 Phase 6 remains **NOT STARTED**. Hub/course implementation has not begun merely because the Motion Engine roadmap is progressing.
 
-**Current completion-sequence status:** `BATCH 2 IMPLEMENTED / USER QA DEFERRED / AWAITING ORCHESTRATOR REVIEW FOR BATCH 3`
+**Current completion-sequence status:** `BATCH 2R COMPLETE / USER QA DEFERRED / AWAITING ORCHESTRATOR REVIEW`
