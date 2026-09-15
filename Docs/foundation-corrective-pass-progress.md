@@ -90,3 +90,96 @@ When experimental axial detail is OFF, `HumanoidRetargeter` first rebuilds the a
 **Status:** `AWAITING ORCHESTRATOR REVIEW / USER UNITY QA`
 
 **Next work:** explicitly **not authorized yet**. Do not begin speech/microphone repair, coarse `Open / Closed / Unknown` hand-state work, Phase 5A, Phase 6, broad CI cleanup, or any later corrective batch until the Orchestrator/USER authorizes it.
+
+## Corrective Foundations Batch 3
+
+**Purpose:** repair and expose the existing Windows fixed-vocabulary speech-input lifecycle after USER QA reported that configured spoken commands appeared to do nothing. This batch preserves direct speech commands with no wake keyword, keeps `KeywordRecognizer`, and makes one USER runtime test distinguish backend/start/microphone/recognition/policy/dispatch failure stages instead of collapsing them into silence.
+
+**Expected pre-batch baseline from the Builder brief:** `4be712288af09bde826d12e44999215fb2dcda74`
+
+**Actual remote HEAD at this Builder intake:** `8a555d20fd9c2620fde92e7cb54e7794a674b4e0`
+
+The actual intake HEAD was one fast-forward commit ahead of the expected baseline. That commit, `8a555d20fd9c2620fde92e7cb54e7794a674b4e0` (`fix(speech): expose backend and recognition lifecycle`), is a direct child of `4be712288af09bde826d12e44999215fb2dcda74` and contains the coherent Batch 3 speech implementation. It was independently audited rather than overwritten or duplicated.
+
+**Validated Batch 3 implementation SHA:** `8a555d20fd9c2620fde92e7cb54e7794a674b4e0`
+
+### Current speech architecture and confirmed pre-batch weaknesses
+
+Before the Batch 3 implementation, the live architecture was already:
+
+`Windows KeywordRecognizer -> SpeechCommandInput -> SpeechCommandResolver/confidence/cooldown -> GoldenNeedleCommandRouter -> existing command targets`
+
+Keyboard and speech therefore already converged on the shared command router, and the Windows provider contained no direct camera/gameplay behavior. The default `wakePrefix` was empty, so direct fixed-vocabulary phrases were already the intended product behavior.
+
+One concrete lifecycle defect was present: the old `WindowsKeywordSpeechProvider.Start()` called `_recognizer.Start()` and then returned `_recognizer.IsRunning`. If `KeywordRecognizer` had accepted the start request but did not report running immediately while the shared Windows `PhraseRecognitionSystem` was still transitioning, `SpeechCommandInput.Start()` treated that `false` as a hard start failure and immediately unsubscribed/disposed the provider. That could terminate a valid start-in-progress before the phrase system reached its running state.
+
+The old path also exposed only coarse provider status/error text and `IsRunning`; it did not subscribe to `PhraseRecognitionSystem.OnStatusChanged`, did not expose `PhraseRecognitionSystem.Status`, did not distinguish recognizer-created/starting/listening/failed/unsupported/stopped states, and did not surface raw recognition events before policy filtering. Consequently a real Low-confidence recognition, unmapped phrase, cooldown rejection, backend error, or no recognition event could all look similar to the USER as “speech did nothing.”
+
+These findings identify real lifecycle/observability weaknesses, but they do **not** prove the original USER failure had one unique cause. Physical microphone availability, Windows microphone/privacy state, Windows Speech runtime availability, whether the recognizer receives audio, and real spoken-word recognition quality remain USER-runtime questions.
+
+### Lifecycle and diagnostics implemented
+
+- `SpeechCommandInput` now exposes explicit lifecycle states (`Stopped`, `Disabled`, `Created`, `Starting`, `Running`, `Failed`, `Unsupported`, `Disposed`) and retains provider diagnostics even after teardown.
+- Raw recognized phrase/confidence is recorded before resolver filtering, with recognition event count, sequence/time, mapping-found state, confidence rejection, cooldown rejection, dispatch-attempt state, command result/status/message, and a compact diagnostic summary.
+- Repeated `SpeechCommandInput.Start()` while already starting/running is idempotent and does not create a duplicate provider. Stop removes the phrase callback before provider teardown, blocks stale events from dispatching, and disposes provider resources. Start after Stop creates exactly one fresh provider. Dispose is idempotent.
+- `WindowsKeywordSpeechProvider` retains `KeywordRecognizer` and now observes `PhraseRecognitionSystem.isSupported`, `PhraseRecognitionSystem.Status`, `PhraseRecognitionSystem.OnStatusChanged`, `PhraseRecognitionSystem.OnError`, recognizer existence, and `KeywordRecognizer.IsRunning`.
+- Phrase-system static events are subscribed once per live provider session and unsubscribed during Stop/restart/Dispose. `OnPhraseRecognized` is likewise removed before native recognizer disposal.
+- A successful `KeywordRecognizer.Start()` request is no longer declared failed merely because `IsRunning` is not true in the same call. The provider remains in `Starting` and lets phrase-system status/error callbacks provide the next authoritative transition. No per-frame restart loop was introduced.
+- Invalid/empty keyword sets fail diagnostically before recognizer creation. Backend exceptions/errors remain nonfatal to the rest of Golden Needle.
+- The Windows recognizer-wide confidence remains `Low`; the existing per-command production minimum (normally `Medium`) remains in `SpeechCommandResolver`, so a Low recognition is visible and then explicitly classified as a confidence rejection rather than silently disappearing.
+
+### Microphone / permission approach
+
+No `Application.RequestUserAuthorization(UserAuthorization.Microphone)` workflow was added for Windows desktop and no `Microphone.Start()` capture session was introduced. The Windows backend uses Unity's phrase-recognition status/error surfaces as the speech authority. `Microphone.devices` is sampled only when the provider starts as low-cost supporting evidence: a zero-device result is useful, while a nonzero device count is explicitly treated as **not proof** that Windows Speech has valid privacy/device access.
+
+Diagnostics record microphone device count, the first enumerated device name when available, and a note explaining that enumeration alone does not prove phrase-recognition access. `SpeechError.MicrophoneUnavailable` is reported distinctly through the phrase-system error path.
+
+### Material changes in the Batch 3 implementation
+
+- `Assets/GoldenNeedle/Core/Commands/SpeechCommandInput.cs` — provider lifecycle state, raw-recognition/policy/dispatch diagnostics, idempotent Start/Stop/restart/Dispose behavior, stale-event blocking, and compact Lab diagnostic summary.
+- `Assets/GoldenNeedle/Debug/PoseTrackingSpike/WindowsKeywordSpeechProvider.cs` — retained `KeywordRecognizer`; added phrase-system support/status/error observability, safe static-event ownership, start-in-progress handling, one-time microphone-device diagnostics, keyword validation, and clean native teardown.
+- `Tools/FoundationACommandSmoke/Program.cs` — deterministic coverage for dispatched recognition, raw Low-confidence rejection, unmapped recognition, cooldown rejection, unsupported-provider nonfatal behavior, shared-router survival, repeated Start, Stop/restart, stale callback blocking, and idempotent Dispose.
+- `.github/workflows/foundation-a-command-system.yml` — narrow Foundation A invariants for phrase-system status/error subscriptions, teardown, configured keywords, no parallel `Microphone.Start`, no fabricated Windows authorization prompt, shared command routing, and Lab diagnostic visibility.
+- `Docs/foundation-corrective-pass-progress.md` — this Batch 3 record.
+
+`PoseTrackingSpikePresenter.cs` already routed both keyboard and speech through the same `GoldenNeedleCommandRouter` and already rendered `_speechCommandInput.DiagnosticSummary` in the main Lab diagnostics panel, so no additional Presenter source edit was required by the final Batch 3 implementation diff.
+
+### Validation actually performed
+
+- Unity 6 speech API behavior was independently checked against current Unity documentation: Windows phrase recognition exposes `isSupported`, `Status`, `OnStatusChanged`, `OnError`; `KeywordRecognizer` inherits `IsRunning`, `Start`, `Stop`, and `Dispose`; Unity documents the phrase-recognition system/keyword recognizer as functional on Windows 10. This supports retaining the existing Windows keyword architecture rather than replacing it or inventing a separate audio-capture/permission subsystem.
+- Foundation A workflow at implementation SHA `8a555d20fd9c2620fde92e7cb54e7794a674b4e0`: run `34968867815`, job `104379898399` — **SUCCESS**.
+  - `FOUNDATION_A_COMMAND_SMOKE=PASS`
+  - `CONFIDENCE_COOLDOWN=PASS`
+  - `DEFAULT_CAMERA_SPEECH_MAPPINGS=PASS`
+  - `RAW_RECOGNITION_DIAGNOSTICS=PASS`
+  - `SPEECH_LIFECYCLE_IDEMPOTENT=PASS`
+  - `UNSUPPORTED_SPEECH_FALLBACK=PASS`
+  - `SHARED_COMMAND_ROUTING=PASS`
+  - `FOUNDATION_A_STATIC_AUDIT=PASS`
+  - `KEYBOARD_MIGRATION_F1_F12_R_V_C_X_K=PASS`
+  - `SPEECH_POLICY_AND_PROVIDER_BOUNDARY=PASS`
+  - `SPEECH_WINDOWS_STATUS_ERROR_LIFECYCLE=PASS`
+  - `SPEECH_NO_PARALLEL_MIC_CAPTURE_OR_WINDOWS_AUTH_PROMPT=PASS`
+  - `SPEECH_LAB_DIAGNOSTICS_SURFACE=PASS`
+  - `EXISTING_RUNTIME_AUTHORITIES_PRESERVED=PASS`
+  - `FOUNDATION_A_WORKFLOW_READ_ONLY=PASS`
+- Foundation B workflow also completed successfully at the same speech implementation SHA (run `34968867834`), providing additional evidence that camera-preset behavior remained intact.
+- The implementation commit changed only the four directly speech/Foundation-A files listed above. No body provider/OpenVINO acquisition/scheduling, Phase 3 stabilization, Phase 4 retarget math, locomotion/Phase 5A, presentation smoothing, Batch 1 hand implementation, Batch 2 rich-axial implementation, or Phase 6 source was changed.
+- Automated CI cannot establish the USER's Windows microphone privacy settings, physical microphone health, Windows Speech runtime health, or spoken-word recognition quality. Real Unity/Windows speech QA therefore remains decisive and Batch 3 is **not USER accepted**.
+
+### Required USER runtime evidence
+
+In Lab mode with main diagnostics visible, read the `Speech:` line after entering Play Mode and after speaking one configured phrase such as `front view`. The diagnostic now distinguishes examples such as:
+
+- backend unsupported/failed and the last phrase-system error;
+- `Starting` versus `Running`, phrase-system state, recognizer running state, keyword count, and microphone-device count;
+- `Events=0`, meaning no phrase-recognition event reached the project;
+- a raw phrase plus confidence followed by `ConfidenceRejected` or `Unmapped`;
+- `CooldownRejected`;
+- `Dispatched` or `DispatchFailed` with the command result status/message.
+
+The USER should also disable/re-enable the Presenter/GameObject or otherwise exercise the normal Stop/start lifecycle once and verify the event count does not jump from duplicate callbacks. The exact diagnostic line plus any Unity Console speech error should be returned to the Orchestrator if speech still does not act.
+
+**Status:** `AWAITING ORCHESTRATOR REVIEW / USER UNITY QA`
+
+**Next work:** explicitly **not authorized yet**. Do not begin coarse `Open / Closed / Unknown` hand-state detection, Foundation E CI cleanup, Phase 5A work, Phase 6, or unrelated foundation changes until the Orchestrator/USER authorizes the next batch.
