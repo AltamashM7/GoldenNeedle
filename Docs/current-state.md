@@ -17,11 +17,19 @@ Active branch: `engine/pose-tracking-spike`
 
 ## Current checkpoint and post-restoration result
 
-The code/runtime checkpoint entering Motion Engine Completion Batch 1 is:
+The corrective restoration checkpoint remains:
 
 `f1819fda36547343bb32a972d39405d0a6be6f72`
 
-That commit removed obsolete Foundation-E Editor tests after the production `RichHumanoidDetailRetargeter` had already been retired. The corrective restoration returned normal production pose composition to the accepted pre-Foundation-C optimization-era Phase 3 + Phase 4 architecture.
+Batch 2 started from the independently verified remote HEAD:
+
+`21184fe89d8f4c6f7b9ec387cdab84f884ad0e41`
+
+The Batch-2 implementation/tests/scene checkpoint before this documentation refresh is:
+
+`e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`
+
+That Batch-2 implementation changes only Phase-5 locomotion code/tests plus the relevant Motion Engine Lab locomotion serialization. The accepted optimized body path, Phase 3 authority and Phase 4 production pose code remain untouched.
 
 After the corrective restoration and compile-closure work, the USER reopened Unity with zero red errors and reports that low-end performance appears restored. The USER explicitly closed further performance work for the present hackathon milestone.
 
@@ -40,7 +48,7 @@ This is not a claim that performance can never be improved. Golden Needle remain
 | Phase 3 — stabilization/confidence/calibration foundation | **PASS** |
 | Phase 4 — humanoid retargeting | **USER ACCEPTED — PASS** |
 | Low-end optimization milestone | **USER SATISFIED / FROZEN FOR CURRENT MILESTONE** |
-| Phase 5A — locomotion | **IMPLEMENTED / NOT YET USER ACCEPTED / NOW ACTIVE DEVELOPMENT TARGET** |
+| Phase 5A — locomotion | **BATCH 2 IMPLEMENTED / USER QA DEFERRED / NOT YET USER ACCEPTED** |
 | Phase 6 — graybox vertical-slice integration | **NOT STARTED** |
 
 Do not describe Phase 5A or Motion Engine V1 as accepted yet.
@@ -120,67 +128,79 @@ The production `RichHumanoidDetailRetargeter` was removed. Its obsolete Editor t
 
 The zero-extra-inference coarse `Unknown/Open/Closed` experiment passed Builder/static checks but was rejected after USER runtime evaluation and rolled back. The project does not claim its arithmetic alone caused the performance drop; the USER rejected the feature/value tradeoff and chose to restore the known optimized body baseline. Coarse hand/fist control is not required for Motion Engine V1 completion.
 
-## Phase 5A — actual current state
+## Phase 5A — Batch 2 implemented state
 
-Phase 5A is the main unfinished Motion Engine work. Most horizontal infrastructure already exists:
+Phase 5A horizontal infrastructure remains separate from pose reproduction. `EmbodiedLocomotionController` still consumes the stabilized Phase 3 frame, writes avatar-root **X/Z only**, and preserves current root Y and rotation.
 
-- camera-space physical/root displacement;
-- lateral motion;
-- toward/away motion;
-- body heading for cadence travel;
-- cadence/in-place movement;
-- physical + cadence fusion;
-- recenter;
-- Lab/Game presentation;
-- third-person follow/preset camera integration.
+### Support-aware physical translation
 
-Current code consumes the stabilized Phase 3 frame. `EmbodiedLocomotionController` currently writes avatar-root **X/Z only** and preserves the current root Y and rotation.
+The obsolete assumption that every two-foot midpoint change is room translation has been superseded. `CameraSpaceRootTracker` still forms trusted left/right support-foot measurements from ankle/heel/toe observations, but physical authority is now stateful:
 
-Known issues/observations to carry into Batch 2:
+- near-equal normalized foot heights -> `Both` authority using the midpoint;
+- left foot clearly lower -> `Left` support authority;
+- right foot clearly lower -> `Right` support authority;
+- the hysteresis band retains the previous support authority instead of flapping.
 
-1. **Planted-feet lean:** the earlier suppression work appears mostly successful in current USER observation, but final integrated testing is intentionally deferred, so this is not yet accepted.
-2. **Raised/swing-leg false translation:** when one leg is lifted/moved while the other remains planted, physical locomotion can be triggered. Current `CameraSpaceRootTracker` uses the common/midpoint displacement of both support-foot measurements, so one-foot motion can shift that midpoint. Batch 2 must distinguish support/planted motion from swing-leg movement instead of interpreting every two-foot-centroid change as room translation.
-3. **Cadence responsiveness:** cadence works, but acquisition takes longer than desired.
-4. **Cadence travel distance:** distance/speed after activation is not yet satisfactory.
-5. **Existing cadence controls:** the code already exposes `eventThreshold`, `acquisitionEvents`, `acquireConfidence`, `sustainConfidence`, `virtualStridePerStep`, `maximumVirtualSpeed`, and related rate/timeout settings. Batch 2 must audit and expose/use these coherently so the USER can tune responsiveness and travel distance from the Inspector rather than by code edits.
-6. Other horizontal locomotion appears largely implemented, but Batch 2 must audit lateral/depth/heading/recenter/fusion consistency rather than assume acceptance.
+Batch-2 thresholds are `supportSingleFootEnter = 0.12` and `supportBothEnter = 0.06`, normalized by apparent/reference body scale. Moving a clearly raised swing foot therefore does not itself move the physical root while the lower planted foot remains the authority.
+
+Support-authority changes, landing, and support reacquisition use continuity rebasing: the newly selected raw support coordinate is offset to the last filtered displacement at the transition. Temporary support loss holds the last trusted displacement and marks the next valid sample for rebase. `Recenter()` still captures the current measurement as the new zero origin.
+
+The existing common and differential foot signals remain available for diagnostics/depth reliability. Existing depth corroboration, signed mapping, heading, fusion and cadence-suppression architecture were not redesigned.
+
+### Batch-2 cadence baseline
+
+Cadence architecture remains the existing alternating ankle/knee rhythm detector. The active defaults are now:
+
+- `eventThreshold = 0.07` — unchanged;
+- `acquisitionEvents = 2` — previously 3;
+- `acquireConfidence = 0.38` — previously 0.50;
+- `sustainConfidence = 0.25` — unchanged;
+- `stopTimeoutSeconds = 0.50` — unchanged;
+- `minimumStepRate = 0.8` / `maximumStepRate = 4.5` — unchanged;
+- `virtualStridePerStep = 0.60` — previously 0.42;
+- `maximumVirtualSpeed = 3.0` — previously 2.5.
+
+The existing serialized fields remain compatible. Inspector presentation now labels `virtualStridePerStep` as **Distance Per Step** and `maximumVirtualSpeed` as **Maximum Cadence Speed**. The Motion Engine Lab scene contained old serialized overrides, so only the two new support thresholds and four changed cadence values were updated there.
+
+### Batch-2 deterministic coverage and verification status
+
+`Assets/GoldenNeedle/Tests/Editor/Phase5LocomotionTests.cs` now covers planted-feet lateral/scale lean suppression, clearly raised swing-foot suppression across multiple samples, genuine bilateral relocation, support transition/landing continuity, support loss/reacquisition, jogging-in-place with cadence, two-event default cadence acquisition, isolated-event rejection, cadence stop, distance-per-step/max-speed behavior, physical/cadence fusion, accepted front-camera mapping/heading, and recenter.
+
+The superseded `SingleStepOnsetMovesSupportMidpointWithoutHardHolding` expectation was removed/reframed because USER runtime evidence established that an airborne/swing leg must not cause physical world translation.
+
+Verification status for this Builder environment:
+
+`IMPLEMENTED / AUTOMATED-VERIFIED AS AVAILABLE / USER QA DEFERRED`
+
+No Unity Editor/Test Runner is available in the current execution environment and GitHub reports no workflow/status run attached to the Batch-2 implementation checkpoint, so the updated deterministic tests were **not executed here**. Source, serialization, branch scope and net diffs were independently/static audited. This must not be reported as a passing Unity test run or USER acceptance.
 
 ## Motion Engine V1 vertical requirements
 
-Jump and crouch are now explicit **Motion Engine V1 requirements**.
+Jump and crouch remain explicit **Motion Engine V1 requirements**, but **Batch 3 has not started**.
 
 ### Jump
 
-A real physical jump must produce corresponding vertical game movement. The implementation must use coherent body/support evidence, distinguish a true jump from lifting only one leg, reject ordinary tracking noise, have a clear takeoff/airborne/landing lifecycle, and expose useful tuning controls where appropriate. The final detection algorithm is intentionally not specified in Batch 1.
+A real physical jump must produce corresponding vertical game movement. The implementation must use coherent body/support evidence, distinguish a true jump from lifting only one leg, reject ordinary tracking noise, have a clear takeoff/airborne/landing lifecycle, and expose useful tuning controls where appropriate.
 
 ### Crouch
 
-A real physical crouch must correspondingly lower/crouch the game character. The implementation must use normalized body-compression/height evidence rather than fragile raw-pixel-only thresholds, support holding a crouched state, use acquisition/release hysteresis, and expose useful tuning controls where appropriate. The final detection algorithm is intentionally not specified in Batch 1.
+A real physical crouch must correspondingly lower/crouch the game character. The implementation must use normalized body-compression/height evidence rather than fragile raw-pixel-only thresholds, support holding a crouched state, use acquisition/release hysteresis, and expose useful tuning controls where appropriate.
 
 ## Final Motion Engine completion sequence
 
 ### Batch 1 — documentation synchronization
 
-Current task. Documentation only; no runtime/code changes.
+**COMPLETE.** Documentation only.
 
 ### Batch 2 — horizontal locomotion completion
 
-- audit the existing Phase 5A implementation;
-- fix raised/swing-leg false physical translation;
-- preserve/regression-check the mostly successful planted-feet lean suppression;
-- improve cadence acquisition responsiveness;
-- make cadence travel distance/speed clearly Inspector-tunable;
-- verify lateral/depth/heading/recenter/fusion remain coherent;
-- do **not** add jump/crouch yet.
+**IMPLEMENTED / AUTOMATED-VERIFIED AS AVAILABLE / USER QA DEFERRED.**
+
+Implementation checkpoint before documentation: `e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`.
 
 ### Batch 3 — vertical locomotion + final Motion Engine V1 completion
 
-- implement jump detection/application;
-- implement crouch detection/application;
-- distinguish jump from single-leg lift;
-- expose appropriate Inspector tuning;
-- integrate vertical locomotion without corrupting Phase 4 body pose;
-- prepare one final comprehensive USER Motion Engine QA.
+**NOT STARTED.** This is the next implementation batch only after Orchestrator review/authorization. It will add jump/crouch and prepare one final comprehensive USER Motion Engine QA.
 
 After Batch 3, all Motion Engine testing will be performed together. If that integrated USER QA is accepted, Motion Engine V1 will be considered essentially complete for the hackathon and the USER will provide the next game-development direction.
 
@@ -188,14 +208,13 @@ After Batch 3, all Motion Engine testing will be performed together. If that int
 
 The USER explicitly chose to defer USER/runtime testing until all three completion batches are implemented.
 
-- Do not ask for a separate Batch 1 runtime test.
-- Batch 2 should not stop waiting for USER QA.
-- Batch 3 prepares the final integrated QA.
-- Builder-side compile/static/deterministic validation remains useful in implementation batches but never substitutes for USER acceptance.
+- No Batch-2 USER runtime QA was requested.
+- Builder-side compile/static/deterministic validation is useful but never substitutes for USER acceptance.
 - Untested runtime behavior must not be marked USER accepted.
+- Batch 3 prepares the final integrated QA.
 
 ## Phase 6 and game development
 
-Phase 6 remains **NOT STARTED** and must not begin during Batch 1 or Batch 2. It is the later graybox/playable vertical-slice integration step after Motion Engine V1 completion. Hub/course implementation has not begun merely because the Motion Engine roadmap is being synchronized.
+Phase 6 remains **NOT STARTED**. Hub/course implementation has not begun merely because the Motion Engine roadmap is progressing.
 
-**Current completion-sequence status:** `BATCH 1 COMPLETE / AWAITING ORCHESTRATOR REVIEW BEFORE BATCH 2`
+**Current completion-sequence status:** `BATCH 2 IMPLEMENTED / USER QA DEFERRED / AWAITING ORCHESTRATOR REVIEW FOR BATCH 3`
