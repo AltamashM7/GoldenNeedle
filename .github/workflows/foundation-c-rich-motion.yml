@@ -44,6 +44,7 @@ jobs:
           git diff --check
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           canonical = Path('Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs').read_text(encoding='utf-8')
           legacy_source = Path('Assets/GoldenNeedle/Core/Motion/Runtime/ICanonicalPoseSource.cs').read_text(encoding='utf-8')
@@ -75,8 +76,8 @@ jobs:
           rich_core = rich_frame + '\n' + rich_solver + '\n' + rich_interface
           if 'Quaternion' in rich_core:
               raise SystemExit('rich canonical authority must not store/use Quaternion')
-          if any(token in rich_core for token in ['PoseObservation', 'PoseLandmarkObservation', 'MediaPipePoseProvider', 'GetLandmark(']):
-              raise SystemExit('provider-native MediaPipe types/indices leaked into rich core')
+          if any(token in rich_core for token in ['PoseObservation', 'PoseLandmarkObservation', 'MediaPipePoseProvider']):
+              raise SystemExit('provider-native MediaPipe types leaked into rich core')
 
           require(rich_frame, [
               'public const int EvidenceCount = 22;',
@@ -139,14 +140,18 @@ jobs:
           if 'RichMotionFrame' in retargeter or 'RichOrientation' in retargeter:
               raise SystemExit('Foundation C must not switch production retargeting to rich orientation')
 
+          provider_native_tokens = ['PoseObservation', 'PoseLandmarkObservation', 'MediaPipePoseProvider']
+          numeric_landmark_access = re.compile(r'\.GetLandmark\s*\(\s*(?:\d+|[A-Za-z_]\w*\s*\[)')
           for path in Path('Assets/GoldenNeedle/Core/Motion').rglob('*.cs'):
-              text = path.read_text(encoding='utf-8')
-              if 'GetLandmark(' not in text:
-                  continue
               normalized = path.as_posix()
               if '/Providers/MediaPipe/' in normalized or normalized.endswith('/Canonical/MediaPipeCanonicalPoseMapper.cs'):
                   continue
-              raise SystemExit(f'provider landmark access leaked downstream: {normalized}')
+              text = path.read_text(encoding='utf-8')
+              leaked_types = [token for token in provider_native_tokens if token in text]
+              if leaked_types:
+                  raise SystemExit(f'provider-native MediaPipe types leaked downstream: {normalized}: {leaked_types}')
+              if numeric_landmark_access.search(text):
+                  raise SystemExit(f'raw numeric/provider landmark-index access leaked downstream: {normalized}')
 
           if 'contents: read' not in workflow:
               raise SystemExit('Foundation C workflow is not contents: read')
