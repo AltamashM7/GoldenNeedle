@@ -25,13 +25,13 @@ The corrective restoration checkpoint remains:
 
 `f1819fda36547343bb32a972d39405d0a6be6f72`
 
-Motion Engine Completion Batch 2 started from the independently verified remote HEAD:
+Motion Engine Completion Batch 2 completed at:
 
-`21184fe89d8f4c6f7b9ec387cdab84f884ad0e41`
+`19e697695802459f97d488b64e7b62683c89512d`
 
-The Batch-2 implementation/tests/scene checkpoint before documentation is:
+Batch 2R was explicitly authorized as a narrow correction from that exact HEAD. Its source/test checkpoint before documentation is:
 
-`e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`
+`a96cbf06437004f3f44d53383601ec1be556d767`
 
 The USER previously reopened Unity after corrective restoration with zero red errors and reported restored low-end performance. Further performance optimization remains deferred for the current hackathon milestone.
 
@@ -69,7 +69,7 @@ Preserve these boundaries:
 - Phase 4 signed canonical-to-avatar mapping and analytic two-bone IK remain accepted production pose authority;
 - monocularly unobservable free axial/twist motion is not fabricated in normal production operation.
 
-Batch 2 did not modify this path, Phase 3 stabilization/calibration, or Phase 4 production pose code.
+Batch 2R did not modify this path, Phase 3 stabilization/calibration, or Phase 4 production pose code.
 
 ## 4. Current phase status
 
@@ -78,110 +78,105 @@ Batch 2 did not modify this path, Phase 3 stabilization/calibration, or Phase 4 
 - Phase 3 — stabilization/confidence/calibration foundation: **PASS**.
 - Phase 4 — humanoid retargeting: **USER ACCEPTED — PASS**.
 - Low-end optimization milestone: **USER SATISFIED / FROZEN FOR CURRENT MILESTONE**.
-- Phase 5A — locomotion: **BATCH 2 IMPLEMENTED / USER QA DEFERRED / NOT YET USER ACCEPTED**.
+- Phase 5A — locomotion: **BATCH 2R COMPLETE / USER QA DEFERRED / NOT YET USER ACCEPTED**.
 - Phase 6 — graybox vertical slice: **NOT STARTED**.
 
-Do not mark Phase 5A or Motion Engine V1 accepted before final integrated USER QA.
+Do not mark Phase 5A or Motion Engine V1 USER accepted before final integrated USER QA.
 
 ## 5. Foundation disposition
 
-### Foundation A — commands/speech
+Foundation A commands/speech and Foundation B camera presets remain retained. Foundation C remains deferred/dormant research, detailed hands remain deferred for low-end cost, Foundation E remains retired from production, and the former coarse-hand experiment remains deferred/rolled back. None were touched by Batch 2R.
 
-**Retained and working.** The shared command router remains the authority for keyboard and speech actions. USER microphone QA succeeded. All 14 product-default mappings created by `SpeechCommandConfiguration.CreateDefault()` use `SpeechRecognitionConfidence.Low`; custom mappings retain their generic Medium default. The wake prefix remains configurable and empty by default.
+## 6. Phase 5A Batch 2 retained behavior
 
-### Foundation B — camera presets
-
-**Retained.** One primary camera owns `Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, `RightHand`. F12 Lab/Game presentation remains separate.
-
-### Foundation C / D / E and coarse hands
-
-Foundation C remains deferred/dormant research, detailed hands remain deferred for low-end cost, Foundation E remains retired from production, and the former coarse-hand experiment remains deferred/rolled back. None were reopened in Batch 2.
-
-## 6. Phase 5A Batch 2 implementation
-
-Batch 2 completed the authorized horizontal-locomotion changes without adding vertical gameplay.
-
-### Support-aware root authority
-
-The old two-foot-midpoint assumption was the raised/swing-leg defect: a moving airborne foot shifted `(leftDelta + rightDelta) / 2` even though the other foot was planted.
-
-`CameraSpaceRootTracker` now keeps a support-authority mode based on body-scale-normalized foot-height separation:
+The accepted Batch-2 support-aware root model remains in place:
 
 - `Both` for near-equal foot heights, using the midpoint;
 - `Left` when the left foot is clearly lower/supporting;
 - `Right` when the right foot is clearly lower/supporting;
 - hysteresis retains the prior single-foot authority through the ambiguous band.
 
-Current thresholds are `supportSingleFootEnter = 0.12` and `supportBothEnter = 0.06`.
+Current thresholds remain `supportSingleFootEnter = 0.12` and `supportBothEnter = 0.06`.
 
-On support-mode changes, landing or post-loss reacquisition, the tracker continuity-rebases the new raw authority coordinate to the last filtered displacement. Temporary support loss holds the last trusted root and flags the next valid sample for rebase. This prevents support switching itself from snapping/teleporting the avatar. Genuine bilateral/support-base relocation still moves the physical root, and `Recenter()` still zeroes the current measurement while preserving the controller's virtual position behavior.
+Raised/moving swing feet remain isolated from physical translation. Planted-feet torso lean remains suppressed. Support-mode transitions remain continuity-rebased. Temporary support loss still holds the last trusted physical displacement and reacquisition remains rebased. `Recenter()` remains preserved.
 
-No jump/airborne gameplay state was added; the support classifier exists only to make horizontal translation support-aware.
+Cadence was **not modified by Batch 2R**. The Batch-2 defaults and Inspector labels remain unchanged.
 
-### Cadence baseline and Inspector tuning
+## 7. Batch 2R — alternating physical-step continuity correction
 
-Cadence keeps the existing alternating ankle/knee detector and unchanged event threshold. Batch-2 defaults are:
+### Failure mode at `19e6976...`
 
-- `acquisitionEvents: 3 -> 2`;
-- `acquireConfidence: 0.50 -> 0.38`;
-- `virtualStridePerStep: 0.42 -> 0.60`;
-- `maximumVirtualSpeed: 2.5 -> 3.0`;
-- `eventThreshold = 0.07` unchanged;
-- sustain confidence, stop timeout and step-rate limits unchanged.
+The Batch-2 tracker correctly rebased every authority change to prevent snapping, but the resulting `_supportAuthorityOffset` persisted indefinitely. An ordinary physical sequence could therefore do:
 
-The serialized field names remain unchanged. Inspector labels now expose `virtualStridePerStep` as **Distance Per Step** and `maximumVirtualSpeed` as **Maximum Cadence Speed**. Existing activation settings remain directly serialized/Inspector-visible.
+`Both -> Right/Left -> Both -> opposite single support -> Both`
 
-The active Motion Engine Lab scene had serialized old values, so its relevant locomotion block was updated. Net comparison with the Batch-2 starting SHA shows only the two new support thresholds and the four authorized cadence value changes in that scene; unrelated Unity YAML changes were explicitly restored.
+while each transition kept the root continuous. When the second foot finally landed at the relocated position, the final Both-mode offset still cancelled the newly relocated common support base. Subsequent stable Both samples therefore stayed near the old physical origin instead of converging to the new room position.
 
-### Existing horizontal systems
+### Correction strategy
 
-Heading estimation, signed canonical-to-world mapping, `LocomotionFusion`, physical-motion cadence suppression, F12 Lab/Game separation and the third-person camera architecture were not redesigned. Deterministic coverage for mapping/heading/fusion/recenter remains in the Phase-5 suite.
+`CameraSpaceRootTracker` now separates ordinary authority-transition rebases from tracking-loss rebases and introduces a narrow coherent-landing release path.
 
-## 7. Batch-2 verification status
+On every authority transition, the transition frame still computes:
 
-`Assets/GoldenNeedle/Tests/Editor/Phase5LocomotionTests.cs` was updated rather than creating a new test framework. The obsolete `SingleStepOnsetMovesSupportMidpointWithoutHardHolding` expectation was superseded because it conflicted with current USER evidence.
+`offset = currentFilteredDisplacement - newRawAuthority`
 
-Coverage now includes:
+so the transition itself cannot teleport the root.
 
-- planted-feet lateral lean and torso-scale lean produce no root translation;
-- clearly raised swing-foot lateral/vertical movement does not accumulate physical translation;
-- genuine bilateral relocation still translates and recenter still zeros the tracker;
-- support hysteresis/landing and tracking reacquisition avoid discontinuities;
-- temporary support loss holds last trusted physical displacement;
-- jogging in place keeps physical contribution near zero while cadence can activate;
-- default cadence acquires after two clean alternating events and stops after rhythm loss;
-- one isolated event does not activate;
-- distance-per-step changes virtual speed up to the max-speed clamp;
-- physical/cadence fusion, front-camera axes and heading remain covered.
+When the new mode is `Both` and the previous mode was a single-support mode, the landing is marked releasable only if the normalized left/right displacement agrees in X and Y within the existing `supportBothEnter` tolerance. This distinguishes a coherent relocated support base from a one-foot/asymmetric reposition.
 
-Environment limitation: no Unity Editor/Test Runner is available to this Builder session and GitHub reports no Actions run or combined status attached to `e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`. Therefore these updated Editor tests were **not executed here**. Source/diff/serialization scope was statically audited. Do not report an automated Unity pass that did not occur.
+On the **next** coherent `Both` sample, that temporary landing offset is cleared. Normal filtering can then converge toward the common support-base displacement. The landing frame remains continuous; real net relocation is no longer permanently cancelled.
 
-Batch-2 status vocabulary:
+A support-loss/reacquisition rebase explicitly clears the release eligibility, so reacquiring both feet at a different raw position cannot immediately auto-release into a teleport/drift. A later genuine alternating support cycle can establish a new coherent relocation normally.
 
-`IMPLEMENTED / AUTOMATED-VERIFIED AS AVAILABLE / USER QA DEFERRED`
+Because the offset and agreement check operate on the existing normalized `Vector2` support displacement, coherent depth relocation can use the same release mechanism, while the existing depth-differential reliability and torso-scale corroboration still decide whether depth is accepted. No depth threshold or cadence rule was weakened.
 
-No USER runtime QA was requested, per policy.
+## 8. Batch-2R deterministic test
 
-## 8. Jump and crouch remain Batch 3 requirements
+The existing Batch-2 test suite remains intact. Batch 2R adds exactly one focused regression test:
 
-### Jump
+`AlternatingPhysicalStepEventuallyCommitsCoherentSupportBaseRelocation()`
 
-Physical jumping must eventually drive vertical game movement using coherent support/body evidence, distinguish a true jump from single-leg lift, reject noise, and implement takeoff/airborne/landing lifecycle.
+Sequence:
 
-### Crouch
+1. baseline both feet;
+2. left foot raised and moved +X — root stays near unchanged;
+3. left lands — no discontinuous jump;
+4. right foot raised/moved to the corresponding +X location — swing movement does not falsely translate;
+5. right lands — no discontinuous jump;
+6. next coherent dual-support sample — root must now show meaningful positive X displacement (`> 0.15` normalized in the deterministic fixture).
 
-Physical crouching must eventually lower the character using normalized body-compression/height evidence, held state and hysteresis.
+Against `19e697695802459f97d488b64e7b62683c89512d`, the test's final assertion fails conceptually because the final Both rebase persists and settled displacement remains at the old origin. After the 2R correction, the final coherent sample releases that landing rebase and can converge to the relocated common support position.
 
-**Neither jump nor crouch implementation was started in Batch 2.** Root-Y gameplay, CharacterController/gravity work and Phase 6 remain untouched.
+Existing coverage remains for:
 
-## 9. Approved completion sequence
+- swing-foot isolation;
+- planted-feet lateral and scale lean suppression;
+- support transition continuity;
+- bilateral relocation;
+- temporary support loss and reacquisition;
+- cadence acquisition/stop/distance/max-speed behavior;
+- physical/cadence fusion;
+- front-camera axis mapping and body heading;
+- recenter.
 
-- **Batch 1 — COMPLETE:** documentation synchronization.
-- **Batch 2 — IMPLEMENTED / USER QA DEFERRED:** horizontal locomotion completion described above.
-- **Batch 3 — NOT STARTED:** vertical locomotion + final Motion Engine V1 completion and final integrated USER QA preparation.
+No existing Batch-2 assertion was weakened or deleted for 2R.
 
-## 10. Immediate next action
+## 9. Verification status
 
-**STOP after Batch 2.** The next Orchestrator must independently audit the live branch, implementation diff, docs and available verification evidence. Only after that review should it issue the Batch-3 Builder handoff.
+No Unity Editor/Test Runner is available in this Builder execution environment, so the C# Editor tests were **not executed here**. The alternating sequence was independently traced against the old and corrected authority equations, and GitHub source/test diffs were statically audited.
 
-Do not ask for Batch-2 USER QA. Do not resume Foundation C/D/E/coarse-hand work, performance optimization, Phase 6, or unrelated CI cleanup. Do not merge to `main` without explicit USER approval.
+Do not describe this as an executed Unity test pass or USER acceptance.
+
+Status vocabulary:
+
+`BATCH 2R COMPLETE / USER QA DEFERRED / AWAITING ORCHESTRATOR REVIEW`
+
+## 10. Jump and crouch remain Batch 3 requirements
+
+Jump, crouch, root-Y gameplay, gravity, CharacterController work and Phase 6 were **not started** in Batch 2R.
+
+## 11. Immediate next action
+
+**STOP after Batch 2R.** The next Orchestrator should independently inspect the live branch and the narrow 2R diff before authorizing any Batch-3 work.
+
+Do not ask for Batch-2R USER QA. USER/runtime testing remains deferred until after Batch 3 implementation. Do not reopen cadence, optimization, Foundations C/D/E/coarse hands, Phase 6, or unrelated cleanup. Do not merge to `main` without explicit USER approval.
