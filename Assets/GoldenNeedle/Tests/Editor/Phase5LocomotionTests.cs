@@ -51,42 +51,75 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void SingleStepOnsetMovesSupportMidpointWithoutHardHolding()
+        public void RaisedSwingFootDoesNotTranslatePlantedSupportRoot()
         {
             var tracker = FastRootTracker();
             var profile = FrontCameraProfile();
 
             tracker.Update(SupportFrame(), profile, 0.1f);
-            var onset = tracker.Update(
-                SupportFrame(leftExtraX: 0.04f),
+            var swing = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.08f,
+                    leftExtraY: 0.06f),
                 profile,
                 0.1f);
 
-            Assert.That(onset.isValid, Is.True);
-            Assert.That(onset.supportCommonXZ.x, Is.GreaterThan(0.035f));
-            Assert.That(onset.supportDifferentialXZ.x, Is.GreaterThan(0.035f));
-            Assert.That(onset.displacementXZ.x, Is.GreaterThan(0.035f));
+            Assert.That(swing.isValid, Is.True);
+            Assert.That(swing.supportCommonXZ.x, Is.GreaterThan(0.10f));
+            Assert.That(swing.supportDifferentialXZ.x, Is.GreaterThan(0.10f));
+            Assert.That(
+                swing.displacementXZ.magnitude,
+                Is.LessThan(0.005f));
         }
 
         [Test]
-        public void BothFeetRelocatedReachFullPhysicalLateralDisplacement()
+        public void RaisedSwingFootMotionAcrossSamplesDoesNotAccumulateTranslation()
         {
             var tracker = FastRootTracker();
             var profile = FrontCameraProfile();
 
             tracker.Update(SupportFrame(), profile, 0.1f);
-            var onset = tracker.Update(
-                SupportFrame(leftExtraX: 0.04f),
+            var first = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.03f,
+                    leftExtraY: 0.06f),
                 profile,
                 0.1f);
-            var full = tracker.Update(
+            var second = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.07f,
+                    leftExtraY: 0.09f),
+                profile,
+                0.1f);
+            var third = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.10f,
+                    leftExtraY: 0.07f),
+                profile,
+                0.1f);
+
+            Assert.That(first.isValid, Is.True);
+            Assert.That(second.isValid, Is.True);
+            Assert.That(third.isValid, Is.True);
+            Assert.That(first.displacementXZ.magnitude, Is.LessThan(0.005f));
+            Assert.That(second.displacementXZ.magnitude, Is.LessThan(0.005f));
+            Assert.That(third.displacementXZ.magnitude, Is.LessThan(0.005f));
+        }
+
+        [Test]
+        public void BothFeetRelocatedReachFullPhysicalLateralDisplacementAndRecenter()
+        {
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
+
+            tracker.Update(SupportFrame(), profile, 0.1f);
+            var moved = tracker.Update(
                 SupportFrame(supportOffsetX: 0.04f),
                 profile,
                 0.1f);
 
-            Assert.That(full.isValid, Is.True);
-            Assert.That(full.displacementXZ.x, Is.GreaterThan(onset.displacementXZ.x));
-            Assert.That(full.displacementXZ.x, Is.GreaterThan(0.08f));
+            Assert.That(moved.isValid, Is.True);
+            Assert.That(moved.displacementXZ.x, Is.GreaterThan(0.08f));
 
             Assert.That(tracker.Recenter(), Is.True);
             Assert.That(
@@ -95,37 +128,41 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void AlternatingTwoStepWalkProgressesPhysicalDisplacementSmoothly()
+        public void SupportAuthorityHysteresisAndLandingRebaseAvoidRootJump()
         {
             var tracker = FastRootTracker();
             var profile = FrontCameraProfile();
 
             tracker.Update(SupportFrame(), profile, 0.1f);
-            var leftStep = tracker.Update(
-                SupportFrame(leftExtraX: 0.04f),
-                profile,
-                0.1f);
-            var bothFirst = tracker.Update(
-                SupportFrame(supportOffsetX: 0.04f),
-                profile,
-                0.1f);
-            var rightStep = tracker.Update(
+            var raised = tracker.Update(
                 SupportFrame(
-                    supportOffsetX: 0.04f,
-                    rightExtraX: 0.04f),
+                    leftExtraX: 0.06f,
+                    leftExtraY: 0.08f),
                 profile,
                 0.1f);
-            var bothSecond = tracker.Update(
+            var ambiguous = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.08f,
+                    leftExtraY: 0.02f),
+                profile,
+                0.1f);
+            var landed = tracker.Update(
+                SupportFrame(leftExtraX: 0.08f),
+                profile,
+                0.1f);
+            var relocated = tracker.Update(
                 SupportFrame(supportOffsetX: 0.08f),
                 profile,
                 0.1f);
 
-            Assert.That(leftStep.isValid, Is.True);
-            Assert.That(rightStep.isValid, Is.True);
-            Assert.That(leftStep.displacementXZ.x, Is.GreaterThan(0f));
-            Assert.That(bothFirst.displacementXZ.x, Is.GreaterThan(leftStep.displacementXZ.x));
-            Assert.That(rightStep.displacementXZ.x, Is.GreaterThan(bothFirst.displacementXZ.x));
-            Assert.That(bothSecond.displacementXZ.x, Is.GreaterThan(rightStep.displacementXZ.x));
+            Assert.That(raised.displacementXZ.magnitude, Is.LessThan(0.005f));
+            Assert.That(ambiguous.displacementXZ.magnitude, Is.LessThan(0.005f));
+            Assert.That(
+                Vector2.Distance(
+                    landed.displacementXZ,
+                    ambiguous.displacementXZ),
+                Is.LessThan(0.005f));
+            Assert.That(relocated.displacementXZ.x, Is.GreaterThan(0.10f));
         }
 
         [Test]
@@ -162,55 +199,42 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void JoggingInPlaceHoldsPhysicalSupportWhileCadenceCanActivate()
+        public void JoggingInPlaceHoldsPhysicalSupportWhileDefaultCadenceCanActivate()
         {
             var tracker = FastRootTracker();
             var cadenceDetector = new CadenceDetector(
-                new CadenceDetectorSettings
-                {
-                    minimumJointConfidence = 0.2f,
-                    signalResponse = 1000f,
-                    eventThreshold = 0.05f,
-                    minimumStepRate = 0.5f,
-                    maximumStepRate = 5f,
-                    acquisitionEvents = 3,
-                    acquireConfidence = 0.40f,
-                    sustainConfidence = 0.20f,
-                    stopTimeoutSeconds = 0.45f,
-                    virtualStridePerStep = 0.4f,
-                });
+                new CadenceDetectorSettings());
             var profile = FrontCameraProfile();
 
             tracker.Update(SupportFrame(), profile, 0.1f);
 
             var first = JogInPlaceFrame(true);
             var rootFirst = tracker.Update(first, profile, 0.10f);
-            cadenceDetector.Update(first, 0.30f, 0.10f);
+            var cadenceFirst = cadenceDetector.Update(
+                first,
+                0.30f,
+                0.10f);
 
             var second = JogInPlaceFrame(false);
             var rootSecond = tracker.Update(second, profile, 0.25f);
-            cadenceDetector.Update(second, 0.30f, 0.25f);
-
-            var third = JogInPlaceFrame(true);
-            var rootThird = tracker.Update(third, profile, 0.25f);
-            var cadence = cadenceDetector.Update(
-                third,
+            var cadenceSecond = cadenceDetector.Update(
+                second,
                 0.30f,
                 0.25f);
 
             Assert.That(rootFirst.isValid, Is.True);
             Assert.That(rootSecond.isValid, Is.True);
-            Assert.That(rootThird.isValid, Is.True);
+            Assert.That(cadenceFirst.active, Is.False);
+            Assert.That(cadenceSecond.active, Is.True);
             Assert.That(
-                rootThird.supportCommonXZ.magnitude,
+                rootSecond.supportCommonXZ.magnitude,
                 Is.LessThan(0.01f));
             Assert.That(
-                rootThird.supportDifferentialXZ.magnitude,
+                rootSecond.supportDifferentialXZ.magnitude,
                 Is.GreaterThan(0.10f));
             Assert.That(
-                rootThird.displacementXZ.magnitude,
+                rootSecond.displacementXZ.magnitude,
                 Is.LessThan(0.01f));
-            Assert.That(cadence.active, Is.True);
         }
 
         [Test]
@@ -249,34 +273,116 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void CadenceDetectorAcquiresAlternatingRhythmAndStopsQuickly()
+        public void SupportReacquisitionRebasesWithoutTeleporting()
         {
-            var settings = new CadenceDetectorSettings
-            {
-                minimumJointConfidence = 0.2f,
-                signalResponse = 1000f,
-                eventThreshold = 0.05f,
-                minimumStepRate = 0.5f,
-                maximumStepRate = 5f,
-                acquisitionEvents = 3,
-                acquireConfidence = 0.40f,
-                sustainConfidence = 0.20f,
-                stopTimeoutSeconds = 0.45f,
-                virtualStridePerStep = 0.4f,
-            };
-            var detector = new CadenceDetector(settings);
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
 
-            detector.Update(CadenceFrame(true), 0.30f, 0.10f);
-            detector.Update(CadenceFrame(false), 0.30f, 0.25f);
-            var active = detector.Update(CadenceFrame(true), 0.30f, 0.25f);
+            tracker.Update(SupportFrame(), profile, 0.1f);
+            var moved = tracker.Update(
+                SupportFrame(supportOffsetX: 0.04f),
+                profile,
+                0.1f);
 
+            var noSupport = TorsoOnlyFrame();
+            noSupport.Complete();
+            var lost = tracker.Update(noSupport, profile, 0.1f);
+            var reacquired = tracker.Update(
+                SupportFrame(supportOffsetX: 0.10f),
+                profile,
+                0.1f);
+            var continued = tracker.Update(
+                SupportFrame(supportOffsetX: 0.12f),
+                profile,
+                0.1f);
+
+            Assert.That(lost.isValid, Is.False);
+            Assert.That(reacquired.isValid, Is.True);
+            Assert.That(
+                Vector2.Distance(
+                    reacquired.displacementXZ,
+                    moved.displacementXZ),
+                Is.LessThan(0.005f));
+            Assert.That(
+                continued.displacementXZ.x,
+                Is.GreaterThan(reacquired.displacementXZ.x + 0.05f));
+        }
+
+        [Test]
+        public void CadenceDefaultAcquiresAfterTwoCleanAlternatingEventsAndStopsQuickly()
+        {
+            var detector = new CadenceDetector(
+                new CadenceDetectorSettings());
+
+            var first = detector.Update(
+                CadenceFrame(true),
+                0.30f,
+                0.10f);
+            var active = detector.Update(
+                CadenceFrame(false),
+                0.30f,
+                0.25f);
+
+            Assert.That(first.active, Is.False);
             Assert.That(active.active, Is.True);
             Assert.That(active.rateStepsPerSecond, Is.GreaterThan(3f));
-            Assert.That(active.virtualSpeed, Is.GreaterThan(1f));
+            Assert.That(active.virtualSpeed, Is.GreaterThan(2f));
 
             detector.Update(EmptyFrame(), 0.30f, 0.25f);
             var stopped = detector.Update(EmptyFrame(), 0.30f, 0.30f);
             Assert.That(stopped.active, Is.False);
+        }
+
+        [Test]
+        public void CadenceSingleIsolatedEventDoesNotAcquire()
+        {
+            var detector = new CadenceDetector(
+                new CadenceDetectorSettings());
+
+            var first = detector.Update(
+                CadenceFrame(true),
+                0.30f,
+                0.10f);
+            var expired = detector.Update(
+                EmptyFrame(),
+                0.30f,
+                0.60f);
+
+            Assert.That(first.active, Is.False);
+            Assert.That(expired.active, Is.False);
+        }
+
+        [Test]
+        public void CadenceDistancePerStepChangesSpeedUntilMaximumClamp()
+        {
+            var shortStride = new CadenceDetector(
+                new CadenceDetectorSettings
+                {
+                    virtualStridePerStep = 0.20f,
+                    maximumVirtualSpeed = 3f,
+                });
+            shortStride.Update(CadenceFrame(true), 0.30f, 0.10f);
+            var shortResult = shortStride.Update(
+                CadenceFrame(false),
+                0.30f,
+                0.25f);
+
+            var longStride = new CadenceDetector(
+                new CadenceDetectorSettings
+                {
+                    virtualStridePerStep = 0.90f,
+                    maximumVirtualSpeed = 2f,
+                });
+            longStride.Update(CadenceFrame(true), 0.30f, 0.10f);
+            var longResult = longStride.Update(
+                CadenceFrame(false),
+                0.30f,
+                0.25f);
+
+            Assert.That(shortResult.active, Is.True);
+            Assert.That(longResult.active, Is.True);
+            Assert.That(longResult.virtualSpeed, Is.GreaterThan(shortResult.virtualSpeed));
+            Assert.That(longResult.virtualSpeed, Is.EqualTo(2f).Within(0.0001f));
         }
 
         [Test]
@@ -494,6 +600,8 @@ namespace GoldenNeedle.Tests
                 new CameraSpaceRootTrackerSettings
                 {
                     minimumJointConfidence = 0.2f,
+                    supportSingleFootEnter = 0.12f,
+                    supportBothEnter = 0.06f,
                     depthDifferentialStart = 0.05f,
                     depthDifferentialFull = 0.20f,
                     minimumSupportDepthDisplacement = 0.01f,
@@ -578,8 +686,6 @@ namespace GoldenNeedle.Tests
         private static CanonicalPoseFrame JogInPlaceFrame(bool leftHigh)
         {
             var frame = TorsoOnlyFrame();
-            // Symmetric around the calibrated 0.12 support Y so common support position
-            // stays fixed while the differential/gait signal alternates strongly.
             var leftFootY = leftHigh ? 0.17f : 0.07f;
             var rightFootY = leftHigh ? 0.07f : 0.17f;
 
