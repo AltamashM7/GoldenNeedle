@@ -166,6 +166,63 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
+        public void AlternatingPhysicalStepEventuallyCommitsCoherentSupportBaseRelocation()
+        {
+            var tracker = FastRootTracker();
+            var profile = FrontCameraProfile();
+
+            tracker.Update(SupportFrame(), profile, 0.1f);
+
+            var leftSwing = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.08f,
+                    leftExtraY: 0.08f),
+                profile,
+                0.1f);
+            var leftLanded = tracker.Update(
+                SupportFrame(leftExtraX: 0.08f),
+                profile,
+                0.1f);
+            var rightSwing = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.08f,
+                    rightExtraX: 0.08f,
+                    rightExtraY: 0.08f),
+                profile,
+                0.1f);
+            var rightLanded = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.08f,
+                    rightExtraX: 0.08f),
+                profile,
+                0.1f);
+            var settled = tracker.Update(
+                SupportFrame(
+                    leftExtraX: 0.08f,
+                    rightExtraX: 0.08f),
+                profile,
+                0.1f);
+
+            Assert.That(leftSwing.displacementXZ.magnitude, Is.LessThan(0.005f));
+            Assert.That(
+                Vector2.Distance(
+                    leftLanded.displacementXZ,
+                    leftSwing.displacementXZ),
+                Is.LessThan(0.005f));
+            Assert.That(
+                Vector2.Distance(
+                    rightSwing.displacementXZ,
+                    leftLanded.displacementXZ),
+                Is.LessThan(0.005f));
+            Assert.That(
+                Vector2.Distance(
+                    rightLanded.displacementXZ,
+                    rightSwing.displacementXZ),
+                Is.LessThan(0.005f));
+            Assert.That(settled.displacementXZ.x, Is.GreaterThan(0.15f));
+        }
+
+        [Test]
         public void SupportBaseRelocationPlusScaleEvidenceProducesDepthDisplacement()
         {
             var tracker = FastRootTracker();
