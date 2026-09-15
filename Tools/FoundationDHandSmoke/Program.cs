@@ -1,4 +1,5 @@
 using GoldenNeedle.Core.Motion.Hands;
+using GoldenNeedle.Core.Motion.Providers.MediaPipe;
 using UnityEngine;
 
 static class Program
@@ -7,15 +8,31 @@ static class Program
     {
         Assert(Enum.GetValues<HandLandmarkId>().Length == 21, "21 semantics");
         Assert((int)HandLandmarkId.Wrist == 0 && (int)HandLandmarkId.PinkyTip == 20, "stable numeric meanings");
+        TestSharedProviderTimeline();
         TestBasisAndFeatures();
         TestAssociation();
         TestFreshnessAndPartial();
         TestScheduler();
         Console.WriteLine("FOUNDATION_D_HAND_SMOKE=PASS");
+        Console.WriteLine("SHARED_PROVIDER_TIMELINE_SURFACE=PASS");
         Console.WriteLine("SEMANTIC_CONTRACT=PASS");
         Console.WriteLine("PALM_AND_ARTICULATION=PASS");
         Console.WriteLine("ASSOCIATION_AND_FRESHNESS=PASS");
         Console.WriteLine("BOUNDED_SCHEDULER=PASS");
+    }
+
+    static void TestSharedProviderTimeline()
+    {
+        var provider = new MediaPipePoseProvider();
+        Assert(MediaPipePoseProviderTimeline.TryGetTimelineClock(provider, out var clock), "provider clock exposed read-only");
+        var firstMs = provider.CurrentTimelineMilliseconds();
+        var firstSeconds = provider.CurrentTimelineSeconds();
+        Thread.Sleep(5);
+        var secondMs = provider.CurrentTimelineMilliseconds();
+        var secondSeconds = provider.CurrentTimelineSeconds();
+        Assert(secondMs >= firstMs, "provider milliseconds monotonic");
+        Assert(secondSeconds >= firstSeconds, "provider seconds monotonic");
+        Assert(Math.Abs(secondSeconds - clock.ElapsedTicks / (double)System.Diagnostics.Stopwatch.Frequency) < .02d, "same Stopwatch epoch");
     }
 
     static void TestBasisAndFeatures()
