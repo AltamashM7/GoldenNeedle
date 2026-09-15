@@ -51,7 +51,7 @@ namespace GoldenNeedle.Core.Motion.Hands
             catch (System.Exception exception)
             {
                 // Hands are optional. Never allow a hand subsystem fault to break the accepted body runtime.
-                Debug.LogWarning($"[Foundation D] Hand source degraded without affecting body tracking: {exception.Message}");
+                UnityEngine.Debug.LogWarning($"[Foundation D] Hand source degraded without affecting body tracking: {exception.Message}");
                 _handFrame.Clear();
                 _handSource = null;
             }
