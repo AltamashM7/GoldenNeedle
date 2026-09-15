@@ -71,6 +71,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         public int sessionVersion;
         public long sourceTimestampMillisec;
+        public double receivedAtSeconds;
         public int handCount;
         public long callbackStopwatchTicks;
 
@@ -78,6 +79,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         {
             sessionVersion = 0;
             sourceTimestampMillisec = 0;
+            receivedAtSeconds = 0d;
             handCount = 0;
             callbackStopwatchTicks = 0;
             hands[0].Clear();
@@ -88,6 +90,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         {
             sessionVersion = source.sessionVersion;
             sourceTimestampMillisec = source.sourceTimestampMillisec;
+            receivedAtSeconds = source.receivedAtSeconds;
             handCount = source.handCount;
             callbackStopwatchTicks = source.callbackStopwatchTicks;
             hands[0].CopyFrom(source.hands[0]);
@@ -98,6 +101,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
     /// <summary>
     /// Optional secondary Hand Landmarker stream. It never owns or mutates body buffers/mailboxes.
     /// Camera pixels are sampled only at the independently throttled hand cadence into dedicated buffers.
+    /// Semantic source/receive timing is observed from the exact Stopwatch owned by MediaPipePoseProvider.
     /// </summary>
     [DefaultExecutionOrder(-95)]
     [RequireComponent(typeof(MediaPipePoseProvider))]
@@ -108,6 +112,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public const string OfficialModelVersion = "float16/1";
         public const string OfficialModelUrl = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
         public const string OfficialModelSha256 = "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1";
+        public const long OfficialModelSizeBytes = 7819105L;
 
         [Header("Foundation D Hands")]
         [SerializeField] private bool handTrackingEnabled = true;
@@ -124,6 +129,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         [SerializeField, TextArea(2, 5)] private string diagnosticSummary = "Hands: not initialized";
 
         private MediaPipePoseProvider _bodyProvider;
+        private Stopwatch _bodyTimelineClock;
         private HandLandmarker _landmarker;
         private string _verifiedModelPath;
         private ImageProcessingOptions _imageProcessingOptions;
@@ -166,7 +172,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private readonly CanonicalHand _mappedSecond = new CanonicalHand(CanonicalHandSide.Right);
 
         public bool HandTrackingEnabled => handTrackingEnabled;
-        public bool IsReady => handTrackingEnabled && _landmarker != null && _modelReady;
+        public bool IsReady => handTrackingEnabled && _landmarker != null && _modelReady && _bodyTimelineClock != null;
         public float TargetHandInferenceFps => targetHandInferenceFps;
         public double LastAcquisitionMilliseconds => _lastAcquisitionMilliseconds;
         public double LastInferenceMilliseconds => _lastInferenceMilliseconds;
@@ -178,6 +184,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private void Awake()
         {
             _bodyProvider = GetComponent<MediaPipePoseProvider>();
+            MediaPipePoseProviderTimeline.TryGetTimelineClock(_bodyProvider, out _bodyTimelineClock);
             if (freshnessSettings.maximumHandAgeMilliseconds <= 0f || freshnessSettings.maximumBodyHandSkewMilliseconds <= 0f)
             {
                 freshnessSettings = HandFreshnessSettings.CreateDefault();
@@ -188,7 +195,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private void Start()
         {
             _started = true;
-            if (handTrackingEnabled)
+            if (handTrackingEnabled && EnsureBodyTimeline())
             {
                 StartCoroutine(EnsureInitialized());
             }
@@ -218,21 +225,21 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 diagnosticSummary = "Hands: disabled (body unaffected)";
                 return;
             }
+            if (_bodyProvider == null)
+            {
+                _bodyProvider = GetComponent<MediaPipePoseProvider>();
+            }
+            if (_bodyProvider == null || !EnsureBodyTimeline())
+            {
+                diagnosticSummary = "Hands: waiting for body provider timeline";
+                return;
+            }
             if (_landmarker == null)
             {
                 if (_started && !_initializing)
                 {
                     StartCoroutine(EnsureInitialized());
                 }
-                return;
-            }
-            if (_bodyProvider == null)
-            {
-                _bodyProvider = GetComponent<MediaPipePoseProvider>();
-            }
-            if (_bodyProvider == null)
-            {
-                diagnosticSummary = "Hands: waiting for body camera provider";
                 return;
             }
 
@@ -258,15 +265,16 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 }
             }
 
-            var now = Time.unscaledTimeAsDouble;
-            if (now < _nextCaptureTimeSeconds)
+            // Unity time is intentionally cadence-only. It never becomes a hand semantic timestamp.
+            var cadenceNowSeconds = Time.unscaledTimeAsDouble;
+            if (cadenceNowSeconds < _nextCaptureTimeSeconds)
             {
-                UpdateDiagnostics(now);
+                UpdateDiagnostics(cadenceNowSeconds);
                 return;
             }
-            _nextCaptureTimeSeconds = now + 1d / Math.Max(1f, targetHandInferenceFps);
-            CaptureLatestHandFrame(now);
-            UpdateDiagnostics(now);
+            _nextCaptureTimeSeconds = cadenceNowSeconds + 1d / Math.Max(1f, targetHandInferenceFps);
+            CaptureLatestHandFrame(cadenceNowSeconds);
+            UpdateDiagnostics(cadenceNowSeconds);
         }
 
         public void SetTrackingEnabled(bool enabled)
@@ -279,7 +287,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 ClearSessionState();
                 diagnosticSummary = "Hands: disabled (body unaffected)";
             }
-            else if (_started && _landmarker == null && !_initializing)
+            else if (_started && _landmarker == null && !_initializing && EnsureBodyTimeline())
             {
                 StartCoroutine(EnsureInitialized());
             }
@@ -315,15 +323,31 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             }
             ShutdownHandTask(clearModelPath: false);
             ClearSessionState();
-            if (_started && !_initializing)
+            if (_started && !_initializing && EnsureBodyTimeline())
             {
                 StartCoroutine(EnsureInitialized());
             }
         }
 
+        private bool EnsureBodyTimeline()
+        {
+            if (_bodyTimelineClock != null)
+            {
+                return true;
+            }
+            return MediaPipePoseProviderTimeline.TryGetTimelineClock(_bodyProvider, out _bodyTimelineClock);
+        }
+
+        private double BodyTimelineSeconds()
+        {
+            return _bodyTimelineClock == null
+                ? 0d
+                : _bodyTimelineClock.ElapsedTicks / (double)Stopwatch.Frequency;
+        }
+
         private IEnumerator EnsureInitialized()
         {
-            if (_initializing || !handTrackingEnabled)
+            if (_initializing || !handTrackingEnabled || !EnsureBodyTimeline())
             {
                 yield break;
             }
@@ -339,17 +363,17 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             var cachedDirectory = Path.Combine(Application.persistentDataPath, "GoldenNeedle", "Models");
             var cachedPath = Path.Combine(cachedDirectory, OfficialModelFileName);
 
-            if (File.Exists(streamingPath) && VerifyFileSha256(streamingPath, OfficialModelSha256))
+            if (File.Exists(streamingPath) && new FileInfo(streamingPath).Length == OfficialModelSizeBytes && VerifyFileSha256(streamingPath, OfficialModelSha256))
             {
                 _verifiedModelPath = streamingPath;
             }
-            else if (File.Exists(cachedPath) && VerifyFileSha256(cachedPath, OfficialModelSha256))
+            else if (File.Exists(cachedPath) && new FileInfo(cachedPath).Length == OfficialModelSizeBytes && VerifyFileSha256(cachedPath, OfficialModelSha256))
             {
                 _verifiedModelPath = cachedPath;
             }
             else
             {
-                diagnosticSummary = "Hands: acquiring verified official model (body continues)";
+                diagnosticSummary = "Hands: acquiring verified official model fallback (body continues)";
                 using var request = UnityWebRequest.Get(OfficialModelUrl);
                 yield return request.SendWebRequest();
                 if (request.result != UnityWebRequest.Result.Success || request.downloadHandler == null)
@@ -360,9 +384,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 }
 
                 var bytes = request.downloadHandler.data;
-                if (!VerifyBytesSha256(bytes, OfficialModelSha256))
+                if (bytes == null || bytes.LongLength != OfficialModelSizeBytes || !VerifyBytesSha256(bytes, OfficialModelSha256))
                 {
-                    diagnosticSummary = "Hands: official model SHA-256 mismatch; hand feature disabled, body continues";
+                    diagnosticSummary = "Hands: official model identity mismatch; hand feature disabled, body continues";
                     _initializing = false;
                     yield break;
                 }
