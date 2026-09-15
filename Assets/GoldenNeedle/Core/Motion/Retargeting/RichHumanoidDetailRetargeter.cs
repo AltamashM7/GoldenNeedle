@@ -1,6 +1,7 @@
 using GoldenNeedle.Core.Motion.Calibration;
 using GoldenNeedle.Core.Motion.Hands;
 using GoldenNeedle.Core.Motion.Rich;
+using GoldenNeedle.Core.Motion.Rotation;
 using GoldenNeedle.Core.Motion.Runtime;
 using UnityEngine;
 
