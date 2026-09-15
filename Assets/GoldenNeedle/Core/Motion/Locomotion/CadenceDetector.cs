@@ -23,10 +23,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [Min(0.5f)] public float maximumStepRate = 4.5f;
 
         [Tooltip("Alternating events required before cadence can acquire.")]
-        [Range(2, 6)] public int acquisitionEvents = 3;
+        [Range(2, 6)] public int acquisitionEvents = 2;
 
         [Tooltip("Confidence required to enter cadence locomotion.")]
-        [Range(0f, 1f)] public float acquireConfidence = 0.50f;
+        [Range(0f, 1f)] public float acquireConfidence = 0.38f;
 
         [Tooltip("Confidence required to remain in cadence locomotion.")]
         [Range(0f, 1f)] public float sustainConfidence = 0.25f;
@@ -35,10 +35,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [Range(0.2f, 1.0f)] public float stopTimeoutSeconds = 0.50f;
 
         [Tooltip("Prototype virtual distance generated per detected step.")]
-        [Min(0.05f)] public float virtualStridePerStep = 0.42f;
+        [Min(0.05f)] public float virtualStridePerStep = 0.60f;
 
         [Tooltip("Maximum cadence-generated virtual speed.")]
-        [Min(0.1f)] public float maximumVirtualSpeed = 2.5f;
+        [Min(0.1f)] public float maximumVirtualSpeed = 3.0f;
 
         public void Sanitize()
         {
@@ -48,11 +48,11 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             minimumStepRate = Mathf.Max(0.1f, Safe(minimumStepRate, 0.8f));
             maximumStepRate = Mathf.Max(minimumStepRate + 0.1f, Safe(maximumStepRate, 4.5f));
             acquisitionEvents = Mathf.Clamp(acquisitionEvents, 2, 6);
-            acquireConfidence = Mathf.Clamp01(Safe(acquireConfidence, 0.50f));
+            acquireConfidence = Mathf.Clamp01(Safe(acquireConfidence, 0.38f));
             sustainConfidence = Mathf.Clamp01(Safe(sustainConfidence, 0.25f));
             stopTimeoutSeconds = Mathf.Clamp(Safe(stopTimeoutSeconds, 0.50f), 0.2f, 1.0f);
-            virtualStridePerStep = Mathf.Max(0.05f, Safe(virtualStridePerStep, 0.42f));
-            maximumVirtualSpeed = Mathf.Max(0.1f, Safe(maximumVirtualSpeed, 2.5f));
+            virtualStridePerStep = Mathf.Max(0.05f, Safe(virtualStridePerStep, 0.60f));
+            maximumVirtualSpeed = Mathf.Max(0.1f, Safe(maximumVirtualSpeed, 3.0f));
         }
 
         private static float Safe(float value, float fallback)
