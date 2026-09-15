@@ -1262,7 +1262,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 }
                 catch (Exception exception)
                 {
-                    Debug.LogWarning($"[Foundation E] Optional post-solve detail layer degraded without affecting Phase 4: {exception.Message}");
+                    UnityEngine.Debug.LogWarning($"[Foundation E] Optional post-solve detail layer degraded without affecting Phase 4: {exception.Message}");
                     try
                     {
                         layer.ResetPostSolveDetailState(binding);
