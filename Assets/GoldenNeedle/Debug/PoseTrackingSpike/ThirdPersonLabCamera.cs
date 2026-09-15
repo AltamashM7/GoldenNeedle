@@ -289,13 +289,13 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             if (locomotion == null)
             {
                 locomotion =
-                    Object.FindAnyObjectByType<EmbodiedLocomotionController>();
+                    UnityEngine.Object.FindAnyObjectByType<EmbodiedLocomotionController>();
             }
 
             if (binding == null)
             {
                 binding =
-                    Object.FindAnyObjectByType<HumanoidRigBinding>();
+                    UnityEngine.Object.FindAnyObjectByType<HumanoidRigBinding>();
             }
         }
 
