@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using GoldenNeedle.Core.Motion.Canonical;
 using GoldenNeedle.Core.Motion.Hands;
 using GoldenNeedle.Core.Motion.Rich;
@@ -21,6 +22,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private readonly PoseObservation _observation = new PoseObservation();
         private MediaPipeHandLandmarkerSource _handSource;
+        private Stopwatch _providerTimelineClock;
 
         public MediaPipePoseProvider Provider => provider;
         public PoseObservation LatestObservation => _observation;
@@ -31,23 +33,16 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             ? "Hands: source not initialized"
             : _handSource.DiagnosticSummary;
 
-        public double EvaluationTimeSeconds
-        {
-            get
-            {
-                if (_observation.receivedAtSeconds > 0d && provider != null && !double.IsInfinity(provider.LatestPoseAgeMilliseconds))
-                {
-                    var age = provider.LatestPoseAgeMilliseconds > 0d ? provider.LatestPoseAgeMilliseconds : 0d;
-                    return _observation.receivedAtSeconds + age * 0.001d;
-                }
-
-                return Time.unscaledTimeAsDouble;
-            }
-        }
+        // Rich/body evaluation and Foundation D hand freshness use the same Stopwatch epoch that
+        // already timestamps MediaPipePoseProvider inference. There is no Unity-time fallback here.
+        public double EvaluationTimeSeconds => _providerTimelineClock == null
+            ? 0d
+            : _providerTimelineClock.ElapsedTicks / (double)Stopwatch.Frequency;
 
         private void Awake()
         {
             provider = provider == null ? GetComponent<MediaPipePoseProvider>() : provider;
+            MediaPipePoseProviderTimeline.TryGetTimelineClock(provider, out _providerTimelineClock);
             _handSource = GetComponent<MediaPipeHandLandmarkerSource>();
             if (_handSource == null)
             {
