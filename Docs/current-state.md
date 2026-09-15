@@ -5,8 +5,8 @@ Authoritative current-state refresh: 2026-09-15.
 Latest fully cleared foundation code-audit checkpoint remains:
 `864b39a520c78db1a0572b87a7d42c9da5cedaa4` — Foundation D corrective implementation passed independent Orchestrator re-audit with the bundled official Hand Landmarker preserved, shared body/hand provider timeline verified, protected body/OpenVINO and Phase 4 paths intact, and permanent Foundation C/D verification green.
 
-Latest Foundation E implementation/correction checkpoint:
-`087068dd14cd4bae11243a5efbd1bd5ee4cd309e` — Foundation E core implementation, endpoint-preserving rich twist, optional hand/finger detail, and the corrected parent-relative absolute palm target all passed deterministic/static verification and independent code/math review. A subsequent QA-preparation audit found one integration blocker: `RichHumanoidDetailRetargeter` is not referenced by `PoseTrackingSpike.unity` and no current runtime bootstrap adds it, while `HumanoidRetargeter` only discovers already-existing `IHumanoidPostSolveDetailLayer` components. Foundation E therefore requires one narrow runtime-wiring correction before the comprehensive USER A–E runtime QA can begin.
+Latest Foundation E Builder verification checkpoint:
+`c7b84f33c5ca5329d387d279762a5f82600b5049` — the narrow runtime-wiring correction is implemented and Builder automated/code verification is green. `PoseTrackingSpikePresenter.Awake()` now ensures a `RichHumanoidDetailRetargeter` exists before its retargeter composition block, while `HumanoidRetargeter` remains generic and re-discovers `IHumanoidPostSolveDetailLayer` components in `Start()`. Foundation E now requires independent Orchestrator re-audit before comprehensive USER A–E runtime QA.
 
 Verification evidence retained for this gate:
 - Foundation C corrective workflow at `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`: run `34919859131`, job `104225315113`: **PASS**.
@@ -17,7 +17,7 @@ Verification evidence retained for this gate:
 - Foundation D palm-correction compatibility workflow at the same SHA: run `34933034400`, job `104265052498`: **PASS**.
 - Final Foundation E code/math verification at `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`: run `34933354209`, job `104265988449`: **PASS**.
 - Final Foundation D compatibility workflow at that same SHA: run `34933354189`, job `104265988337`: **PASS**.
-- Runtime-wiring audit after that code checkpoint: **BLOCKER** — `RichHumanoidDetailRetargeter` is not instantiated by the current scene or code-owned bootstrap, so the verified E detail layer is not yet guaranteed to execute in the live spike.
+- Foundation E runtime-wiring Builder verification at `c7b84f33c5ca5329d387d279762a5f82600b5049`: run `34935548314`, job `104272530207`: **PASS**, including `FOUNDATION_E_LIVE_SPIKE_COMPOSITION=PASS` and `FOUNDATION_E_POST_SOLVE_DISCOVERY_TIMING=PASS`.
 
 Working branch: `engine/pose-tracking-spike`.
 
@@ -44,7 +44,7 @@ This document records what is true **now**. Historical experiment details remain
 - Foundation B — Camera View / Focus Preset System: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Foundation C — Rich Canonical Motion / Orientation Architecture: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Foundation D — MediaPipe Hand Landmarker integration: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
-- Foundation E — Orientation-aware + optional hand/finger retarget: **CORE IMPLEMENTED / ORCHESTRATOR CORRECTION REQUIRED — RUNTIME WIRING / USER MANUAL QA DEFERRED**.
+- Foundation E — Orientation-aware + optional hand/finger retarget: **IMPLEMENTED / BUILDER AUTOMATED & CODE VERIFICATION COMPLETE / ORCHESTRATOR RE-AUDIT PENDING / USER MANUAL QA DEFERRED**.
 - Phase 5A — support-foot locomotion / Lab-Game presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 
@@ -65,9 +65,9 @@ C — Rich canonical motion/orientation architecture     IMPLEMENTED / Orchestra
     ↓
 D — MediaPipe hand-landmark integration                IMPLEMENTED / Orchestrator audited / manual QA deferred
     ↓
-E — Orientation-aware + optional hand/finger retarget  CORE IMPLEMENTED / runtime wiring correction required
+E — Orientation-aware + optional hand/finger retarget  IMPLEMENTED / Builder verified / Orchestrator re-audit pending / manual QA deferred
     ↓
-Foundation E runtime-wiring correction + Orchestrator re-audit
+Independent Foundation E Orchestrator re-audit
     ↓
 Comprehensive A–E manual/runtime QA
     ↓
@@ -151,19 +151,19 @@ Current implementation:
 - the official bundled model identity remains locked and unchanged;
 - Foundation D remains a data producer only and does not drive avatar transforms.
 
-The accepted D audit remains `34920144300` / `104226227007` at `864b39a5...`. The E-compatible permanent D boundary also remains green at `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`: run `34933354189`, job `104265988337`, **SUCCESS**.
+The accepted D audit remains `34920144300` / `104226227007` at `864b39a5...`. The E-compatible permanent D boundary also remains green at `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`: run `34933354189`, job `104265988337`, **SUCCESS**. A new exact-final-head D compatibility run is required after the present documentation checkpoint and is reported separately in the Builder handoff rather than self-referentially editing this file again.
 
 Unity Editor NUnit source exists, but actual Unity Editor compilation/Test Runner and real webcam hand inference were not performed by this Builder environment. USER runtime QA remains intentionally deferred.
 
 ### Foundation E — optional-bone retargeting
 
-Status: **CORE IMPLEMENTED / ORCHESTRATOR CORRECTION REQUIRED — RUNTIME WIRING / USER MANUAL QA DEFERRED**.
+Status: **IMPLEMENTED / BUILDER AUTOMATED & CODE VERIFICATION COMPLETE / ORCHESTRATOR RE-AUDIT PENDING / USER MANUAL QA DEFERRED**.
 
-Foundation E's implementation remains an additive post-Phase-4 detail/application layer. The accepted Phase 4 `HumanoidRetargeter.ApplyMotionFrame(...)` solve remains byte-for-byte protected by the E workflow and remains the positional/IK authority.
+Foundation E remains an additive post-Phase-4 detail/application layer. The accepted Phase 4 `HumanoidRetargeter.ApplyMotionFrame(...)` solve remains byte-for-byte protected by the E workflow and remains the positional/IK authority.
 
 Current implementation and preserved invariants:
 
-- `IHumanoidPostSolveDetailLayer` is the generic provider-independent optional hook; `HumanoidRetargeter` contains no rich/hand/provider/finger-specific application logic;
+- `IHumanoidPostSolveDetailLayer` is the generic provider-independent optional hook; `HumanoidRetargeter` contains no E-implementation, rich/hand/provider/finger-specific construction or application logic;
 - execution, when a detail layer exists, is exact Phase 4 solve → optional E refinement → combined solved target → existing presentation smoothing;
 - `HumanoidRigBinding.IsBound` and `BoundBoneCount` remain required-body semantics only; optional detail capability remains separate;
 - production rich channels remain exactly bilateral upper/lower arms and upper/lower legs; pelvis/chest/feet remain deferred;
@@ -178,23 +178,24 @@ Palm-reference correction:
 - the runtime math produces one absolute desired hand local rotation from the parent-relative target reference plus cached chain-tip baseline, so repeated identical source palms converge rather than accumulate;
 - stale/category/master/reset behavior returns/removes the E-owned palm contribution and reacquisition establishes a fresh zero-delta reference.
 
-Automated/code evidence at `087068dd14cd4bae11243a5efbd1bd5ee4cd309e` remains green:
+Runtime-wiring correction:
 
-- Foundation E run `34933354209`, job `104265988449`: **SUCCESS**;
-- Foundation D compatibility run `34933354189`, job `104265988337`: **SUCCESS**;
+- `PoseTrackingSpike.unity` remains unchanged and still does not need a serialized E component;
+- `PoseTrackingSpikePresenter.Awake()` now checks for `RichHumanoidDetailRetargeter` and adds it only when absent, using the same code-owned spike composition path that already ensures runtime, binding, retargeter, locomotion and related components;
+- the E detail component is ensured before the presenter's retargeter ensure block, so newly composed retargeters can discover it immediately;
+- the serialized/existing `HumanoidRetargeter` remains generic and E-agnostic. Its existing `Start()` re-runs `ResolvePostSolveDetailLayers()`, guaranteeing discovery after Awake-time composition even if its own `Awake()` happened earlier;
+- no Foundation E motion/palm/finger math, scene YAML, provider, OpenVINO, Foundation D scheduler/model, Phase 5A, ProjectSettings or package code was changed by the runtime-wiring correction.
+
+Automated/code evidence:
+
+- Foundation E code/math run `34933354209`, job `104265988449` at `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`: **SUCCESS**;
+- Foundation D compatibility run `34933354189`, job `104265988337` at the same SHA: **SUCCESS**;
 - Foundation E deterministic smoke: **PASS**, 24 checks;
 - repeated palm-target drift `0°`, stale residual `0°`, parent-relative local drift `0°`, endpoint residual `0`, reacquisition bounded step `2.68084192°`;
-- exact Phase 4 method comparison, eight-rich-channel guard, optional binding semantics, provider/inference/history isolation, strict scope allowlist, D production boundary and read-only dirty-tree guards: **PASS**.
+- runtime-wiring Builder verification at `c7b84f33c5ca5329d387d279762a5f82600b5049`: run `34935548314`, job `104272530207`: **SUCCESS**;
+- that runtime-wiring run passed `FOUNDATION_E_LIVE_SPIKE_COMPOSITION`, `FOUNDATION_E_POST_SOLVE_DISCOVERY_TIMING`, exact Phase 4 method comparison, eight-rich-channel guard, optional binding semantics, provider/inference/history isolation, strict scope allowlist, D production boundary, palm guards and the read-only dirty-tree guard.
 
-Runtime-wiring blocker discovered before USER QA:
-
-- `RichHumanoidDetailRetargeter.cs` exists and implements `IHumanoidPostSolveDetailLayer`;
-- `HumanoidRetargeter.ResolvePostSolveDetailLayers()` only scans `GetComponents<MonoBehaviour>()` for an already-existing layer;
-- the current `PoseTrackingSpike.unity` does not reference the `RichHumanoidDetailRetargeter` script GUID;
-- the Foundation E implementation diff added no other runtime/bootstrap file that instantiates the component;
-- therefore the verified Foundation E detail code is currently dormant in the existing spike unless somebody manually adds the component, which is not an acceptable production/runtime integration assumption.
-
-Actual Unity Editor compilation/Test Runner execution and USER webcam/avatar/manual runtime QA remain deferred. Fix the wiring first, then re-audit the narrow correction, then perform the comprehensive A–E QA.
+Actual Unity Editor compilation/Test Runner execution and USER webcam/avatar/manual runtime QA were **not** performed by this Builder environment. Foundation E is not USER accepted and has not yet cleared the independent Orchestrator re-audit.
 
 ## Current best-tested runtime path
 
@@ -212,7 +213,7 @@ Unity WebCamTexture
   -> canonical body mapping
   -> selectable avatar-drive filtering
   -> calibration / Phase 4 retarget
-  -> optional Foundation E post-solve detail (after runtime-wiring correction)
+  -> code-owned Foundation E post-solve detail component
   -> avatar presentation
 ```
 
@@ -245,11 +246,11 @@ Current accepted V1 semantics remain unchanged:
 - display mirror is presentation-only;
 - modular calibration and partial-body validity remain intact;
 - Phase 4 signed mapping and analytic two-bone IK remain positional authority;
-- Foundation E adds only endpoint-preserving/post-solve orientation detail and optional hand/finger articulation once its detail layer is actually wired into the live runtime.
+- Foundation E adds only endpoint-preserving/post-solve orientation detail and optional hand/finger articulation through the code-owned live spike detail component.
 
 ## Stabilization and presentation tuning
 
-The accepted Phase 3 stabilizer remains calibration/locomotion authority. Stable, Raw and responsive avatar-drive variants remain available and the final responsiveness/default selection is deferred. `HumanoidRetargeter` presentation smoothing remains a downstream visual layer; E detail is designed to execute before the combined solved target is captured once the runtime detail component is instantiated.
+The accepted Phase 3 stabilizer remains calibration/locomotion authority. Stable, Raw and responsive avatar-drive variants remain available and the final responsiveness/default selection is deferred. `HumanoidRetargeter` presentation smoothing remains a downstream visual layer; E detail executes before the combined solved target is captured when the layer is enabled.
 
 ## Phase 5A — implemented, not accepted
 
@@ -268,7 +269,7 @@ Foundation A                   implemented; Orchestrator audited; manual QA defe
 Foundation B                   implemented; Orchestrator audited; manual QA deferred
 Foundation C                   implemented; Orchestrator audited; manual QA deferred
 Foundation D                   implemented; Orchestrator code-audited; manual QA deferred
-Foundation E                   core implemented; runtime wiring correction required; manual QA deferred
+Foundation E                   implemented; Builder verified; Orchestrator re-audit pending; manual QA deferred
 locomotion                     implemented, not accepted
 ```
 
@@ -288,9 +289,10 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 
 - Do not merge to `main` without explicit USER approval.
 - Do not mark Foundations A, B, C, D, or E USER accepted until the deferred comprehensive USER manual/runtime QA pass succeeds.
-- Correct Foundation E runtime wiring before USER QA. Prefer code-owned spike/runtime composition rather than a manual local scene edit, while preserving the generic `IHumanoidPostSolveDetailLayer` boundary inside `HumanoidRetargeter`.
-- Do not extend Foundation E motion scope while fixing the wiring; the verified rich/palm/finger math should remain unchanged.
-- After the wiring correction, independently verify that a `RichHumanoidDetailRetargeter` instance is actually present and discovered in the live spike, then proceed to the comprehensive A–E USER Unity/manual/runtime QA pass.
+- Foundation E runtime wiring is now corrected and Builder verified; the next gate is an independent Orchestrator re-audit of the exact branch state.
+- Preserve the generic `IHumanoidPostSolveDetailLayer` boundary inside `HumanoidRetargeter`; E-specific construction belongs to code-owned spike composition, not the generic retargeter.
+- Do not extend Foundation E motion scope during re-audit; the verified rich/palm/finger math remains unchanged.
+- Do not begin comprehensive A–E USER QA until the Foundation E re-audit clears the code/runtime-composition gate.
 - Do not return to Phase 5A fixes until that foundation QA pass is completed and explicitly assessed.
 - Do not start Phase 6.
 - Preserve stock MediaPipe/TFLite, OpenVINO scheduling/acquisition, CanonicalBodyV1, stable calibration/locomotion inputs and serialized/default backend/acquisition/avatar-drive meanings.
@@ -300,4 +302,4 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 
 ## Immediate next step
 
-Perform a narrow **Foundation E runtime-wiring correction** so the verified `RichHumanoidDetailRetargeter` is instantiated and discoverable in the live `PoseTrackingSpike` runtime without relying on a manual USER scene edit. Re-audit that correction, then perform the comprehensive Foundations A–E USER Unity/manual/runtime QA pass. Do not return to Phase 5A or start Phase 6 before these gates are explicitly assessed.
+Perform the independent **Foundation E Orchestrator re-audit** against the exact branch state, including the corrected code-owned live-spike composition. If that passes, perform the comprehensive Foundations A–E USER Unity/manual/runtime QA pass. Do not return to Phase 5A or start Phase 6 before these gates are explicitly assessed.
