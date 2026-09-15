@@ -2,12 +2,12 @@
 
 Authoritative current-state refresh: 2026-09-15.
 
-Latest substantive runtime/code checkpoint before this documentation refresh:
-`9e4c4ac3a9d87eade06a43e2833481cce22b70f9` — Foundation D Orchestrator corrective implementation complete: accidental USER-commit Unity/project state cleaned by forward commits, official Hand Landmarker binary preserved and bundled, shared body/hand provider timeline preserved, Foundation C provider-isolation audit narrowed to actual provider-native/raw-index leakage, and corrective Foundation C/D verification green.
+Latest accepted foundation code-audit checkpoint:
+`864b39a520c78db1a0572b87a7d42c9da5cedaa4` — Foundation D corrective implementation passed independent Orchestrator re-audit with the bundled official Hand Landmarker preserved, shared body/hand provider timeline verified, protected body/OpenVINO and Phase 4 paths intact, and permanent Foundation C/D verification green.
 
-Corrective verification at that checkpoint:
-- Foundation C workflow run `34919859131`, job `104225315113`: **PASS**.
-- Foundation D workflow run `34919859137`, job `104225315428`: **PASS**.
+Verification evidence retained for this gate:
+- Foundation C corrective workflow at `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`: run `34919859131`, job `104225315113`: **PASS**.
+- Foundation D exact-head workflow at `864b39a520c78db1a0572b87a7d42c9da5cedaa4`: run `34920144300`, job `104226227007`: **PASS**.
 
 Working branch: `engine/pose-tracking-spike`.
 
@@ -33,8 +33,8 @@ This document records what is true **now**. Historical experiment details remain
 - Foundation A — Unified Command System + modular speech input: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Foundation B — Camera View / Focus Preset System: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Foundation C — Rich Canonical Motion / Orientation Architecture: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
-- Foundation D — MediaPipe Hand Landmarker integration: **IMPLEMENTED / BUILDER CORRECTION COMPLETE / ORCHESTRATOR RE-AUDIT PENDING / USER MANUAL QA DEFERRED**.
-- Foundation E — Orientation-aware + optional hand/finger retarget: **NOT STARTED**.
+- Foundation D — MediaPipe Hand Landmarker integration: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
+- Foundation E — Orientation-aware + optional hand/finger retarget: **IMPLEMENTATION IN PROGRESS / USER MANUAL QA DEFERRED**.
 - Phase 5A — support-foot locomotion / Lab-Game presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 
@@ -53,9 +53,9 @@ B — Camera View / Focus Preset System                  IMPLEMENTED / Orchestra
     ↓
 C — Rich canonical motion/orientation architecture     IMPLEMENTED / Orchestrator audited / manual QA deferred
     ↓
-D — MediaPipe hand-landmark integration                IMPLEMENTED / Builder correction complete / Orchestrator re-audit pending / manual QA deferred
+D — MediaPipe hand-landmark integration                IMPLEMENTED / Orchestrator audited / manual QA deferred
     ↓
-E — Orientation-aware + optional hand/finger retarget  NOT STARTED
+E — Orientation-aware + optional hand/finger retarget  IMPLEMENTATION IN PROGRESS / manual QA deferred
     ↓
 Comprehensive A–E manual/runtime QA
     ↓
@@ -135,7 +135,7 @@ Automated proof coverage remains green in the permanent read-only Foundation C w
 
 ### Foundation D — MediaPipe hands
 
-Status: **IMPLEMENTED / BUILDER CORRECTION COMPLETE / ORCHESTRATOR RE-AUDIT PENDING / USER MANUAL QA DEFERRED**.
+Status: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 
 Foundation D preserves the optimized body provider and adds a separate optional MediaPipe Hand Landmarker stream rather than migrating body tracking to Holistic.
 
@@ -158,21 +158,23 @@ Current implementation:
 - hand acquisition uses two reusable RGBA slots with one active inference and at most one replaceable latest pending snapshot. There is no FIFO/history/replay/catch-up queue and the accepted OpenVINO body mailbox is not reused or modified;
 - callback conversion is isolated from Unity scene/time APIs and copies MediaPipe task results into project-owned snapshot data before publication;
 - the official Hand Landmarker bundle is locked to Google MediaPipe `float16/1`, `7,819,105` bytes, SHA-256 `fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1`;
-- that exact model is now physically bundled at `Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task`, so a normal fresh repository checkout does **not** require network access before detailed hand tracking can initialize;
+- that exact model is physically bundled at `Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task`, so a normal fresh repository checkout does **not** require network access before detailed hand tracking can initialize;
 - runtime prefers the verified bundled StreamingAssets copy. The existing SHA-verified private-cache/official-download path remains only as an optional fallback; model failure disables the optional hand stream without invalidating body tracking;
-- no finger, hand, or rich-orientation data is applied to the production avatar yet. That application belongs to Foundation E.
+- no finger, hand, or rich-orientation data is applied to the production avatar yet at the Foundation D boundary; production application belongs to Foundation E.
 
-Corrective Builder verification is green at `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`. Foundation D workflow run `34919859137` (job `104225315428`) passed Foundation A/B/C regressions, the Foundation D hand/timeline/scheduler smoke, checked-in and official-remote model identity, shared provider timeline and monotonic hand timestamp checks, provider isolation, 21-landmark semantic contract, hand-local coordinate ownership, latest-only scheduling, unchanged body/OpenVINO protected paths, unchanged CanonicalBodyV1, unchanged Phase 4 production retargeting, Foundation E-not-started checks, and the final read-only dirty-tree guard. The companion Foundation C workflow run `34919859131` also passed at the same checkpoint after narrowing its landmark isolation rule to actual provider-specific/raw-index access rather than the generic method name `GetLandmark`.
+Independent Orchestrator re-audit is complete. The final exact-head Foundation D verification passed at `864b39a520c78db1a0572b87a7d42c9da5cedaa4`: workflow run `34920144300`, job `104226227007`, result **SUCCESS**. The final corrective Foundation C verification remains run `34919859131`, job `104225315113`, result **SUCCESS** at `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`.
 
-Unity Editor NUnit test source covers the corresponding deterministic hand cases, but actual Unity Editor compilation/Test Runner and real webcam hand inference were **not** performed by this Builder. USER runtime QA remains intentionally deferred to the comprehensive A–E pass. Do not infer live hand quality, CPU cost, gesture quality, association quality, or real-world freshness behavior from the pure/static verification alone.
+Unity Editor NUnit test source covers corresponding deterministic hand cases, but actual Unity Editor compilation/Test Runner and real webcam hand inference were **not** performed by the Builder/Orchestrator code-audit environment. USER runtime QA remains intentionally deferred to the comprehensive A–E pass. Do not infer live hand quality, CPU cost, gesture quality, association quality, or real-world freshness behavior from pure/static verification alone.
 
 ### Foundation E — optional-bone retargeting
 
-Avatar binding is capability-based. Drive only bones that actually exist.
+Status: **IMPLEMENTATION IN PROGRESS / USER MANUAL QA DEFERRED**.
 
-Missing finger/hand/detail bones must never crash or invalidate unrelated body retargeting. The accepted Phase 4 positional/IK path remains available as fallback/reference while richer orientation/articulation is rolled out.
+Foundation E is authorized after Foundation D's successful independent Orchestrator re-audit. Its implementation must remain an additive post-Phase-4 detail layer: the accepted positional/IK solve remains authoritative, optional rich twist/palm/finger capabilities degrade locally, and disabling/unavailable Foundation E must reproduce the established Phase 4 result.
 
-Foundation E is **NOT STARTED** as of this checkpoint.
+Avatar binding remains capability-based. Drive only optional detail bones that actually exist. Missing finger/hand/detail bones must never crash or invalidate unrelated body retargeting, and legacy `HumanoidRigBinding.IsBound` semantics remain the required-body-rig contract.
+
+USER Unity/manual/runtime QA is deliberately deferred until Foundations A–E have all completed code/automated review.
 
 ## Current best-tested runtime path
 
@@ -309,7 +311,7 @@ Status: **USER ACCEPTED — PASS for the current milestone**.
 
 ## Canonical, calibration, and retargeting invariants
 
-Current accepted V1 semantics remain unchanged while the rich/hand foundations are developed:
+Current accepted V1 semantics remain unchanged while the rich/hand/detail foundations are developed:
 
 - image X right, image Y up;
 - 3D +X camera/view right, +Y up, +Z away;
@@ -318,8 +320,8 @@ Current accepted V1 semantics remain unchanged while the rich/hand foundations a
 - display mirror is presentation-only;
 - modular calibration allows body-reference readiness plus independent arm/leg chain geometry;
 - partial-body tracking remains valid;
-- Phase 4 signed canonical-to-avatar mapping and analytic two-bone IK remain authoritative fallback/reference behavior;
-- current swing-only limb alignment remains the accepted V1 production policy until richer orientation is applied and accepted in a later foundation.
+- Phase 4 signed canonical-to-avatar mapping and analytic two-bone IK remain positional authority/fallback/reference behavior;
+- Foundation E may add endpoint-preserving axial/detail refinement only after the accepted exact Phase 4 solve; rich orientation must not become the source of endpoint positions.
 
 The rich orientation and hand tracks are additive and independently testable. Do not change these semantics as a side effect of commands, camera work, hand-provider work or unrelated tuning.
 
@@ -340,14 +342,11 @@ lossGraceSeconds  0.10
 resetAfterLoss    0.25
 ```
 
-This stable path remains the authority for:
-
-- calibration;
-- Phase 5A locomotion/support/cadence/heading inputs.
+This stable path remains the authority for calibration and Phase 5A locomotion/support/cadence/heading inputs.
 
 ### Avatar-only source selector
 
-The avatar solve now supports a deliberately preserved tuning surface:
+The avatar solve preserves this tuning surface:
 
 ```text
 StabilizedCanonical   = 0   -> 1.0 / 0.05 / 1.0
@@ -358,101 +357,44 @@ ResponsiveCanonicalC  = 4   -> 1.0 / 0.25 / 1.0
 ResponsiveCanonicalD  = 5   -> 1.0 / 0.50 / 1.0
 ```
 
-All existing serialized enum meanings are preserved.
+All existing serialized enum meanings are preserved. For the experimental filtered modes, persistent stabilizers run continuously from raw canonical data so live switching does not cold-start the filter.
 
-For the experimental filtered modes, persistent stabilizers run continuously from raw canonical data so live switching does not cold-start the filter.
-
-The selected `AvatarDriveFrame` consistently feeds:
-
-- `CanonicalRotationSolver`;
-- `CanonicalKinematicTargetBuilder`;
-- `HumanoidRetargeter` torso/source mapping.
-
-Calibration and locomotion remain on the stable frame regardless of the selected avatar-drive mode.
+The selected `AvatarDriveFrame` consistently feeds `CanonicalRotationSolver`, `CanonicalKinematicTargetBuilder`, and `HumanoidRetargeter` torso/source mapping. Calibration and locomotion remain on the stable frame regardless of the selected avatar-drive mode.
 
 ### USER findings
 
-USER runtime testing established:
+USER runtime testing established that Stable is smooth and satisfactory but slower than Raw; Raw feels effectively instant but slightly less stable; Responsive A/B improve responsiveness with minor jitter; C/D remain a beta-only sweep. The USER explicitly chose not to force a final smoothing winner now.
 
-- `StabilizedCanonical` is smooth and satisfactory but perceptibly slower than Raw;
-- `RawCanonical` feels effectively instant / near-zero-latency subjectively, but is slightly less stable;
-- Responsive A and B improve responsiveness relative to Stable but still retain minor jitter compared with Stable;
-- C and D were added as a beta-only sweep so future tuning can isolate high-motion responsiveness from low-motion smoothing.
-
-The USER explicitly chose **not to force a final smoothing winner now**. Fine-tuning remains available later.
-
-Current policy:
-
-- preserve Stable, Raw, and responsive tuning modes during ongoing development;
-- do not silently change the serialized/default avatar-drive mode;
-- do not collapse the experiment into one hardcoded profile yet;
-- a future cleanup may expose a cleaner user/developer-facing smoothing profile or intensity control once the preferred range is known.
-
-This tuning surface is part of the current engineering baseline, not an unfinished blocker.
+Current policy is to preserve Stable, Raw and responsive tuning modes, not silently change serialized/default avatar-drive mode, and defer final smoothing selection.
 
 ## Presentation smoothing
 
-`HumanoidRetargeter` presentation smoothing remains a separate downstream visual layer. It affects visible humanoid rotations only after the exact solve and does not modify canonical tracking, calibration, IK targets, cadence, or locomotion.
-
-Current implementation still supports direct/off behavior and the bounded smoothed behavior. Do not confuse presentation smoothing with the canonical One Euro avatar-drive modes above.
+`HumanoidRetargeter` presentation smoothing remains a separate downstream visual layer. The exact Phase 4 solve remains authoritative. Foundation E's optional post-solve detail layer must execute before the solved presentation target is captured so smoothing does not fight the detail result. Presentation smoothing must not modify canonical tracking, calibration, IK targets, cadence, or locomotion.
 
 ## Phase 5A — implemented, not accepted
 
-Phase 5A already exists; it is not the next phase to "start" from scratch.
+Implemented pieces include support-foot camera-space locomotion, physical X/Z mapping, cadence extension, body-heading mapping, safe recenter, avatar root X/Z authority only, F12 Lab/Game presentation, third-person camera behavior plus Foundation B gameplay view presets, diagnostics and world/grid views.
 
-Implemented pieces include:
-
-- support-foot camera-space locomotion;
-- physical X/Z mapping;
-- cadence extension;
-- body-heading mapping;
-- safe recenter;
-- avatar root X/Z authority only;
-- F12 Lab/Game presentation;
-- third-person camera behavior plus Foundation B gameplay view presets;
-- diagnostics and world/grid views.
-
-Known USER QA findings that remain unresolved:
-
-- planted-feet leaning can still cause unwanted translation;
-- cadence stepping while stationary is not yet robust enough.
-
-Therefore Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED**.
-
-Do not return to these fixes until the approved pre-Phase-5A foundation track has reached the USER-approved stopping point for the current milestone.
+Known USER QA findings remain unresolved: planted-feet leaning can still cause unwanted translation, and cadence stepping while stationary is not yet robust enough. Therefore Phase 5A remains **IMPLEMENTED / NOT USER ACCEPTED**. Do not return to these fixes until the approved pre-Phase-5A foundation track reaches its current stopping point.
 
 ## Closed / deferred performance lines
 
-Do not spend current development time on these without new evidence:
-
-- callback-to-poll micro-optimization;
-- result-callback launch changes for the old TFLite scheduler;
-- forcing D3D12 globally;
-- Sentis GPUCompute on Intel HD 620;
-- detector densification for Sentis;
-- custom Media Foundation/native camera capture;
-- duplicate CPU+GPU inference per frame;
-- manual neural-layer splitting across CPU/GPU;
-- further OpenVINO/readback tuning merely to chase small numbers while the current path already approaches camera cadence.
-
-Sentis and earlier OpenVINO benchmark history remains documented in the dedicated audit/progress files for reference.
+Do not spend current development time on callback-to-poll micro-optimization, old-TFLite scheduling changes, global D3D12, Sentis GPUCompute on Intel HD 620, detector densification, custom Media Foundation capture, duplicate CPU+GPU inference, manual neural-layer splitting, or further OpenVINO/readback number chasing without new evidence.
 
 ## Current development state
-
-The Motion Engine is sufficiently optimized for the current milestone, and the current track is fidelity/usability infrastructure:
 
 ```text
 camera/input acquisition       strong baseline
 inference backend              strong baseline
 scheduling                     accepted
 fresh pose throughput          near camera cadence on best tested body path
-V1 canonical/retarget          accepted compatibility baseline
+V1 canonical/retarget          accepted positional compatibility baseline
 avatar-drive latency tuning    preserved and deferrable
 Foundation A                   implemented; Orchestrator audited; manual QA deferred
 Foundation B                   implemented; Orchestrator audited; manual QA deferred
 Foundation C                   implemented; Orchestrator audited; manual QA deferred
-Foundation D                   implemented; Builder correction complete; Orchestrator re-audit pending; manual QA deferred
-Foundation E                   not started
+Foundation D                   implemented; Orchestrator code-audited; manual QA deferred
+Foundation E                   implementation in progress; manual QA deferred
 locomotion                     implemented, not accepted
 ```
 
@@ -476,19 +418,19 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 ## Guardrails for the next Orchestrator / Builder
 
 - Do not merge to `main` without explicit USER approval.
-- Do not mark Foundations A, B, C, or D USER accepted until the deferred comprehensive USER manual/runtime QA pass succeeds.
-- Do not start Foundation E until Foundation D receives the required independent Orchestrator re-audit/authorization and the USER explicitly advances the sequence.
-- Do not mark Phase 5A accepted.
+- Do not mark Foundations A, B, C, D, or E USER accepted until the deferred comprehensive USER manual/runtime QA pass succeeds.
+- Foundation E is now authorized; implement only its additive post-Phase-4 orientation/hand/finger detail scope and stop for independent Orchestrator re-audit when Builder verification completes.
+- Do not return to Phase 5A fixes during Foundation E.
 - Do not start Phase 6.
 - Do not delete or weaken the stock MediaPipe/TFLite fallback.
 - Do not silently switch serialized/default backend, frame-acquisition mode, or avatar-drive source.
 - Do not change stable calibration/locomotion inputs while tuning avatar response.
 - Do not destructively mutate the accepted 20-joint canonical V1 contract.
 - Do not use quaternions as the hidden canonical orientation source of truth; reason from validated anatomical bases and map to quaternions only at final avatar application.
-- Do not solve only forearm twist as a special-case patch; rich orientation must remain a general bone-orientation system.
-- Do not switch production `HumanoidRetargeter` to Foundation C rich orientation as part of Foundation D; orientation-aware application belongs to Foundation E.
-- Do not make optional finger/hand bones mandatory for rig validity.
-- Do not allow the optional hand stream to regress the accepted low-end body path or introduce unbounded queues/backlogs.
+- Do not solve only forearm twist as a special-case patch; rich orientation application must remain descriptor-driven/general across supported limb segments.
+- Do not replace the Phase 4 positional/IK solve with Foundation C rich orientation.
+- Do not make optional finger/hand/detail bones mandatory for rig validity.
+- Do not allow optional detail work to regress the accepted low-end body path or introduce queues/backlogs.
 - Do not treat Hand Landmarker hand-local world landmarks as body/world coordinates without an explicit validated fusion transform.
 - Do not densify the detector.
 - Do not force D3D12 globally.
@@ -497,6 +439,4 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 
 ## Immediate next step
 
-Foundation D implementation and Builder corrective automated/code verification are complete. The next gate is an **independent Orchestrator re-audit of the Foundation D correction**. USER Unity/runtime acceptance remains intentionally deferred to the comprehensive A–E pass.
-
-Do **not** begin Foundation E from this checkpoint until the Orchestrator and USER explicitly advance the sequence.
+Implement **Foundation E — orientation-aware + optional hand/finger retargeting** as an additive post-Phase-4 detail layer, complete deterministic/read-only Builder verification, update authoritative documentation, then stop for independent Orchestrator re-audit. USER Unity/runtime acceptance remains intentionally deferred to the comprehensive A–E pass.
