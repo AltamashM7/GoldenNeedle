@@ -70,6 +70,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         private readonly Transform[] _chainTips = new Transform[ChainCount];
         private readonly Quaternion[] _chainRootBindLocalRotations = new Quaternion[ChainCount];
         private readonly Quaternion[] _chainMidBindLocalRotations = new Quaternion[ChainCount];
+        private readonly Quaternion[] _chainTipBindLocalRotations = new Quaternion[ChainCount];
         private readonly float[] _chainUpperLengths = new float[ChainCount];
         private readonly float[] _chainLowerLengths = new float[ChainCount];
         private readonly float[] _chainTotalReaches = new float[ChainCount];
@@ -317,6 +318,11 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         public Quaternion GetChainMidBindLocalRotation(CanonicalKinematicChainId id)
         {
             return _chainMidBindLocalRotations[(int)id];
+        }
+
+        public Quaternion GetChainTipBindLocalRotation(CanonicalKinematicChainId id)
+        {
+            return _chainTipBindLocalRotations[(int)id];
         }
 
         public Vector3 GetChainTipBindLocalPosition(CanonicalKinematicChainId id)
@@ -601,6 +607,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 _chainAvailable[i] = root != null && mid != null && tip != null;
                 _chainRootBindLocalRotations[i] = root == null ? Quaternion.identity : root.localRotation;
                 _chainMidBindLocalRotations[i] = mid == null ? Quaternion.identity : mid.localRotation;
+                _chainTipBindLocalRotations[i] = tip == null ? Quaternion.identity : tip.localRotation;
                 _chainTipBindLocalPositions[i] = tip == null ? Vector3.zero : tip.localPosition;
                 _chainTipBindLocalScales[i] = tip == null ? Vector3.zero : tip.localScale;
 
@@ -703,6 +710,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 _chainUpperLengths[i] = 0f;
                 _chainLowerLengths[i] = 0f;
                 _chainTotalReaches[i] = 0f;
+                _chainTipBindLocalRotations[i] = Quaternion.identity;
                 _chainTipBindLocalPositions[i] = Vector3.zero;
                 _chainTipBindLocalScales[i] = Vector3.zero;
                 _chainParentReferenceFrames[i] = Quaternion.identity;

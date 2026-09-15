@@ -4,6 +4,10 @@ static class Program
 {
     private const float Epsilon = 1e-5f;
     private static int _passed;
+    private static float _maxPalmTargetDriftDegrees;
+    private static float _palmStaleResidualDegrees;
+    private static float _palmParentLocalDriftDegrees;
+    private static float _palmReacquireStepDegrees;
 
     static void Main()
     {
@@ -22,10 +26,21 @@ static class Program
         Test("ENDPOINT_RESIDUAL_TIGHT", EndpointResidualTight);
         Test("REFERENCE_VERSION_REACQUIRE", ReferenceVersionReacquire);
         Test("OPTIONAL_DETAIL_CANNOT_INVALIDATE_BODY", OptionalDetailCannotInvalidateBody);
+        Test("PALM_REFERENCE_NO_ACCUMULATION", PalmReferenceNoAccumulation);
+        Test("PALM_STALE_RETURN", PalmStaleReturn);
+        Test("PALM_DISABLE_PHASE4_BASELINE", PalmDisablePhase4Baseline);
+        Test("PALM_CATEGORY_DISABLE_RETURN", PalmCategoryDisableReturn);
+        Test("PALM_PARENT_RELATIVE_REFERENCE", PalmParentRelativeReference);
+        Test("PALM_REACQUISITION_ZERO_DELTA", PalmReacquisitionZeroDelta);
+        Test("PALM_LEFT_RIGHT_INDEPENDENT", PalmLeftRightIndependent);
         Test("E_CORE_PROVIDER_ISOLATED", ECoreProviderIsolated);
         Test("E_LATEST_ONLY_NO_BACKLOG", ELatestOnlyNoBacklog);
         Console.WriteLine($"FOUNDATION_E_SMOKE=PASS tests={_passed}");
         Console.WriteLine($"FOUNDATION_E_MAX_ENDPOINT_RESIDUAL={EndpointResidual():G9}");
+        Console.WriteLine($"PALM_MAX_TARGET_DRIFT_DEG={_maxPalmTargetDriftDegrees:G9}");
+        Console.WriteLine($"PALM_STALE_RESIDUAL_DEG={_palmStaleResidualDegrees:G9}");
+        Console.WriteLine($"PALM_PARENT_LOCAL_DRIFT_DEG={_palmParentLocalDriftDegrees:G9}");
+        Console.WriteLine($"PALM_REACQUIRE_STEP_DEG={_palmReacquireStepDegrees:G9}");
     }
 
     private static void Test(string name, Action action)
@@ -151,8 +166,6 @@ static class Program
         var originalTip = mid + downstreamWorld;
         var twist = Quaternion.CreateFromAxisAngle(Vector3.UnitX, 1.13f);
         var midAfterParent = root + Vector3.Transform(mid - root, twist);
-        // Restoring the direct child's world rotation after parent axial twist preserves the
-        // downstream world vector. The direct child lies on the twist axis, so its position is fixed.
         var compensatedTip = midAfterParent + downstreamWorld;
         return Vector3.Distance(originalTip, compensatedTip);
     }
@@ -176,6 +189,132 @@ static class Program
             var rig = new RigValidity(10, count);
             Require(rig.IsBound && rig.BoundBoneCount == 10, $"optional count {count} altered body binding");
         }
+    }
+
+    private static void PalmReferenceNoAccumulation()
+    {
+        var baseline = Quaternion.Normalize(Quaternion.CreateFromYawPitchRoll(.08f, -.05f, .03f));
+        var state = new PalmReferenceModel(baseline);
+        state.Step(AxisAngle(Vector3.UnitZ, 0f), true, true, 1f / 60f);
+        var source = AxisAngle(Vector3.UnitZ, DegreesToRadians(24f));
+        Quaternion? firstTarget = null;
+        var maxTargetDrift = 0f;
+        for (var i = 0; i < 240; i++)
+        {
+            state.Step(source, true, true, 1f / 60f);
+            firstTarget ??= state.TargetLocal;
+            maxTargetDrift = MathF.Max(maxTargetDrift, QuaternionAngleDegrees(firstTarget.Value, state.TargetLocal));
+        }
+        _maxPalmTargetDriftDegrees = maxTargetDrift;
+        Require(maxTargetDrift < 0.0001f, $"absolute palm target drifted by {maxTargetDrift} degrees");
+        Require(QuaternionAngleDegrees(baseline, state.CurrentLocal) > 1f, "non-zero palm delta did not drive");
+        Require(QuaternionAngleDegrees(state.CurrentLocal, state.TargetLocal) < 0.01f, "palm did not converge");
+    }
+
+    private static void PalmStaleReturn()
+    {
+        var baseline = Quaternion.Identity;
+        var state = new PalmReferenceModel(baseline);
+        state.Step(Quaternion.Identity, true, true, 1f / 60f);
+        var driven = AxisAngle(Vector3.UnitZ, DegreesToRadians(28f));
+        for (var i = 0; i < 120; i++) state.Step(driven, true, true, 1f / 60f);
+        Require(QuaternionAngleDegrees(baseline, state.CurrentLocal) > 1f, "setup did not drive palm");
+        for (var i = 0; i < 120; i++) state.Step(driven, false, true, 1f / 60f);
+        _palmStaleResidualDegrees = QuaternionAngleDegrees(baseline, state.CurrentLocal);
+        Require(_palmStaleResidualDegrees < 0.01f, $"stale palm residual {_palmStaleResidualDegrees}");
+    }
+
+    private static void PalmDisablePhase4Baseline()
+    {
+        var baseline = Quaternion.Normalize(Quaternion.CreateFromYawPitchRoll(.04f, .03f, -.02f));
+        var state = new PalmReferenceModel(baseline);
+        state.Step(Quaternion.Identity, true, true, 1f / 60f);
+        for (var i = 0; i < 90; i++)
+            state.Step(AxisAngle(Vector3.UnitZ, DegreesToRadians(31f)), true, true, 1f / 60f);
+        state.ResetImmediate();
+        Require(QuaternionAngleDegrees(baseline, state.CurrentLocal) < 0.0001f,
+            "master/reset did not restore Phase 4 baseline");
+    }
+
+    private static void PalmCategoryDisableReturn()
+    {
+        var state = new PalmReferenceModel(Quaternion.Identity);
+        state.Step(Quaternion.Identity, true, true, 1f / 60f);
+        var driven = AxisAngle(Vector3.UnitZ, DegreesToRadians(26f));
+        for (var i = 0; i < 100; i++) state.Step(driven, true, true, 1f / 60f);
+        for (var i = 0; i < 120; i++) state.Step(driven, true, false, 1f / 60f);
+        Require(QuaternionAngleDegrees(Quaternion.Identity, state.CurrentLocal) < 0.01f,
+            "palm category disable froze previous contribution");
+        Require(!state.HasSourceReference, "palm category disable retained stale source reference");
+    }
+
+    private static void PalmParentRelativeReference()
+    {
+        var baseline = Quaternion.Normalize(Quaternion.CreateFromYawPitchRoll(.02f, -.08f, .05f));
+        var state = new PalmReferenceModel(baseline);
+        state.Step(Quaternion.Identity, true, true, 1f / 60f);
+        var driven = AxisAngle(Vector3.UnitZ, DegreesToRadians(19f));
+        for (var i = 0; i < 180; i++) state.Step(driven, true, true, 1f / 60f);
+        var localBefore = state.CurrentLocal;
+        var parentA = Quaternion.Normalize(Quaternion.CreateFromYawPitchRoll(.1f, .05f, 0f));
+        var parentB = Quaternion.Normalize(Quaternion.CreateFromYawPitchRoll(.7f, -.2f, .18f));
+        var worldA = Quaternion.Normalize(parentA * localBefore);
+        for (var i = 0; i < 180; i++) state.Step(driven, true, true, 1f / 60f);
+        var localAfter = state.CurrentLocal;
+        var worldB = Quaternion.Normalize(parentB * localAfter);
+        _palmParentLocalDriftDegrees = QuaternionAngleDegrees(localBefore, localAfter);
+        Require(_palmParentLocalDriftDegrees < 0.01f,
+            $"parent motion changed relative palm contribution by {_palmParentLocalDriftDegrees}");
+        Require(QuaternionAngleDegrees(worldA, worldB) > 10f, "hand failed to follow moving parent");
+    }
+
+    private static void PalmReacquisitionZeroDelta()
+    {
+        var state = new PalmReferenceModel(Quaternion.Identity);
+        state.Step(Quaternion.Identity, true, true, 1f / 60f);
+        var firstDriven = AxisAngle(Vector3.UnitZ, DegreesToRadians(27f));
+        for (var i = 0; i < 90; i++) state.Step(firstDriven, true, true, 1f / 60f);
+        for (var i = 0; i < 3; i++) state.Step(firstDriven, false, true, 1f / 60f);
+        var before = state.CurrentLocal;
+        var reacquire = AxisAngle(Vector3.UnitZ, DegreesToRadians(-48f));
+        state.Step(reacquire, true, true, 1f / 60f);
+        var after = state.CurrentLocal;
+        _palmReacquireStepDegrees = QuaternionAngleDegrees(before, after);
+        Require(state.HasSourceReference, "reacquisition did not establish source reference");
+        Require(QuaternionAngleDegrees(state.TargetLocal, Quaternion.Identity) < 0.0001f,
+            "first reacquired sample produced non-zero E target");
+        Require(_palmReacquireStepDegrees < 8f, $"reacquisition jumped {_palmReacquireStepDegrees} degrees");
+        var next = AxisAngle(Vector3.UnitZ, DegreesToRadians(-33f));
+        for (var i = 0; i < 120; i++) state.Step(next, true, true, 1f / 60f);
+        Require(QuaternionAngleDegrees(Quaternion.Identity, state.CurrentLocal) > 1f,
+            "post-reacquisition relative change did not drive");
+    }
+
+    private static void PalmLeftRightIndependent()
+    {
+        var left = new PalmReferenceModel(Quaternion.Identity);
+        var right = new PalmReferenceModel(Quaternion.Identity);
+        left.Step(Quaternion.Identity, true, true, 1f / 60f);
+        right.Step(Quaternion.Identity, true, true, 1f / 60f);
+        var leftDriven = AxisAngle(Vector3.UnitZ, DegreesToRadians(22f));
+        var rightDriven = AxisAngle(Vector3.UnitZ, DegreesToRadians(-29f));
+        for (var i = 0; i < 120; i++)
+        {
+            left.Step(leftDriven, true, true, 1f / 60f);
+            right.Step(rightDriven, true, true, 1f / 60f);
+        }
+        var rightBefore = right.CurrentLocal;
+        for (var i = 0; i < 120; i++)
+        {
+            left.Step(leftDriven, false, true, 1f / 60f);
+            right.Step(rightDriven, true, true, 1f / 60f);
+        }
+        Require(QuaternionAngleDegrees(Quaternion.Identity, left.CurrentLocal) < 0.01f,
+            "left fallback did not return");
+        Require(QuaternionAngleDegrees(Quaternion.Identity, right.CurrentLocal) > 1f,
+            "left fallback disabled right palm");
+        Require(QuaternionAngleDegrees(rightBefore, right.CurrentLocal) < 0.01f,
+            "right palm drifted while left returned");
     }
 
     private static void ECoreProviderIsolated()
@@ -223,6 +362,24 @@ static class Program
 
     private static float Smooth(float current, float target, float dt, float response)
         => current + (target - current) * (1f - MathF.Exp(-response * dt));
+
+    private static Quaternion SmoothQuaternion(Quaternion current, Quaternion target, float dt, float response)
+    {
+        var t = 1f - MathF.Exp(-MathF.Max(0.1f, response) * MathF.Max(0f, dt));
+        return Quaternion.Normalize(Quaternion.Slerp(Quaternion.Normalize(current), Quaternion.Normalize(target), t));
+    }
+
+    private static Quaternion AxisAngle(Vector3 axis, float radians)
+        => Quaternion.Normalize(Quaternion.CreateFromAxisAngle(Vector3.Normalize(axis), radians));
+
+    private static float DegreesToRadians(float degrees) => degrees * MathF.PI / 180f;
+
+    private static float QuaternionAngleDegrees(Quaternion a, Quaternion b)
+    {
+        var dot = MathF.Abs(Quaternion.Dot(Quaternion.Normalize(a), Quaternion.Normalize(b)));
+        dot = Math.Clamp(dot, -1f, 1f);
+        return 2f * MathF.Acos(dot) * 180f / MathF.PI;
+    }
 
     private static float QuaternionDistance(Quaternion a, Quaternion b)
         => 1f - MathF.Abs(Quaternion.Dot(Quaternion.Normalize(a), Quaternion.Normalize(b)));
@@ -281,6 +438,60 @@ static class Program
             Version = version;
             HasReference = false;
             Target = 0f;
+        }
+    }
+
+    /// <summary>
+    /// Deterministic standalone model of the corrected runtime state transition. It intentionally
+    /// computes each palm target from baseline * current-vs-reference source delta, never from the
+    /// previously visible/output palm orientation.
+    /// </summary>
+    private sealed class PalmReferenceModel
+    {
+        private readonly Quaternion _baselineLocal;
+        private Quaternion _sourceReference = Quaternion.Identity;
+
+        public PalmReferenceModel(Quaternion baselineLocal)
+        {
+            _baselineLocal = Quaternion.Normalize(baselineLocal);
+            CurrentLocal = _baselineLocal;
+            TargetLocal = _baselineLocal;
+        }
+
+        public bool HasSourceReference { get; private set; }
+        public Quaternion CurrentLocal { get; private set; }
+        public Quaternion TargetLocal { get; private set; }
+
+        public void Step(Quaternion sourcePalm, bool fresh, bool categoryEnabled, float dt)
+        {
+            sourcePalm = Quaternion.Normalize(sourcePalm);
+            if (!fresh || !categoryEnabled)
+            {
+                HasSourceReference = false;
+                TargetLocal = _baselineLocal;
+                CurrentLocal = SmoothQuaternion(CurrentLocal, TargetLocal, dt, 24f);
+                return;
+            }
+
+            if (!HasSourceReference)
+            {
+                _sourceReference = sourcePalm;
+                HasSourceReference = true;
+                TargetLocal = _baselineLocal;
+                CurrentLocal = SmoothQuaternion(CurrentLocal, TargetLocal, dt, 24f);
+                return;
+            }
+
+            var relative = Quaternion.Normalize(sourcePalm * Quaternion.Inverse(_sourceReference));
+            TargetLocal = Quaternion.Normalize(relative * _baselineLocal);
+            CurrentLocal = SmoothQuaternion(CurrentLocal, TargetLocal, dt, 24f);
+        }
+
+        public void ResetImmediate()
+        {
+            HasSourceReference = false;
+            TargetLocal = _baselineLocal;
+            CurrentLocal = _baselineLocal;
         }
     }
 }

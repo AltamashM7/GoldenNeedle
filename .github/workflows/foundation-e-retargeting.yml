@@ -50,7 +50,6 @@ jobs:
           git diff --check
           python3 - <<'PY'
           from pathlib import Path
-          import re
           import subprocess
 
           foundation_e_base = '97f1541c0b2dce5dbf3843bc299a60e7088f1e9b'
@@ -110,7 +109,10 @@ jobs:
               'public HumanoidRigDetailCapabilities DetailCapabilities => _detailCapabilities;',
               'public int OptionalDetailBoneCount => _detailCapabilities.AvailableFingerBoneCount;',
               'BindOptionalDetailCapabilities();',
-          ], 'legacy body binding plus optional detail capabilities')
+              'private readonly Quaternion[] _chainTipBindLocalRotations',
+              'public Quaternion GetChainTipBindLocalRotation(CanonicalKinematicChainId id)',
+              '_chainTipBindLocalRotations[i] = tip == null ? Quaternion.identity : tip.localRotation;',
+          ], 'legacy body binding plus optional detail and chain-tip reference cache')
           all_bones = binding[binding.index('private bool AllBonesAvailable()'):binding.index('private void ClearBinding()')]
           if any(token in all_bones for token in ['_detailCapabilities', 'OptionalDetailBoneCount', 'HumanoidFingerBoneId']):
               raise SystemExit('optional detail affects legacy AllBonesAvailable/IsBound semantics')
@@ -139,7 +141,14 @@ jobs:
               'MiddleMcp, HandLandmarkId.MiddlePip',
               'RingMcp, HandLandmarkId.RingPip',
               'PinkyMcp, HandLandmarkId.PinkyPip',
-          ], 'Foundation E rich/hand detail application')
+              '_targetPalmPrimaryParentLocal', '_targetPalmSecondaryParentLocal', '_targetPalmThirdParentLocal',
+              'TryCaptureTargetPalmBindingReference', 'ApplyAbsolutePalmOrientation',
+              'TryBuildAbsolutePalmLocalRotation', 'ReturnPalmSideToReference',
+              'RestorePalmSideToReferenceImmediate', 'InvalidatePalmSourceReference',
+          ], 'Foundation E rich/hand detail application and palm reference state')
+          if 'handTransform.rotation = swing * handTransform.rotation;' in detail:
+              raise SystemExit('cumulative live-hand palm delta application reintroduced')
+
           channels_start = detail.index('private static readonly RichOrientationChannelId[] RichChannels')
           channels_end = detail.index('private static readonly CanonicalBoneId[] RichBones', channels_start)
           channels = detail[channels_start:channels_end]
@@ -159,7 +168,12 @@ jobs:
               'TryApplyAxialTwistPreservingDownstream',
               'directChild.rotation = childRotation;',
               'Vector3.Distance(childPosition, directChild.position)',
-          ], 'reflection-aware endpoint-preserving retarget math')
+              'TryBuildRelativeBasisDelta',
+              'TryBuildAbsolutePalmLocalRotation',
+              'var baselineWorldRotation = parentWorldRotation * baselineLocalRotation;',
+              'targetLocalRotation = Quaternion.Inverse(parentWorldRotation) * targetWorldRotation;',
+              'SmoothLocalRotation(',
+          ], 'reflection-aware endpoint-preserving and absolute palm retarget math')
 
           e_core = '\n'.join([detail, detail_math, capabilities, hook, explicit_detail])
           forbidden_runtime = [
@@ -178,7 +192,15 @@ jobs:
               'ParentAxialTwistCompensatesChildAndPreservesDownstreamEndpoints',
               'PartialDetailCapabilitiesCacheOnlyAvailableSegmentsAndNeverMutateAuthoredGeometry',
               'OptionalDetailCountDoesNotParticipateInLegacyBindingValidityOrCount',
-          ], 'Unity Editor Foundation E test source')
+              'RepeatedIdenticalPalmInputBuildsOneAbsoluteTargetWithoutAccumulation',
+              'RepeatedIdenticalPalmRuntimeInputConvergesWithoutFrameByFrameDrift',
+              'StaleHandSmoothlyReturnsPalmContributionToPhase4Baseline',
+              'MasterDisableImmediatelyRestoresPalmBaseline',
+              'PalmCategoryDisableReturnsPriorContributionWithoutDisablingFoundationE',
+              'ParentMotionPreservesRelativePalmContributionWithoutDrift',
+              'ReacquisitionEstablishesZeroDeltaBeforeNewRelativePalmMotion',
+              'LeftAndRightPalmFallbackRemainIndependent',
+          ], 'Unity Editor Foundation E test surface')
 
           if 'FOUNDATION_D_PRODUCTION_APPLICATION_BOUNDARY_PRESERVED=PASS' not in d_workflow:
               raise SystemExit('Foundation D permanent application boundary marker missing')
@@ -236,6 +258,10 @@ jobs:
           print('FOUNDATION_E_NO_HISTORY_BACKLOG=PASS')
           print('FOUNDATION_E_LOCKED_SCOPE_UNCHANGED=PASS')
           print('FOUNDATION_E_FOUNDATION_D_BOUNDARY_MIGRATED=PASS')
+          print('PALM_REFERENCE_NO_ACCUMULATION_GUARD=PASS')
+          print('PALM_STALE_RETURN_GUARD=PASS')
+          print('PALM_DISABLE_PHASE4_BASELINE_GUARD=PASS')
+          print('PALM_PARENT_RELATIVE_REFERENCE_GUARD=PASS')
           PY
 
       - name: Assert verification is read-only

@@ -100,6 +100,144 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             return TryNormalize(targetDirection, out targetDirection);
         }
 
+        /// <summary>
+        /// Builds one absolute world-space delta that maps a stable target reference palm basis to
+        /// the source palm's orientation relative to its stable source reference. The returned delta
+        /// depends only on the two references plus the current source basis; it never depends on a
+        /// previously E-modified hand Transform and therefore cannot accumulate frame-over-frame.
+        /// </summary>
+        public static bool TryBuildRelativeBasisDelta(
+            in CanonicalAnatomicalBasis referenceSource,
+            in CanonicalAnatomicalBasis currentSource,
+            Vector3 targetReferencePrimary,
+            Vector3 targetReferenceSecondary,
+            Vector3 targetReferenceThird,
+            out Quaternion delta,
+            out Vector3 desiredPrimary,
+            out Vector3 desiredSecondary,
+            out Vector3 desiredThird)
+        {
+            delta = Quaternion.identity;
+            desiredPrimary = Vector3.zero;
+            desiredSecondary = Vector3.zero;
+            desiredThird = Vector3.zero;
+
+            if (!referenceSource.isValid || !currentSource.isValid ||
+                !TryNormalize(referenceSource.primaryAxis, out var referencePrimary) ||
+                !TryNormalize(referenceSource.secondaryAxis, out var referenceSecondary) ||
+                !TryNormalize(referenceSource.thirdAxis, out var referenceThird) ||
+                !TryNormalize(currentSource.primaryAxis, out var currentPrimary) ||
+                !TryNormalize(currentSource.secondaryAxis, out var currentSecondary) ||
+                !TryNormalize(targetReferencePrimary, out targetReferencePrimary) ||
+                !TryNormalize(targetReferenceSecondary, out targetReferenceSecondary) ||
+                !TryNormalize(targetReferenceThird, out targetReferenceThird))
+            {
+                return false;
+            }
+
+            desiredPrimary =
+                targetReferencePrimary * Vector3.Dot(currentPrimary, referencePrimary) +
+                targetReferenceSecondary * Vector3.Dot(currentPrimary, referenceSecondary) +
+                targetReferenceThird * Vector3.Dot(currentPrimary, referenceThird);
+            if (!TryNormalize(desiredPrimary, out desiredPrimary))
+            {
+                return false;
+            }
+
+            desiredSecondary =
+                targetReferencePrimary * Vector3.Dot(currentSecondary, referencePrimary) +
+                targetReferenceSecondary * Vector3.Dot(currentSecondary, referenceSecondary) +
+                targetReferenceThird * Vector3.Dot(currentSecondary, referenceThird);
+            desiredSecondary -= desiredPrimary * Vector3.Dot(desiredSecondary, desiredPrimary);
+            if (!TryNormalize(desiredSecondary, out desiredSecondary))
+            {
+                return false;
+            }
+
+            desiredThird = Vector3.Cross(desiredPrimary, desiredSecondary);
+            if (!TryNormalize(desiredThird, out desiredThird))
+            {
+                return false;
+            }
+            desiredSecondary = Vector3.Cross(desiredThird, desiredPrimary).normalized;
+
+            var swing = Quaternion.FromToRotation(targetReferencePrimary, desiredPrimary);
+            if (!IsFinite(swing))
+            {
+                return false;
+            }
+
+            var rotatedSecondary = swing * targetReferenceSecondary;
+            rotatedSecondary -= desiredPrimary * Vector3.Dot(rotatedSecondary, desiredPrimary);
+            if (!TryNormalize(rotatedSecondary, out rotatedSecondary))
+            {
+                return false;
+            }
+
+            var sin = Vector3.Dot(desiredPrimary, Vector3.Cross(rotatedSecondary, desiredSecondary));
+            var cos = Mathf.Clamp(Vector3.Dot(rotatedSecondary, desiredSecondary), -1f, 1f);
+            var twistDegrees = Mathf.Atan2(sin, cos) * Mathf.Rad2Deg;
+            if (!IsFinite(twistDegrees))
+            {
+                return false;
+            }
+
+            delta = Quaternion.AngleAxis(twistDegrees, desiredPrimary) * swing;
+            return TryNormalize(delta, out delta);
+        }
+
+        /// <summary>
+        /// Reconstructs an absolute hand local-rotation target from a stable source reference,
+        /// a target palm basis stored in the moving hand-parent's local frame, and the hand's bind
+        /// local rotation. Parent motion therefore moves the whole reference frame without changing
+        /// the relative E palm contribution.
+        /// </summary>
+        public static bool TryBuildAbsolutePalmLocalRotation(
+            in CanonicalAnatomicalBasis referenceSource,
+            in CanonicalAnatomicalBasis currentSource,
+            Vector3 targetReferencePrimaryParentLocal,
+            Vector3 targetReferenceSecondaryParentLocal,
+            Vector3 targetReferenceThirdParentLocal,
+            Quaternion parentWorldRotation,
+            Quaternion baselineLocalRotation,
+            out Quaternion targetLocalRotation,
+            out Vector3 desiredPrimary,
+            out Vector3 desiredSecondary,
+            out Vector3 desiredThird)
+        {
+            targetLocalRotation = baselineLocalRotation;
+            desiredPrimary = Vector3.zero;
+            desiredSecondary = Vector3.zero;
+            desiredThird = Vector3.zero;
+            if (!TryNormalize(parentWorldRotation, out parentWorldRotation) ||
+                !TryNormalize(baselineLocalRotation, out baselineLocalRotation))
+            {
+                return false;
+            }
+
+            var targetReferencePrimary = parentWorldRotation * targetReferencePrimaryParentLocal;
+            var targetReferenceSecondary = parentWorldRotation * targetReferenceSecondaryParentLocal;
+            var targetReferenceThird = parentWorldRotation * targetReferenceThirdParentLocal;
+            if (!TryBuildRelativeBasisDelta(
+                    in referenceSource,
+                    in currentSource,
+                    targetReferencePrimary,
+                    targetReferenceSecondary,
+                    targetReferenceThird,
+                    out var delta,
+                    out desiredPrimary,
+                    out desiredSecondary,
+                    out desiredThird))
+            {
+                return false;
+            }
+
+            var baselineWorldRotation = parentWorldRotation * baselineLocalRotation;
+            var targetWorldRotation = delta * baselineWorldRotation;
+            targetLocalRotation = Quaternion.Inverse(parentWorldRotation) * targetWorldRotation;
+            return TryNormalize(targetLocalRotation, out targetLocalRotation);
+        }
+
         public static bool TryApplyAxialTwistPreservingDownstream(
             Transform bone,
             Transform directChild,
@@ -143,6 +281,20 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             return Mathf.Lerp(current, target, Mathf.Clamp01(t));
         }
 
+        public static Quaternion SmoothLocalRotation(
+            Quaternion current,
+            Quaternion target,
+            float deltaTime,
+            float response)
+        {
+            if (!TryNormalize(current, out current)) current = Quaternion.identity;
+            if (!TryNormalize(target, out target)) return current;
+            var dt = Mathf.Max(0f, deltaTime);
+            var t = 1f - Mathf.Exp(-Mathf.Max(0.1f, response) * dt);
+            var result = Quaternion.Slerp(current, target, Mathf.Clamp01(t));
+            return TryNormalize(result, out result) ? result : target;
+        }
+
         private static bool TryTransportVectorMinimal(
             Vector3 value,
             Vector3 fromAxis,
@@ -179,6 +331,27 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 return false;
             }
             normalized = value.normalized;
+            return IsFinite(normalized);
+        }
+
+        private static bool TryNormalize(Quaternion value, out Quaternion normalized)
+        {
+            normalized = Quaternion.identity;
+            if (!IsFinite(value))
+            {
+                return false;
+            }
+            var magnitudeSquared = value.x * value.x + value.y * value.y + value.z * value.z + value.w * value.w;
+            if (!IsFinite(magnitudeSquared) || magnitudeSquared <= 0.00000001f)
+            {
+                return false;
+            }
+            var inverseMagnitude = 1f / Mathf.Sqrt(magnitudeSquared);
+            normalized = new Quaternion(
+                value.x * inverseMagnitude,
+                value.y * inverseMagnitude,
+                value.z * inverseMagnitude,
+                value.w * inverseMagnitude);
             return IsFinite(normalized);
         }
 

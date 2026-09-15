@@ -73,7 +73,11 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         private readonly float[] _richCurrentDegrees = new float[RichLimbChannelCount];
         private readonly CanonicalAnatomicalBasis[] _handReferenceBases = new CanonicalAnatomicalBasis[2];
         private readonly bool[] _handReferenceValid = new bool[2];
-        private readonly bool[] _handWasFresh = new bool[2];
+        private readonly bool[] _palmWasFresh = new bool[2];
+        private readonly bool[] _targetPalmReferenceValid = new bool[2];
+        private readonly Vector3[] _targetPalmPrimaryParentLocal = new Vector3[2];
+        private readonly Vector3[] _targetPalmSecondaryParentLocal = new Vector3[2];
+        private readonly Vector3[] _targetPalmThirdParentLocal = new Vector3[2];
         private readonly Quaternion[] _fingerCurrentLocalRotations = new Quaternion[HumanoidRigDetailCapabilities.FingerBoneCount];
 
         private int _bindingReferenceVersion = -1;
@@ -135,11 +139,9 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         public void ResetPostSolveDetailState(HumanoidRigBinding binding)
         {
             ClearRichTargetsAndContributions();
-            for (var i = 0; i < 2; i++)
-            {
-                _handReferenceValid[i] = false;
-                _handWasFresh[i] = false;
-            }
+            ClearPalmSourceReferences();
+            RestorePalmSideToReferenceImmediate(binding, CanonicalHandSide.Left);
+            RestorePalmSideToReferenceImmediate(binding, CanonicalHandSide.Right);
             if (_capabilities.AvailableFingerBoneCount > 0)
             {
                 _capabilities.ResetRotationsToReference();
@@ -163,12 +165,13 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             {
                 _bindingReferenceVersion = binding.ReferencePoseVersion;
                 BindOptionalFingerCapabilities(binding);
+                CaptureTargetPalmBindingReferences(binding);
                 profileChanged = true;
             }
 
             if (profileChanged)
             {
-                ResetSourceReferences();
+                ResetSourceReferences(binding);
                 CaptureProfileReference(profile);
             }
         }
@@ -356,52 +359,62 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             CanonicalHandSide side,
             float deltaTime)
         {
-            var sideIndex = side == CanonicalHandSide.Left ? 0 : 1;
+            var sideIndex = SideIndex(side);
             var fresh = hand != null && hand.isFresh && hand.isDetected && hand.palmBasis.isValid;
             if (!fresh)
             {
-                _handWasFresh[sideIndex] = false;
-                _handReferenceValid[sideIndex] = false;
+                InvalidatePalmSourceReference(sideIndex);
+                ReturnPalmSideToReference(binding, side, deltaTime);
                 ReturnFingerSideToReference(side, deltaTime);
                 return;
             }
 
-            if (!_handWasFresh[sideIndex])
+            if (!enablePalmOrientation)
             {
-                // First trustworthy acquisition/reacquisition establishes a zero-delta source
-                // reference. The existing visible/reference finger state is retained this frame.
-                _handReferenceBases[sideIndex] = hand.palmBasis;
-                _handReferenceValid[sideIndex] = true;
-                _handWasFresh[sideIndex] = true;
-                return;
+                // Disabling the category removes the previous E palm contribution rather than
+                // freezing it. Re-enabling will acquire a new zero-delta source reference.
+                InvalidatePalmSourceReference(sideIndex);
+                ReturnPalmSideToReference(binding, side, deltaTime);
+            }
+            else
+            {
+                if (!_targetPalmReferenceValid[sideIndex] &&
+                    !TryCaptureTargetPalmBindingReference(binding, side))
+                {
+                    InvalidatePalmSourceReference(sideIndex);
+                    ReturnPalmSideToReference(binding, side, deltaTime);
+                    ReturnFingerSideToReference(side, deltaTime);
+                    return;
+                }
+
+                if (!_palmWasFresh[sideIndex] || !_handReferenceValid[sideIndex])
+                {
+                    // First trustworthy acquisition/reacquisition establishes a zero-delta source
+                    // reference. The target zero is the binding-version parent-local palm reference.
+                    _handReferenceBases[sideIndex] = hand.palmBasis;
+                    _handReferenceValid[sideIndex] = true;
+                    _palmWasFresh[sideIndex] = true;
+                    ReturnPalmSideToReference(binding, side, deltaTime);
+                    ReturnFingerSideToReference(side, deltaTime);
+                    return;
+                }
+
+                if (!ApplyAbsolutePalmOrientation(
+                        binding,
+                        hand,
+                        side,
+                        sideIndex,
+                        deltaTime))
+                {
+                    ReturnPalmSideToReference(binding, side, deltaTime);
+                }
             }
 
-            if (!_handReferenceValid[sideIndex])
-            {
-                _handReferenceBases[sideIndex] = hand.palmBasis;
-                _handReferenceValid[sideIndex] = true;
-                return;
-            }
-
-            if (!TryCharacterizeTargetPalm(binding, side, out var handTransform,
+            if (!TryCharacterizeTargetPalm(binding, side, out _,
                     out var targetPrimary, out var targetSecondary, out var targetThird))
             {
                 ReturnFingerSideToReference(side, deltaTime);
                 return;
-            }
-
-            if (enablePalmOrientation)
-            {
-                ApplyPalmOrientation(
-                    handTransform,
-                    in _handReferenceBases[sideIndex],
-                    in hand.palmBasis,
-                    targetPrimary,
-                    targetSecondary,
-                    targetThird);
-                // Palm rotation changes the live target basis, so characterize it again before fingers.
-                TryCharacterizeTargetPalm(binding, side, out handTransform,
-                    out targetPrimary, out targetSecondary, out targetThird);
             }
 
             if (enableFingerArticulation)
@@ -418,6 +431,105 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             {
                 ReturnFingerSideToReference(side, deltaTime);
             }
+        }
+
+        private bool ApplyAbsolutePalmOrientation(
+            HumanoidRigBinding binding,
+            CanonicalHand hand,
+            CanonicalHandSide side,
+            int sideIndex,
+            float deltaTime)
+        {
+            var chainId = ArmChain(side);
+            var handTransform = binding.GetChainTip(chainId);
+            if (handTransform == null || !_targetPalmReferenceValid[sideIndex])
+            {
+                return false;
+            }
+
+            var parentWorldRotation = handTransform.parent == null
+                ? Quaternion.identity
+                : handTransform.parent.rotation;
+            var baselineLocalRotation = binding.GetChainTipBindLocalRotation(chainId);
+            if (!FoundationERetargetMath.TryBuildAbsolutePalmLocalRotation(
+                    in _handReferenceBases[sideIndex],
+                    in hand.palmBasis,
+                    _targetPalmPrimaryParentLocal[sideIndex],
+                    _targetPalmSecondaryParentLocal[sideIndex],
+                    _targetPalmThirdParentLocal[sideIndex],
+                    parentWorldRotation,
+                    baselineLocalRotation,
+                    out var targetLocalRotation,
+                    out _,
+                    out _,
+                    out _))
+            {
+                return false;
+            }
+
+            handTransform.localRotation = FoundationERetargetMath.SmoothLocalRotation(
+                handTransform.localRotation,
+                targetLocalRotation,
+                deltaTime,
+                detailResponse);
+            return true;
+        }
+
+        private void CaptureTargetPalmBindingReferences(HumanoidRigBinding binding)
+        {
+            for (var i = 0; i < 2; i++)
+            {
+                _targetPalmReferenceValid[i] = false;
+                _targetPalmPrimaryParentLocal[i] = Vector3.zero;
+                _targetPalmSecondaryParentLocal[i] = Vector3.zero;
+                _targetPalmThirdParentLocal[i] = Vector3.zero;
+            }
+
+            TryCaptureTargetPalmBindingReference(binding, CanonicalHandSide.Left);
+            TryCaptureTargetPalmBindingReference(binding, CanonicalHandSide.Right);
+        }
+
+        private bool TryCaptureTargetPalmBindingReference(
+            HumanoidRigBinding binding,
+            CanonicalHandSide side)
+        {
+            var sideIndex = SideIndex(side);
+            if (!TryCharacterizeTargetPalm(binding, side, out var handTransform,
+                    out var livePrimary, out var liveSecondary, out var liveThird) ||
+                handTransform == null)
+            {
+                _targetPalmReferenceValid[sideIndex] = false;
+                return false;
+            }
+
+            var chainId = ArmChain(side);
+            var parentWorldRotation = handTransform.parent == null
+                ? Quaternion.identity
+                : handTransform.parent.rotation;
+            var baselineLocalRotation = binding.GetChainTipBindLocalRotation(chainId);
+            var baselineWorldRotation = parentWorldRotation * baselineLocalRotation;
+
+            // Remove any current hand-local rotation delta from the geometry before storing the
+            // reference. This makes the stored target basis a parent-local binding reference rather
+            // than a snapshot of a previously E-modified live hand.
+            var removeCurrentHandDelta = baselineWorldRotation * Quaternion.Inverse(handTransform.rotation);
+            var parentWorldInverse = Quaternion.Inverse(parentWorldRotation);
+            var primaryParentLocal = parentWorldInverse * (removeCurrentHandDelta * livePrimary);
+            var secondaryParentLocal = parentWorldInverse * (removeCurrentHandDelta * liveSecondary);
+            var thirdParentLocal = parentWorldInverse * (removeCurrentHandDelta * liveThird);
+            if (!TryNormalize(primaryParentLocal, out primaryParentLocal) ||
+                !TryNormalize(secondaryParentLocal, out secondaryParentLocal) ||
+                !TryNormalize(thirdParentLocal, out thirdParentLocal))
+            {
+                _targetPalmReferenceValid[sideIndex] = false;
+                return false;
+            }
+
+            _targetPalmPrimaryParentLocal[sideIndex] = primaryParentLocal;
+            _targetPalmSecondaryParentLocal[sideIndex] = secondaryParentLocal;
+            _targetPalmThirdParentLocal[sideIndex] = thirdParentLocal;
+            _targetPalmReferenceValid[sideIndex] = true;
+            return true;
         }
 
         private bool TryCharacterizeTargetPalm(
@@ -460,49 +572,6 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             }
             secondary = Vector3.Cross(third, primary).normalized;
             return true;
-        }
-
-        private static void ApplyPalmOrientation(
-            Transform handTransform,
-            in CanonicalAnatomicalBasis referenceSource,
-            in CanonicalAnatomicalBasis currentSource,
-            Vector3 targetPrimary,
-            Vector3 targetSecondary,
-            Vector3 targetThird)
-        {
-            if (handTransform == null || !referenceSource.isValid || !currentSource.isValid)
-            {
-                return;
-            }
-
-            var desiredPrimary =
-                targetPrimary * Vector3.Dot(currentSource.primaryAxis, referenceSource.primaryAxis) +
-                targetSecondary * Vector3.Dot(currentSource.primaryAxis, referenceSource.secondaryAxis) +
-                targetThird * Vector3.Dot(currentSource.primaryAxis, referenceSource.thirdAxis);
-            if (!TryNormalize(desiredPrimary, out desiredPrimary))
-            {
-                return;
-            }
-
-            var swing = Quaternion.FromToRotation(targetPrimary, desiredPrimary);
-            handTransform.rotation = swing * handTransform.rotation;
-
-            var rotatedSecondary = swing * targetSecondary;
-            var desiredSecondary =
-                (swing * targetPrimary) * Vector3.Dot(currentSource.secondaryAxis, referenceSource.primaryAxis) +
-                (swing * targetSecondary) * Vector3.Dot(currentSource.secondaryAxis, referenceSource.secondaryAxis) +
-                (swing * targetThird) * Vector3.Dot(currentSource.secondaryAxis, referenceSource.thirdAxis);
-            desiredSecondary -= desiredPrimary * Vector3.Dot(desiredSecondary, desiredPrimary);
-            rotatedSecondary -= desiredPrimary * Vector3.Dot(rotatedSecondary, desiredPrimary);
-            if (!TryNormalize(desiredSecondary, out desiredSecondary) ||
-                !TryNormalize(rotatedSecondary, out rotatedSecondary))
-            {
-                return;
-            }
-            var sin = Vector3.Dot(desiredPrimary, Vector3.Cross(rotatedSecondary, desiredSecondary));
-            var cos = Mathf.Clamp(Vector3.Dot(rotatedSecondary, desiredSecondary), -1f, 1f);
-            var twist = Mathf.Atan2(sin, cos) * Mathf.Rad2Deg;
-            handTransform.rotation = Quaternion.AngleAxis(twist, desiredPrimary) * handTransform.rotation;
         }
 
         private void ApplyFingerArticulation(
@@ -565,6 +634,44 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             return TryNormalize(b.handLocalPosition - a.handLocalPosition, out direction);
         }
 
+        private void ReturnPalmSideToReference(
+            HumanoidRigBinding binding,
+            CanonicalHandSide side,
+            float deltaTime)
+        {
+            if (binding == null)
+            {
+                return;
+            }
+            var chainId = ArmChain(side);
+            var hand = binding.GetChainTip(chainId);
+            if (hand == null)
+            {
+                return;
+            }
+            hand.localRotation = FoundationERetargetMath.SmoothLocalRotation(
+                hand.localRotation,
+                binding.GetChainTipBindLocalRotation(chainId),
+                deltaTime,
+                detailResponse);
+        }
+
+        private static void RestorePalmSideToReferenceImmediate(
+            HumanoidRigBinding binding,
+            CanonicalHandSide side)
+        {
+            if (binding == null)
+            {
+                return;
+            }
+            var chainId = ArmChain(side);
+            var hand = binding.GetChainTip(chainId);
+            if (hand != null)
+            {
+                hand.localRotation = binding.GetChainTipBindLocalRotation(chainId);
+            }
+        }
+
         private void ReturnFingerSideToReference(CanonicalHandSide side, float deltaTime)
         {
             var start = side == CanonicalHandSide.Left ? 0 : 15;
@@ -594,14 +701,41 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             }
         }
 
-        private void ResetSourceReferences()
+        private void ResetSourceReferences(HumanoidRigBinding binding)
         {
             ResetRichReferencesOnly();
+            ClearPalmSourceReferences();
+            RestorePalmSideToReferenceImmediate(binding, CanonicalHandSide.Left);
+            RestorePalmSideToReferenceImmediate(binding, CanonicalHandSide.Right);
+        }
+
+        private void ClearPalmSourceReferences()
+        {
             for (var i = 0; i < 2; i++)
             {
                 _handReferenceValid[i] = false;
-                _handWasFresh[i] = false;
+                _palmWasFresh[i] = false;
+                _handReferenceBases[i] = default;
             }
+        }
+
+        private void InvalidatePalmSourceReference(int sideIndex)
+        {
+            _handReferenceValid[sideIndex] = false;
+            _palmWasFresh[sideIndex] = false;
+            _handReferenceBases[sideIndex] = default;
+        }
+
+        private static CanonicalKinematicChainId ArmChain(CanonicalHandSide side)
+        {
+            return side == CanonicalHandSide.Left
+                ? CanonicalKinematicChainId.LeftArm
+                : CanonicalKinematicChainId.RightArm;
+        }
+
+        private static int SideIndex(CanonicalHandSide side)
+        {
+            return side == CanonicalHandSide.Left ? 0 : 1;
         }
 
         private void ResetRichReferencesOnly()
