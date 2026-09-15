@@ -97,7 +97,9 @@ namespace GoldenNeedle.Core.Motion.Locomotion
     /// Estimates relative camera-space room displacement from the user's support base, not torso
     /// motion. Equal-height feet use their midpoint. When one foot is clearly raised, the lower
     /// support foot becomes the physical authority. Authority changes are continuity-rebased so
-    /// switching support or reacquiring tracking cannot itself move the avatar root.
+    /// switching support or reacquiring tracking cannot itself move the avatar root. When an
+    /// alternating step completes with coherent left/right relocation, the temporary landing
+    /// rebase is released on a subsequent dual-support sample so real room translation survives.
     /// </summary>
     public sealed class CameraSpaceRootTracker
     {
@@ -131,6 +133,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         private bool _hasMeasurement;
         private bool _hasSupportAuthorityMode;
         private bool _supportAuthorityNeedsRebase;
+        private bool _supportAuthorityCanReleaseToCommon;
         private SupportAuthorityMode _supportAuthorityMode;
         private Vector2 _supportAuthorityOffset;
         private RootMeasurement _latestMeasurement;
@@ -156,6 +159,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             _hasMeasurement = false;
             _hasSupportAuthorityMode = false;
             _supportAuthorityNeedsRebase = false;
+            _supportAuthorityCanReleaseToCommon = false;
             _supportAuthorityMode = SupportAuthorityMode.Both;
             _supportAuthorityOffset = Vector2.zero;
             _latestMeasurement = default;
@@ -316,17 +320,54 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 leftDelta,
                 rightDelta);
 
-            if (!_hasSupportAuthorityMode ||
-                _supportAuthorityNeedsRebase ||
-                mode != _supportAuthorityMode)
+            if (!_hasSupportAuthorityMode)
             {
                 _supportAuthorityMode = mode;
                 _hasSupportAuthorityMode = true;
+                _supportAuthorityOffset = _filteredDisplacement - rawAuthority;
+                _supportAuthorityCanReleaseToCommon = false;
+                return rawAuthority + _supportAuthorityOffset;
+            }
+
+            if (_supportAuthorityNeedsRebase)
+            {
+                _supportAuthorityMode = mode;
                 _supportAuthorityNeedsRebase = false;
                 _supportAuthorityOffset = _filteredDisplacement - rawAuthority;
+                _supportAuthorityCanReleaseToCommon = false;
+                return rawAuthority + _supportAuthorityOffset;
+            }
+
+            if (mode != _supportAuthorityMode)
+            {
+                var previousMode = _supportAuthorityMode;
+                _supportAuthorityMode = mode;
+                _supportAuthorityOffset = _filteredDisplacement - rawAuthority;
+                _supportAuthorityCanReleaseToCommon =
+                    mode == SupportAuthorityMode.Both &&
+                    previousMode != SupportAuthorityMode.Both &&
+                    SupportDisplacementsAgree(leftDelta, rightDelta);
+                return rawAuthority + _supportAuthorityOffset;
+            }
+
+            if (mode == SupportAuthorityMode.Both &&
+                _supportAuthorityCanReleaseToCommon &&
+                SupportDisplacementsAgree(leftDelta, rightDelta))
+            {
+                _supportAuthorityOffset = Vector2.zero;
+                _supportAuthorityCanReleaseToCommon = false;
             }
 
             return rawAuthority + _supportAuthorityOffset;
+        }
+
+        private bool SupportDisplacementsAgree(
+            Vector2 leftDelta,
+            Vector2 rightDelta)
+        {
+            var tolerance = Mathf.Max(0.01f, _settings.supportBothEnter);
+            return Mathf.Abs(leftDelta.x - rightDelta.x) <= tolerance &&
+                Mathf.Abs(leftDelta.y - rightDelta.y) <= tolerance;
         }
 
         private SupportAuthorityMode ResolveSupportAuthorityMode(
@@ -424,6 +465,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             _pendingRecenter = false;
             _supportAuthorityOffset = Vector2.zero;
             _supportAuthorityNeedsRebase = false;
+            _supportAuthorityCanReleaseToCommon = false;
             var scale = Mathf.Max(
                 _settings.minimumImageMeasurement,
                 measurement.apparentScale);
@@ -468,6 +510,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             if (_hasReference)
             {
                 _supportAuthorityNeedsRebase = true;
+                _supportAuthorityCanReleaseToCommon = false;
             }
 
             LatestSample = new CameraSpaceRootSample
