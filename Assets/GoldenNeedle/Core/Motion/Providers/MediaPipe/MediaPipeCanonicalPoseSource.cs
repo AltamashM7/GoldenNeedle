@@ -14,14 +14,18 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
     /// remains owned entirely by MediaPipePoseProvider.
     /// </summary>
     [RequireComponent(typeof(MediaPipePoseProvider))]
-    public sealed class MediaPipeCanonicalPoseSource : MonoBehaviour, ICanonicalPoseSource, IRichMotionEvidenceSource, ICanonicalHandSource
+    public sealed class MediaPipeCanonicalPoseSource : MonoBehaviour, ICanonicalPoseSource, IRichMotionEvidenceSource, ICanonicalHandSource, ICoarseHandStateSource
     {
         [SerializeField] private MediaPipePoseProvider provider;
         [Header("Foundation D")]
         [Tooltip("Experimental high-detail Hand Landmarker stream. Disabled by default for the low-end baseline.")]
         [SerializeField] private bool enableDetailedHands = false;
+        [Header("Coarse Hands")]
+        [SerializeField] private CoarseHandEstimatorSettings coarseHandSettings = CoarseHandEstimatorSettings.CreateDefault();
 
         private readonly PoseObservation _observation = new PoseObservation();
+        private readonly CoarseHandStateTracker _coarseHandTracker = new CoarseHandStateTracker();
+        private readonly CoarseHandFrame _coarseHandFrame = new CoarseHandFrame();
         private MediaPipeHandLandmarkerSource _handSource;
         private HandMotionRuntime _handRuntime;
         private Stopwatch _providerTimelineClock;
@@ -31,12 +35,14 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public int CoordinateConventionVersion => provider == null ? 0 : provider.CoordinateConventionVersion;
         public string RichMotionSourceId => MediaPipeRichMotionEvidenceMapper.SourceProviderId;
         public string HandSourceId => MediaPipeHandLandmarkerSource.SourceProviderId;
+        public string CoarseHandSourceId => MediaPipeCoarseHandEvidenceMapper.SourceProviderId;
         public bool DetailedHandsEnabled => enableDetailedHands;
         public string HandDiagnosticSummary => !enableDetailedHands
             ? "Hands: detailed tracking disabled (experimental)"
             : _handSource == null
                 ? "Hands: source not initialized"
                 : _handSource.DiagnosticSummary;
+        public string CoarseHandDiagnosticSummary => FormatCoarseHandSummary(_coarseHandFrame);
 
         // Rich/body evaluation and Foundation D hand freshness use the same Stopwatch epoch that
         // already timestamps MediaPipePoseProvider inference. There is no Unity-time fallback here.
@@ -48,6 +54,8 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         {
             provider = provider == null ? GetComponent<MediaPipePoseProvider>() : provider;
             MediaPipePoseProviderTimeline.TryGetTimelineClock(provider, out _providerTimelineClock);
+            coarseHandSettings.Sanitize();
+            _coarseHandFrame.Clear();
 
             // Keep the lightweight consumer present so Foundation E resolves it once, but do not
             // create the expensive Hand Landmarker source for the normal low-end baseline.
@@ -70,6 +78,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private void OnDisable()
         {
+            _coarseHandTracker.Reset(_coarseHandFrame);
             if (_handSource != null)
             {
                 _handSource.SetTrackingEnabled(false);
@@ -83,6 +92,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
 
         private void OnValidate()
         {
+            coarseHandSettings.Sanitize();
             if (Application.isPlaying)
             {
                 ApplyDetailedHandTrackingState();
@@ -146,10 +156,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             if (provider == null)
             {
                 destination.Clear();
+                _coarseHandTracker.Reset(_coarseHandFrame);
                 return false;
             }
 
             provider.CopyLatestObservation(_observation);
+            UpdateCoarseHandsFromObservation();
             MediaPipeCanonicalPoseMapper.Map(_observation, destination);
             return destination.hasMeaningfulPose;
         }
@@ -176,6 +188,24 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             return destination.hasEvidence;
         }
 
+        public bool TryCopyLatestCoarseHands(
+            double evaluationTimeSeconds,
+            CoarseHandFrame destination)
+        {
+            if (destination == null)
+            {
+                return false;
+            }
+
+            _coarseHandTracker.Refresh(
+                CoarseHandSourceId,
+                evaluationTimeSeconds,
+                coarseHandSettings,
+                _coarseHandFrame);
+            destination.CopyFrom(_coarseHandFrame);
+            return destination.sourceAvailable;
+        }
+
         public bool TryCopyLatestCanonicalHands(
             CanonicalPoseFrame latestBodyPose,
             double evaluationTimeSeconds,
@@ -194,6 +224,41 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 latestBodyPose,
                 evaluationTimeSeconds,
                 destination);
+        }
+
+        private void UpdateCoarseHandsFromObservation()
+        {
+            MediaPipeCoarseHandEvidenceMapper.Map(
+                _observation,
+                out var left,
+                out var right);
+            _coarseHandTracker.Update(
+                CoarseHandSourceId,
+                in left,
+                in right,
+                EvaluationTimeSeconds,
+                coarseHandSettings,
+                _coarseHandFrame);
+        }
+
+        private static string FormatCoarseHandSummary(CoarseHandFrame frame)
+        {
+            if (frame == null || !frame.sourceAvailable)
+            {
+                return "Coarse hands: unavailable";
+            }
+            return $"Coarse hands: L={FormatCoarseHand(frame.Left)} | R={FormatCoarseHand(frame.Right)}";
+        }
+
+        private static string FormatCoarseHand(CoarseHandStateSample sample)
+        {
+            var reason = sample.instantaneousState == CoarseHandState.Unknown &&
+                sample.unknownReason != CoarseHandUnknownReason.None
+                    ? $"({sample.unknownReason})"
+                    : string.Empty;
+            return
+                $"{sample.state} {sample.evidenceStrength:0.00} raw={sample.instantaneousState}{reason} " +
+                $"i/p/s={sample.metrics.indexExtension:0.00}/{sample.metrics.pinkyExtension:0.00}/{sample.metrics.indexPinkySpread:0.00}";
         }
     }
 }
