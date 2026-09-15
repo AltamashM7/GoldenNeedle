@@ -17,6 +17,12 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [Tooltip("Floor used when correcting shoulder/hip width for torso yaw.")]
         [Range(0.15f, 0.70f)] public float minimumYawCosine = 0.30f;
 
+        [Tooltip("Normalized foot-height separation required to enter single-foot support authority.")]
+        [Min(0.01f)] public float supportSingleFootEnter = 0.12f;
+
+        [Tooltip("Normalized foot-height separation below which support authority returns to both feet.")]
+        [Min(0f)] public float supportBothEnter = 0.06f;
+
         [Tooltip("Differential foot-Y magnitude where gait asymmetry begins reducing camera-depth trust.")]
         [Min(0f)] public float depthDifferentialStart = 0.05f;
 
@@ -43,6 +49,11 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             minimumJointConfidence = Mathf.Clamp01(Safe(minimumJointConfidence, 0.40f));
             minimumImageMeasurement = Mathf.Max(0.001f, Safe(minimumImageMeasurement, 0.005f));
             minimumYawCosine = Mathf.Clamp(Safe(minimumYawCosine, 0.30f), 0.15f, 0.70f);
+            supportSingleFootEnter = Mathf.Max(0.01f, Safe(supportSingleFootEnter, 0.12f));
+            supportBothEnter = Mathf.Clamp(
+                Safe(supportBothEnter, 0.06f),
+                0f,
+                Mathf.Max(0f, supportSingleFootEnter - 0.005f));
             depthDifferentialStart = Mathf.Max(
                 0f,
                 Safe(depthDifferentialStart, 0.05f));
@@ -84,13 +95,19 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
     /// <summary>
     /// Estimates relative camera-space room displacement from the user's support base, not torso
-    /// motion. Each support foot is built from ankle/heel/toe image observations and compared with
-    /// that same foot's recenter reference. The midpoint/common displacement drives physical room
-    /// position continuously; the half-difference indicates asymmetric gait and only reduces depth
-    /// trust. Torso geometry remains auxiliary scale/depth evidence and never initiates translation.
+    /// motion. Equal-height feet use their midpoint. When one foot is clearly raised, the lower
+    /// support foot becomes the physical authority. Authority changes are continuity-rebased so
+    /// switching support or reacquiring tracking cannot itself move the avatar root.
     /// </summary>
     public sealed class CameraSpaceRootTracker
     {
+        private enum SupportAuthorityMode
+        {
+            Both,
+            Left,
+            Right,
+        }
+
         private struct SupportFootMeasurement
         {
             public Vector2 imagePosition;
@@ -112,6 +129,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         private bool _pendingRecenter;
         private bool _hasFilteredDisplacement;
         private bool _hasMeasurement;
+        private bool _hasSupportAuthorityMode;
+        private bool _supportAuthorityNeedsRebase;
+        private SupportAuthorityMode _supportAuthorityMode;
+        private Vector2 _supportAuthorityOffset;
         private RootMeasurement _latestMeasurement;
         private RootMeasurement _referenceMeasurement;
         private Vector2 _filteredDisplacement;
@@ -133,6 +154,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             _pendingRecenter = false;
             _hasFilteredDisplacement = false;
             _hasMeasurement = false;
+            _hasSupportAuthorityMode = false;
+            _supportAuthorityNeedsRebase = false;
+            _supportAuthorityMode = SupportAuthorityMode.Both;
+            _supportAuthorityOffset = Vector2.zero;
             _latestMeasurement = default;
             _referenceMeasurement = default;
             _filteredDisplacement = Vector2.zero;
@@ -175,8 +200,6 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
             if (!_hasReference || _pendingRecenter)
             {
-                // Initial origin needs a stable body-scale reference. Later tracking can continue
-                // from feet alone even when upper-body scale is temporarily unavailable.
                 if (!measurement.hasBodyScale)
                 {
                     PublishHolding();
@@ -210,20 +233,17 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                     _referenceMeasurement.rightFoot.imagePosition.y) /
                 referenceScale;
 
-            // Canonical image X already follows the fixed camera/view frame. Canonical image Y is
-            // bottom-up; a support base moving farther from the camera appears higher, so +dY is
-            // the same sign as camera +Z (away).
             var commonDisplacement = (leftDelta + rightDelta) * 0.5f;
             var differentialDisplacement = (leftDelta - rightDelta) * 0.5f;
+            var authorityDisplacement = ResolveAuthorityDisplacement(
+                measurement,
+                leftDelta,
+                rightDelta,
+                referenceScale);
 
-            // Lateral room motion follows the support centroid continuously. One foot beginning a
-            // real step therefore moves the midpoint immediately instead of forcing a hard HOLD.
             var targetDisplacement = _filteredDisplacement;
-            targetDisplacement.x = commonDisplacement.x;
+            targetDisplacement.x = authorityDisplacement.x;
 
-            // Differential foot-Y motion is expected during gait/jogging. It progressively lowers
-            // confidence in interpreting support midpoint Y as camera-depth movement, but it does
-            // not invalidate otherwise trustworthy lateral support tracking.
             var differentialDepth = Mathf.Abs(differentialDisplacement.y);
             var depthReliability = 1f - Mathf.SmoothStep(
                 0f,
@@ -232,7 +252,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                     _settings.depthDifferentialStart,
                     _settings.depthDifferentialFull,
                     differentialDepth));
-            var supportDepth = commonDisplacement.y;
+            var supportDepth = authorityDisplacement.y;
             var depthCorroborated = false;
 
             if (Mathf.Abs(supportDepth) <=
@@ -258,8 +278,6 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                     Mathf.Abs(bodyDepthEvidence) >=
                     _settings.minimumDepthScaleEvidence)
                 {
-                    // Common support movement remains the authority. Torso scale only corroborates
-                    // depth, while differential gait motion smoothly attenuates the new update.
                     targetDisplacement.y = Mathf.Lerp(
                         _filteredDisplacement.y,
                         supportDepth,
@@ -286,6 +304,109 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             return LatestSample;
         }
 
+        private Vector2 ResolveAuthorityDisplacement(
+            RootMeasurement measurement,
+            Vector2 leftDelta,
+            Vector2 rightDelta,
+            float referenceScale)
+        {
+            var mode = ResolveSupportAuthorityMode(measurement, referenceScale);
+            var rawAuthority = SelectAuthorityDisplacement(
+                mode,
+                leftDelta,
+                rightDelta);
+
+            if (!_hasSupportAuthorityMode ||
+                _supportAuthorityNeedsRebase ||
+                mode != _supportAuthorityMode)
+            {
+                _supportAuthorityMode = mode;
+                _hasSupportAuthorityMode = true;
+                _supportAuthorityNeedsRebase = false;
+                _supportAuthorityOffset = _filteredDisplacement - rawAuthority;
+            }
+
+            return rawAuthority + _supportAuthorityOffset;
+        }
+
+        private SupportAuthorityMode ResolveSupportAuthorityMode(
+            RootMeasurement measurement,
+            float referenceScale)
+        {
+            var scale = measurement.hasBodyScale
+                ? Mathf.Max(
+                    _settings.minimumImageMeasurement,
+                    measurement.apparentScale)
+                : referenceScale;
+            var signedHeightDifference =
+                (measurement.leftFoot.imagePosition.y -
+                    measurement.rightFoot.imagePosition.y) /
+                Mathf.Max(_settings.minimumImageMeasurement, scale);
+
+            if (!_hasSupportAuthorityMode)
+            {
+                return InitialSupportAuthorityMode(signedHeightDifference);
+            }
+
+            switch (_supportAuthorityMode)
+            {
+                case SupportAuthorityMode.Left:
+                    if (signedHeightDifference >= _settings.supportSingleFootEnter)
+                    {
+                        return SupportAuthorityMode.Right;
+                    }
+                    if (Mathf.Abs(signedHeightDifference) <= _settings.supportBothEnter)
+                    {
+                        return SupportAuthorityMode.Both;
+                    }
+                    return SupportAuthorityMode.Left;
+
+                case SupportAuthorityMode.Right:
+                    if (signedHeightDifference <= -_settings.supportSingleFootEnter)
+                    {
+                        return SupportAuthorityMode.Left;
+                    }
+                    if (Mathf.Abs(signedHeightDifference) <= _settings.supportBothEnter)
+                    {
+                        return SupportAuthorityMode.Both;
+                    }
+                    return SupportAuthorityMode.Right;
+
+                default:
+                    return InitialSupportAuthorityMode(signedHeightDifference);
+            }
+        }
+
+        private SupportAuthorityMode InitialSupportAuthorityMode(
+            float signedHeightDifference)
+        {
+            if (signedHeightDifference >= _settings.supportSingleFootEnter)
+            {
+                return SupportAuthorityMode.Right;
+            }
+            if (signedHeightDifference <= -_settings.supportSingleFootEnter)
+            {
+                return SupportAuthorityMode.Left;
+            }
+            return SupportAuthorityMode.Both;
+        }
+
+        private static Vector2 SelectAuthorityDisplacement(
+            SupportAuthorityMode mode,
+            Vector2 leftDelta,
+            Vector2 rightDelta)
+        {
+            switch (mode)
+            {
+                case SupportAuthorityMode.Left:
+                    return leftDelta;
+                case SupportAuthorityMode.Right:
+                    return rightDelta;
+                default:
+                    return (leftDelta + rightDelta) * 0.5f;
+            }
+        }
+
         private void CaptureReference(RootMeasurement measurement)
         {
             if (!measurement.hasBodyScale && _hasReference)
@@ -301,6 +422,17 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             _hasFilteredDisplacement = true;
             _hasReference = true;
             _pendingRecenter = false;
+            _supportAuthorityOffset = Vector2.zero;
+            _supportAuthorityNeedsRebase = false;
+            var scale = Mathf.Max(
+                _settings.minimumImageMeasurement,
+                measurement.apparentScale);
+            var signedHeightDifference =
+                (measurement.leftFoot.imagePosition.y -
+                    measurement.rightFoot.imagePosition.y) / scale;
+            _supportAuthorityMode = InitialSupportAuthorityMode(
+                signedHeightDifference);
+            _hasSupportAuthorityMode = true;
         }
 
         private void ApplyFilter(Vector2 targetDisplacement, float deltaTime)
@@ -333,6 +465,11 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
         private void PublishHolding()
         {
+            if (_hasReference)
+            {
+                _supportAuthorityNeedsRebase = true;
+            }
+
             LatestSample = new CameraSpaceRootSample
             {
                 isValid = false,
