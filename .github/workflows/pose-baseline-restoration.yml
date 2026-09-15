@@ -10,6 +10,8 @@ on:
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs'
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs'
       - 'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs.meta'
       - 'Assets/GoldenNeedle/Core/Motion/Rotation/CanonicalRotationSolver.cs'
       - 'Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs'
       - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs'
@@ -102,7 +104,7 @@ jobs:
           if 'Queue<' in provider or 'ConcurrentQueue<' in provider:
               raise SystemExit('queue/backlog type detected in optimized body provider')
 
-          forbidden_runtime = ['IRichMotionEvidenceSource', 'RichMotionEvidenceFrame', 'RichAnatomicalOrientationSolver', 'UpdateRichMotion(']
+          forbidden_runtime = ['IRichMotionEvidenceSource', 'RichMotionEvidenceFrame', 'RichMotionFrame', 'RichAnatomicalOrientationSolver', 'UpdateRichMotion(']
           found = [item for item in forbidden_runtime if item in runtime]
           if found:
               raise SystemExit(f'Foundation C runtime production work remains: {found}')
@@ -126,6 +128,14 @@ jobs:
               raise SystemExit('Phase 4 retargeter no longer consumes accepted AvatarDriveFrame')
           if 'RichHumanoidDetailRetargeter' in presenter:
               raise SystemExit('Presenter still auto-composes Foundation E detail layer')
+
+          obsolete_rich_detail_paths = [
+              Path('Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs'),
+              Path('Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs.meta'),
+          ]
+          existing = [str(path) for path in obsolete_rich_detail_paths if path.exists()]
+          if existing:
+              raise SystemExit(f'obsolete Foundation E live-compiled detail component still exists: {existing}')
 
           coarse_paths = [
               '.github/workflows/foundation-d-coarse-hand.yml',
@@ -185,6 +195,7 @@ jobs:
           print('FOUNDATION_C_RUNTIME_DISCONNECTED=PASS')
           print('FOUNDATION_D_RUNTIME_DISCONNECTED=PASS')
           print('FOUNDATION_E_RUNTIME_DISCONNECTED=PASS')
+          print('RICH_DETAIL_COMPILE_DEPENDENCY_REMOVED=PASS')
           print('BATCH4A_COARSE_REMOVED=PASS')
           print('CANONICAL_BODY_V1_PHASE4_PRESERVED=PASS')
           print('SPEECH_DEFAULTS_ALL_LOW=PASS')
