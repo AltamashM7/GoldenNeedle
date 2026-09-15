@@ -172,7 +172,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 }
                 catch (Exception exception)
                 {
-                    Debug.LogWarning($"[Foundation D] Optional hand task shutdown warning: {exception.Message}");
+                    UnityEngine.Debug.LogWarning($"[Foundation D] Optional hand task shutdown warning: {exception.Message}");
                 }
                 _landmarker = null;
             }
