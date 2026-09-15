@@ -17,7 +17,7 @@ Active branch: `engine/pose-tracking-spike`
 
 ## Current branch checkpoint and immediate context
 
-The latest runtime/code checkpoint before this documentation refresh is:
+The latest runtime/code checkpoint before the documentation handoff is:
 
 `ee5a64d479c0710a0548cdbe0bbb90bbe80efc40`
 
@@ -68,6 +68,62 @@ Only after foundation QA is complete, return to Phase 5A acceptance/fixes
 ```
 
 Deferred QA never implies USER acceptance.
+
+## Optimization continuity
+
+The previous Orchestrator also owned the OpenVINO/latency/responsiveness optimization track that produced the current body pipeline. Foundations A–E sit on top of that optimized baseline rather than replacing it.
+
+A dedicated continuity document now exists:
+
+`Docs/optimization-orchestrator-handoff.md`
+
+The next Orchestrator must read it before changing inference, camera acquisition, scheduling, body-input resolution, avatar-drive filtering, or other optimization-sensitive behavior.
+
+It records the accepted chronology and measurements for:
+
+- body reference/input downscale;
+- Immediate Launch After Readback;
+- DirectCPU readback;
+- Sentis GPUCompute rejection on Intel HD 620;
+- OpenVINO CPU FP32 selection;
+- reuse-first MediaPipe/OpenVINO architecture;
+- Gate A/Gate B parity/capacity evidence;
+- native Unity OpenVINO integration;
+- persistent worker + two-slot latest-frame mailbox;
+- WebCamCPU/GetPixels32 acquisition;
+- near-camera-cadence USER evidence;
+- Raw vs Stable avatar-drive latency isolation;
+- responsive A/B/C/D avatar-only filter experiments;
+- accepted/rejected/deferred optimization decisions;
+- the required diagnosis order before reopening performance architecture.
+
+The current best-tested body path remains:
+
+```text
+Unity WebCamTexture
+  -> WebCamCPU/GetPixels32 reusable acquisition
+  -> reusable CPU preparation/downscale to 320x240
+  -> one active + one replaceable newest pending body frame
+  -> persistent OpenVINO CPU FP32 worker
+  -> MediaPipe 0.10.22 pose semantics
+  -> 33 normalized + world landmarks
+  -> Golden Needle canonical mapping
+  -> stable calibration/locomotion path
+  -> selectable avatar-drive filtering
+  -> Phase 4 positional retarget
+  -> optional Foundation E post-solve detail
+  -> avatar presentation
+```
+
+Current rules that must remain preserved:
+
+- stock MediaPipe/TFLite remains available as fallback/reference;
+- ExistingReadback remains available as fallback/reference;
+- latest useful frame wins; no FIFO/history/replay/catch-up queue;
+- Stable Phase 3 canonical filtering remains calibration/locomotion authority;
+- Phase 4 signed mapping and analytic two-bone IK remain positional authority;
+- hand tracking is optional and must not make body tracking fail;
+- optional detail/finger bones must not become required body binding.
 
 ## Foundation E implementation summary
 
@@ -170,35 +226,6 @@ The next Orchestrator should update the permanent guard narrowly so it permits t
 
 Foundation D run `34939208754` at `c44bd4137900876c38d2ceae475967ed53644e86` completed **SUCCESS** after the relevant D-side compile fixes.
 
-## Current best-tested body runtime path
-
-The established low-end body path remains:
-
-```text
-Unity WebCamTexture
-  -> WebCamCPU/GetPixels32 reusable acquisition
-  -> reusable CPU preparation/downscale to 320x240
-  -> one active + one replaceable newest pending body frame
-  -> persistent OpenVINO CPU FP32 worker
-  -> MediaPipe 0.10.22 pose semantics
-  -> 33 normalized + world landmarks
-  -> Golden Needle canonical mapping
-  -> stable calibration/locomotion path
-  -> Phase 4 positional retarget
-  -> optional Foundation E post-solve detail
-  -> avatar presentation
-```
-
-Current rules that must remain preserved:
-
-- stock MediaPipe/TFLite remains available as fallback/reference;
-- ExistingReadback remains available as fallback/reference;
-- latest useful frame wins; no FIFO/history/replay/catch-up queue;
-- Stable Phase 3 canonical filtering remains calibration/locomotion authority;
-- Phase 4 signed mapping and analytic two-bone IK remain positional authority;
-- hand tracking is optional and must not make body tracking fail;
-- optional detail/finger bones must not become required body binding.
-
 ## Foundation D hand tracking
 
 Foundation D remains a separate optional MediaPipe Hand Landmarker stream alongside the body provider.
@@ -252,10 +279,11 @@ Do not start fixing Phase 5A during the foundation QA session. Collect foundatio
 Use these documents in this order:
 
 1. `Docs/current-state.md` — current status and immediate governance.
-2. `Docs/decisions.md` — architecture/product decisions; where older wording conflicts with current-state, current-state wins.
+2. `Docs/optimization-orchestrator-handoff.md` — optimization/OpenVINO/latency continuity and accepted performance decisions.
 3. `Docs/orchestrator-handoff.md` — current handoff/resume brief for the next Orchestrator.
-4. `Docs/pre-phase5a-foundations.md` — foundation architecture/requirements.
-5. `Docs/architecture.md` and `Docs/motion-engine.md` — accepted detailed architecture/phase design.
+4. `Docs/decisions.md` — architecture/product decisions; where older wording conflicts with current-state, current-state wins.
+5. `Docs/pre-phase5a-foundations.md` — foundation architecture/requirements.
+6. `Docs/architecture.md` and `Docs/motion-engine.md` — accepted detailed architecture/phase design.
 
 Historical worker briefs and experiment progress files do not override newer current-state documentation.
 
@@ -266,9 +294,11 @@ The USER will perform the comprehensive Foundations A–E Unity/manual/runtime Q
 The next Orchestrator must:
 
 1. inspect the live branch and these docs before acting;
-2. ingest the USER QA result as the decisive runtime evidence;
-3. distinguish Foundation A–E failures from already-known Phase 5A issues;
-4. fix only genuine regressions/blockers;
-5. correct the Foundation E workflow's compile-fix scope false positive narrowly;
-6. only after the comprehensive foundation QA is assessed and accepted should Phase 5A work resume;
-7. do not merge to `main` without explicit USER approval.
+2. read the optimization handoff before changing performance-sensitive code;
+3. ingest the USER QA result as the decisive runtime evidence;
+4. distinguish Foundation A–E failures from already-known Phase 5A issues and from optimization regressions;
+5. for performance complaints, identify the slow pipeline stage before changing architecture;
+6. fix only genuine regressions/blockers;
+7. correct the Foundation E workflow's compile-fix scope false positive narrowly;
+8. only after the comprehensive foundation QA is assessed and accepted should Phase 5A work resume;
+9. do not merge to `main` without explicit USER approval.
