@@ -134,6 +134,11 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 _rigBinding = gameObject.AddComponent<HumanoidRigBinding>();
             }
 
+            if (GetComponent<RichHumanoidDetailRetargeter>() == null)
+            {
+                gameObject.AddComponent<RichHumanoidDetailRetargeter>();
+            }
+
             retargeter = retargeter == null ? GetComponent<HumanoidRetargeter>() : retargeter;
             if (retargeter == null)
             {
