@@ -5,35 +5,223 @@ on:
     branches:
       - engine/pose-tracking-spike
     paths:
+      - 'Assets/GoldenNeedle/Core/Motion/Hands/**'
+      - 'Assets/GoldenNeedle/Core/Motion/Hands.meta'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkMapper.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource*.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource*.cs.meta'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs'
+      - 'Assets/GoldenNeedle/Tests/Editor/FoundationDHandTrackingTests.cs'
+      - 'Tools/FoundationDHandSmoke/**'
+      - 'Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task.source.txt'
+      - '.github/workflows/foundation-c-rich-motion.yml'
       - '.github/workflows/foundation-d-hand-tracking.yml'
+      - 'Docs/current-state.md'
+      - 'Docs/decisions.md'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  acquire-official-model:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
-      - name: Download official MediaPipe Hand Landmarker bundle
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Foundation A command and speech smoke
+        run: dotnet run --configuration Release --project Tools/FoundationACommandSmoke/FoundationACommandSmoke.csproj
+
+      - name: Run Foundation B camera preset smoke
+        run: dotnet run --configuration Release --project Tools/FoundationBCameraSmoke/FoundationBCameraSmoke.csproj
+
+      - name: Run Foundation C rich motion smoke
+        run: dotnet run --configuration Release --project Tools/FoundationCRichMotionSmoke/FoundationCRichMotionSmoke.csproj
+
+      - name: Run Foundation D hand math and scheduler smoke
+        run: dotnet run --configuration Release --project Tools/FoundationDHandSmoke/FoundationDHandSmoke.csproj
+
+      - name: Verify official Hand Landmarker bundle identity
         shell: bash
         run: |
           set -euo pipefail
-          # Version 1 is the versioned target used by Google's official MediaPipe samples.
           url='https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task'
-          curl --fail --location --retry 3 --output hand_landmarker.task "$url"
-          test -s hand_landmarker.task
-          sha256sum hand_landmarker.task | tee hand_landmarker.sha256
-          stat --printf='HAND_LANDMARKER_BYTES=%s\n' hand_landmarker.task
-          echo "HAND_LANDMARKER_SOURCE=$url"
+          curl --fail --location --retry 3 --output /tmp/hand_landmarker.task "$url"
+          test "$(stat --printf='%s' /tmp/hand_landmarker.task)" = '7819105'
+          echo 'fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1  /tmp/hand_landmarker.task' | sha256sum --check --strict
+          echo 'FOUNDATION_D_OFFICIAL_MODEL_IDENTITY=PASS'
 
-      - name: Publish official model as acquisition artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: foundation-d-official-hand-landmarker
-          path: |
-            hand_landmarker.task
-            hand_landmarker.sha256
-          if-no-files-found: error
-          retention-days: 1
+      - name: Validate Foundation D architecture and locked scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          foundation_d_base = 'be31440fd2bdde27ab586b4f1f6d668f45fe01c0'
+          hands_dir = Path('Assets/GoldenNeedle/Core/Motion/Hands')
+          hand_core = '\n'.join(p.read_text(encoding='utf-8') for p in hands_dir.glob('*.cs'))
+          contract = (hands_dir / 'CanonicalHandFrame.cs').read_text(encoding='utf-8')
+          association = (hands_dir / 'HandAssociationSolver.cs').read_text(encoding='utf-8')
+          scheduler = (hands_dir / 'BoundedHandInferenceScheduler.cs').read_text(encoding='utf-8')
+          interface = (hands_dir / 'ICanonicalHandSource.cs').read_text(encoding='utf-8')
+          provider_paths = [
+              Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.cs'),
+              Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.Capture.cs'),
+              Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.Results.cs'),
+          ]
+          provider = '\n'.join(path.read_text(encoding='utf-8') for path in provider_paths)
+          capture = provider_paths[1].read_text(encoding='utf-8')
+          mapper = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkMapper.cs').read_text(encoding='utf-8')
+          source = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs').read_text(encoding='utf-8')
+          editor_tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationDHandTrackingTests.cs').read_text(encoding='utf-8')
+          provenance = Path('Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task.source.txt').read_text(encoding='utf-8')
+          workflow = Path('.github/workflows/foundation-d-hand-tracking.yml').read_text(encoding='utf-8')
+
+          def require(text, markers, label):
+              missing = [marker for marker in markers if marker not in text]
+              if missing:
+                  raise SystemExit(f'{label}: missing {missing}')
+
+          require(contract, [
+              'public const int LandmarkCount = 21;',
+              'Wrist = 0,', 'ThumbCmc = 1,', 'ThumbTip = 4,',
+              'IndexMcp = 5,', 'IndexTip = 8,', 'MiddleMcp = 9,', 'MiddleTip = 12,',
+              'RingMcp = 13,', 'RingTip = 16,', 'PinkyMcp = 17,', 'PinkyTip = 20,',
+              'public Vector2 imagePosition;', 'public Vector3 handLocalPosition;',
+              'public CanonicalAnatomicalBasis palmBasis',
+              'maximumHandAgeMilliseconds = 350f',
+              'maximumBodyHandSkewMilliseconds = 200f',
+          ], 'provider-independent hand contract')
+          if 'Mediapipe' in hand_core or 'MediaPipe' in hand_core:
+              raise SystemExit('MediaPipe-specific types/names leaked into project-owned hand core')
+          if 'Quaternion' in hand_core:
+              raise SystemExit('Quaternion leaked into canonical hand/palm orientation authority')
+          if 'worldPosition' in contract:
+              raise SystemExit('hand-local geometry is mislabeled as body/world position')
+
+          require(interface, ['public interface ICanonicalHandSource', 'TryCopyLatestCanonicalHands'], 'optional hand source')
+          require(association, [
+              'PoseWristProximity', 'PoseSingleWrist', 'HandednessFallback', 'Ambiguous',
+              'AssociatePair(', 'AssociateSingle(', 'ResolveDuplicateSides(',
+          ], 'association policy')
+          require(scheduler, [
+              'public bool HasActive', 'public bool HasPending', 'PendingSequence',
+              'ReplacedPendingCount', 'Offer(', 'CompleteActive(', 'PromotePending(',
+          ], 'bounded scheduler')
+          if any(token in scheduler for token in ['Queue<', 'ConcurrentQueue<', 'List<long>', 'List<Hand']):
+              raise SystemExit('hand scheduler contains a historical FIFO/backlog structure')
+
+          require(provider, [
+              'HandLandmarkerOptions(', 'RunningMode.LIVE_STREAM', 'BaseOptions.Delegate.CPU',
+              'numHands: 2', 'targetHandInferenceFps = 12f',
+              'handInputWidth = 480', 'handInputHeight = 360',
+              'cameraTexture.GetPixels32(_capturePixels)',
+              'WebCamCpuFramePreparation.PrepareRgba(',
+              'private NativeArray<byte> _slotA;', 'private NativeArray<byte> _slotB;',
+              'BoundedHandInferenceScheduler',
+              'OfficialModelVersion = "float16/1"',
+              'OfficialModelSha256 = "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"',
+              'VerifyBytesSha256', 'VerifyFileSha256',
+              'RestartForCoordinateConvention()', 'ClearSessionState()',
+          ], 'MediaPipe Hand Landmarker provider')
+          callback = capture[capture.index('private void OnHandResult'):capture.index('private static void CopyTaskResult')]
+          forbidden_callback = ['Transform', 'GameObject', 'GetComponent', 'Time.', 'GUI.', 'Debug.', 'UnityWebRequest']
+          found = [token for token in forbidden_callback if token in callback]
+          if found:
+              raise SystemExit(f'hand callback touches Unity scene/runtime APIs: {found}')
+
+          require(mapper, [
+              'private static readonly HandLandmarkId[] SemanticIds',
+              'CanonicalCoordinateSystem.MediaPipeNormalizedToCanonicalImage',
+              'landmark.handLocalPosition = CanonicalCoordinateSystem.MediaPipeWorldToCanonical',
+              'HandFeatureSolver.PopulateDerivedFeatures',
+          ], 'MediaPipe mapping boundary')
+          if not re.search(r'SemanticIds\s*=\s*\{', mapper):
+              raise SystemExit('semantic hand-index mapping is missing')
+          require(source, [
+              'ICanonicalPoseSource, IRichMotionEvidenceSource, ICanonicalHandSource',
+              'gameObject.AddComponent<MediaPipeHandLandmarkerSource>()',
+              'gameObject.AddComponent<HandMotionRuntime>()',
+              'TryCopyLatestCanonicalHands(',
+          ], 'code-owned optional hand wiring')
+
+          require(editor_tests, [
+              'SemanticContractHasExactlyTwentyOneStableLandmarks',
+              'PalmBasisIsFiniteOrthonormalAndRightHanded',
+              'ExtendedAndBentFingerProduceLowAndHighCurl',
+              'OpenFistAndPointingStayConservative',
+              'AssociationPrefersPoseWristsAndFallsBackWhenNeeded',
+              'FreshnessAgeAndBodySkewAreIndependentPerHand',
+              'SchedulerHasOneActiveAndOneReplaceablePendingOnly',
+              'ClearRemovesOldSessionSamples',
+          ], 'Foundation D Editor test surface')
+          require(provenance, [
+              'float16 / version 1', '7,819,105 bytes',
+              'fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1',
+              'storage.googleapis.com/mediapipe-models/hand_landmarker',
+          ], 'model provenance')
+
+          locked_paths = [
+              'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs',
+              'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/PoseObservation.cs',
+              'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs',
+              'Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs',
+              'Assets/GoldenNeedle/Core/Motion/Rotation/CanonicalRotationSolver.cs',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs',
+              'Assets/GoldenNeedle/Core/Motion/Locomotion/EmbodiedLocomotionController.cs',
+              'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity',
+          ]
+          changed_locked = []
+          for path in locked_paths:
+              result = subprocess.run(['git', 'diff', '--quiet', foundation_d_base, 'HEAD', '--', path])
+              if result.returncode != 0:
+                  changed_locked.append(path)
+          if changed_locked:
+              raise SystemExit(f'locked body/retarget/locomotion/scene paths changed in Foundation D: {changed_locked}')
+
+          canonical = Path('Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs').read_text(encoding='utf-8')
+          if 'public const int JointCount = 20;' not in canonical or 'RightToe = 19,' not in canonical:
+              raise SystemExit('CanonicalBodyV1 20-joint contract changed')
+
+          production_sources = [
+              Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs'),
+              Path('Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs'),
+          ]
+          finger_tokens = ['LeftThumb', 'RightThumb', 'LeftIndex', 'RightIndex', 'LeftMiddle', 'RightMiddle', 'LeftLittle', 'RightLittle']
+          for path in production_sources:
+              text = path.read_text(encoding='utf-8')
+              if any(token in text for token in finger_tokens):
+                  raise SystemExit(f'Foundation E finger driving leaked into production path: {path}')
+
+          if 'contents: read' not in workflow:
+              raise SystemExit('Foundation D workflow is not contents: read')
+          forbidden_workflow = ['contents:' + ' write', 'git ' + 'push ', 'git ' + 'commit ']
+          found = [token for token in forbidden_workflow if token in workflow]
+          if found:
+              raise SystemExit(f'Foundation D workflow is not read-only: {found}')
+
+          print('FOUNDATION_D_STATIC_AUDIT=PASS')
+          print('HAND_21_SEMANTIC_CONTRACT=PASS')
+          print('HAND_PROVIDER_ISOLATION=PASS')
+          print('HAND_LOCAL_COORDINATE_OWNERSHIP=PASS')
+          print('HAND_LATEST_ONLY_SCHEDULER=PASS')
+          print('BODY_OPENVINO_DEFAULTS_UNCHANGED=PASS')
+          print('CANONICAL_BODY_V1_UNCHANGED=PASS')
+          print('PHASE4_PRODUCTION_RETARGET_UNCHANGED=PASS')
+          print('FOUNDATION_E_NOT_STARTED=PASS')
+          PY
+
+      - name: Assert verification is read-only
+        shell: bash
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          echo 'FOUNDATION_D_WORKFLOW_READ_ONLY=PASS'
