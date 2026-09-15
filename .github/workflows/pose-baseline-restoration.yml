@@ -1,0 +1,199 @@
+name: Corrective pose baseline restoration
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Rotation/CanonicalRotationSolver.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs'
+      - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs'
+      - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseAcquisitionLabDiagnostics.cs'
+      - 'Assets/GoldenNeedle/Core/Commands/SpeechCommandPolicy.cs'
+      - 'Tools/FoundationACommandSmoke/**'
+      - 'Tools/FoundationDHandSmoke/**'
+      - '.github/workflows/pose-baseline-restoration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Foundation A speech and command smoke
+        run: dotnet run --configuration Release --project Tools/FoundationACommandSmoke/FoundationACommandSmoke.csproj
+
+      - name: Run Foundation B camera smoke
+        run: dotnet run --configuration Release --project Tools/FoundationBCameraSmoke/FoundationBCameraSmoke.csproj
+
+      - name: Run accepted WebCamCPU preparation smoke
+        run: dotnet run --configuration Release --project Tools/OpenVinoUnityPosePlugin/tests/ManagedWebCamCpuSmoke/ManagedWebCamCpuSmoke.csproj
+
+      - name: Validate restored production architecture
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+
+          expected_blobs = {
+              'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs': 'e3f7a55caef9bbe27cd5d4485fc67e096b28c5b8',
+              'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs': 'cf783bf1597a95d6fb8e3924ee620e354cdae43b',
+              'Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs': '766632dd5c08698a1bdde66fd36f322bfdcd9723',
+              'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs': '6e599a2e931deba3dc23bd587005fff7c7a6a6c9',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs': 'ecc95aaf5104bcb011cb0436d16ceb7531104336',
+              'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs': '41a8fe8adb1a750fbf570d3473e30a34073ab5fe',
+              'Assets/GoldenNeedle/Core/Motion/Rotation/CanonicalRotationSolver.cs': '286442132f864e10907d1c68db68e6e0903aa6b1',
+              'Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs': '9a0d4c99fb33f2192bcd3937d0ce72de3f2756a5',
+          }
+          for path, expected in expected_blobs.items():
+              actual = subprocess.check_output(['git', 'hash-object', path], text=True).strip()
+              if actual != expected:
+                  raise SystemExit(f'baseline blob changed: {path}: expected={expected} actual={actual}')
+
+          provider = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs').read_text(encoding='utf-8')
+          runtime = Path('Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs').read_text(encoding='utf-8')
+          source = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs').read_text(encoding='utf-8')
+          retargeter = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs').read_text(encoding='utf-8')
+          presenter = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs').read_text(encoding='utf-8')
+          canonical = Path('Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs').read_text(encoding='utf-8')
+          rotation = Path('Assets/GoldenNeedle/Core/Motion/Rotation/CanonicalRotationSolver.cs').read_text(encoding='utf-8')
+          policy = Path('Assets/GoldenNeedle/Core/Commands/SpeechCommandPolicy.cs').read_text(encoding='utf-8')
+          diagnostics = Path('Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseAcquisitionLabDiagnostics.cs').read_text(encoding='utf-8')
+
+          required_provider = [
+              'bodyInferenceLongEdge = 320;',
+              'BodyFrameAcquisitionMode.WebCamCpuPixels',
+              '_webCamTexture.GetPixels32(_webCamCpuPixels);',
+              'WebCamCpuFramePreparation.PrepareRgba(',
+              'public sealed class OpenVinoLatestFrameMailbox',
+              'Task.Run(OpenVinoWorkerLoop)',
+              '_openVinoMailbox.Publish(',
+              '_openVinoMailbox.TryTake(',
+              '_openVinoMailbox.Complete(frame);',
+              'PreparedInferenceLaunchOrigin.OpenVinoWorkerContinuation',
+              'PoseInferenceBackend.OpenVinoCpuFp32',
+              'OpenVinoSchedulingPolicy.NextMonotonicTimestamp(',
+          ]
+          missing = [item for item in required_provider if item not in provider]
+          if missing:
+              raise SystemExit(f'optimized provider invariant missing: {missing}')
+          if provider.count('_webCamTexture.GetPixels32(_webCamCpuPixels);') != 1:
+              raise SystemExit('WebCamCPU path must contain exactly one bounded GetPixels32 acquisition call')
+          if provider.count('Task.Run(OpenVinoWorkerLoop)') != 1:
+              raise SystemExit('persistent OpenVINO worker count changed')
+          if provider.count('new Frame(') != 2:
+              raise SystemExit('latest-frame mailbox must retain exactly two reusable slots')
+          if 'Queue<' in provider or 'ConcurrentQueue<' in provider:
+              raise SystemExit('queue/backlog type detected in optimized body provider')
+
+          forbidden_runtime = ['IRichMotionEvidenceSource', 'RichMotionEvidenceFrame', 'RichAnatomicalOrientationSolver', 'UpdateRichMotion(']
+          found = [item for item in forbidden_runtime if item in runtime]
+          if found:
+              raise SystemExit(f'Foundation C runtime production work remains: {found}')
+          if '_stabilizer.Stabilize(_rawCanonicalFrame, _stabilizedFrame, _lastEvaluationTimeSeconds);\n            _calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);' not in runtime:
+              raise SystemExit('Phase 3 stabilized pose is no longer calibration authority')
+
+          forbidden_source = [
+              'IRichMotionEvidenceSource', 'ICanonicalHandSource', 'ICoarseHandStateSource',
+              'MediaPipeRichMotionEvidenceMapper', 'MediaPipeHandLandmarkerSource', 'HandMotionRuntime',
+              'CoarseHand',
+          ]
+          found = [item for item in forbidden_source if item in source]
+          if found:
+              raise SystemExit(f'normal canonical source still composes later pose/hand work: {found}')
+          if source.count('provider.CopyLatestObservation(_observation);') != 1:
+              raise SystemExit('canonical source provider copy count changed')
+
+          if any(item in retargeter for item in ['IHumanoidPostSolveDetailLayer', 'ApplyPostSolveDetailLayers', 'ResolvePostSolveDetailLayers']):
+              raise SystemExit('Foundation E post-solve detail remains in production retargeter')
+          if 'runtime.AvatarDriveFrame' not in retargeter:
+              raise SystemExit('Phase 4 retargeter no longer consumes accepted AvatarDriveFrame')
+          if 'RichHumanoidDetailRetargeter' in presenter:
+              raise SystemExit('Presenter still auto-composes Foundation E detail layer')
+
+          coarse_paths = [
+              '.github/workflows/foundation-d-coarse-hand.yml',
+              'Assets/GoldenNeedle/Core/Motion/Hands/CoarseHandState.cs',
+              'Assets/GoldenNeedle/Core/Motion/Hands/CoarseHandStateEstimator.cs',
+              'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCoarseHandEvidenceMapper.cs',
+              'Assets/GoldenNeedle/Debug/PoseTrackingSpike/CoarseHandLabDiagnostics.cs',
+              'Tools/FoundationDHandSmoke/CoarseHandStateSmoke.cs',
+          ]
+          existing = [path for path in coarse_paths if Path(path).exists()]
+          if existing:
+              raise SystemExit(f'rejected Batch 4A runtime/test files still exist: {existing}')
+
+          if 'public const int JointCount = 20;' not in canonical or 'RightToe = 19,' not in canonical:
+              raise SystemExit('CanonicalBodyV1 changed')
+          if 'Quaternion.FromToRotation' not in rotation:
+              raise SystemExit('accepted Phase 4 swing solve changed')
+
+          create_default = policy[policy.index('public static SpeechCommandConfiguration CreateDefault()'):policy.index('public sealed class SpeechCommandResolver')]
+          phrases = [
+              'begin calibration', 'reset calibration', 'recenter', 'retry tracking',
+              'game view', 'lab view', 'back view', 'front view', 'left view', 'right view',
+              'full body view', 'hands view', 'left hand view', 'right hand view',
+          ]
+          if create_default.count('SpeechRecognitionConfidence.Low') != 14:
+              raise SystemExit('all 14 default speech mappings are not explicitly Low')
+          if any(f'"{phrase}"' not in create_default for phrase in phrases):
+              raise SystemExit('default speech phrase set changed')
+          if 'wakePrefix = string.Empty,' not in create_default:
+              raise SystemExit('wake prefix default is no longer empty')
+
+          required_diagnostics = [
+              'BODY PATH (F7 authoritative)',
+              'RequestedBodyFrameAcquisitionModeLabel',
+              'ActiveBodyFrameAcquisitionMode',
+              'WebCamCpuAcquisitionFallbackReason',
+              'ActiveBodyReadbackPathLabel',
+              'ExistingReadback (WebCamCPU fallback)',
+              'N/A (WebCamCPU active)',
+              'ActiveInferenceBackendLabel',
+              'BodyInferenceWidth', 'BodyInferenceHeight',
+          ]
+          missing = [item for item in required_diagnostics if item not in diagnostics]
+          if missing:
+              raise SystemExit(f'F7 acquisition/readback diagnostic missing: {missing}')
+          forbidden_diagnostic_work = ['GetPixels32(', 'DetectAsync(', 'ProcessRgba(', 'AsyncGPUReadback', 'HandLandmarker']
+          found = [item for item in forbidden_diagnostic_work if item in diagnostics]
+          if found:
+              raise SystemExit(f'F7 diagnostics unexpectedly perform acquisition/inference work: {found}')
+
+          detailed_source = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.cs')
+          if not detailed_source.exists():
+              raise SystemExit('dormant detailed-hand research source unexpectedly removed')
+
+          print('POSE_BASELINE_EXACT_REFERENCE_FILES=PASS')
+          print('OPENVINO_WEBCAMCPU_BASELINE_PRESERVED=PASS')
+          print('FOUNDATION_C_RUNTIME_DISCONNECTED=PASS')
+          print('FOUNDATION_D_RUNTIME_DISCONNECTED=PASS')
+          print('FOUNDATION_E_RUNTIME_DISCONNECTED=PASS')
+          print('BATCH4A_COARSE_REMOVED=PASS')
+          print('CANONICAL_BODY_V1_PHASE4_PRESERVED=PASS')
+          print('SPEECH_DEFAULTS_ALL_LOW=PASS')
+          print('F7_ACQUISITION_DIAGNOSTICS=PASS')
+          PY
+
+      - name: Assert verification is read-only
+        shell: bash
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          echo 'POSE_BASELINE_RESTORATION_WORKFLOW_READ_ONLY=PASS'

@@ -57,10 +57,11 @@ internal static class Program
             var defaults = SpeechCommandConfiguration.CreateDefault();
             var defaultResolver = new SpeechCommandResolver(defaults);
             True(string.IsNullOrEmpty(defaults.wakePrefix), "default speech has no wake phrase");
-            True(defaultResolver.TryResolve("hands view", SpeechRecognitionConfidence.Medium, out var handsRequest, out _), "default hands speech mapping resolves");
+            True(defaultResolver.TryResolve("hands view", SpeechRecognitionConfidence.Low, out var handsRequest, out _), "default hands speech mapping resolves at Low");
             True(handsRequest.command == GoldenNeedleCommand.SelectCameraViewPreset, "hands speech maps to preset command");
             Equal("Hands", handsRequest.parameter, "hands speech parameter");
 
+            DefaultMappingsAreLowAndStable();
             RawRecognitionAndPolicyDiagnostics();
             LifecycleIsIdempotentAndRestartable();
             UnsupportedProviderIsNonfatal();
@@ -70,6 +71,7 @@ internal static class Program
             Console.WriteLine("CONFIDENCE_COOLDOWN=PASS");
             Console.WriteLine("PARAMETER_AND_CAMERA_PRESET_COMMAND=PASS");
             Console.WriteLine("DEFAULT_CAMERA_SPEECH_MAPPINGS=PASS");
+            Console.WriteLine("DEFAULT_SPEECH_ALL_LOW=PASS");
             Console.WriteLine("RAW_RECOGNITION_DIAGNOSTICS=PASS");
             Console.WriteLine("SPEECH_LIFECYCLE_IDEMPOTENT=PASS");
             Console.WriteLine("UNSUPPORTED_SPEECH_FALLBACK=PASS");
@@ -80,6 +82,84 @@ internal static class Program
         {
             Console.Error.WriteLine(exception);
             return 1;
+        }
+    }
+
+    private static void DefaultMappingsAreLowAndStable()
+    {
+        var configuration = SpeechCommandConfiguration.CreateDefault();
+        True(configuration.speechEnabled, "default speech enabled");
+        True(string.IsNullOrEmpty(configuration.wakePrefix), "default wake prefix remains empty");
+        True(configuration.mappings != null && configuration.mappings.Length == 14, "exactly 14 default mappings");
+
+        var phrases = new[]
+        {
+            "begin calibration",
+            "reset calibration",
+            "recenter",
+            "retry tracking",
+            "game view",
+            "lab view",
+            "back view",
+            "front view",
+            "left view",
+            "right view",
+            "full body view",
+            "hands view",
+            "left hand view",
+            "right hand view",
+        };
+        var commands = new[]
+        {
+            GoldenNeedleCommand.BeginCalibration,
+            GoldenNeedleCommand.ResetCalibration,
+            GoldenNeedleCommand.Recenter,
+            GoldenNeedleCommand.RetryTracking,
+            GoldenNeedleCommand.SetGamePresentation,
+            GoldenNeedleCommand.SetLabPresentation,
+            GoldenNeedleCommand.SelectCameraViewPreset,
+            GoldenNeedleCommand.SelectCameraViewPreset,
+            GoldenNeedleCommand.SelectCameraViewPreset,
+            GoldenNeedleCommand.SelectCameraViewPreset,
+            GoldenNeedleCommand.SelectCameraViewPreset,
+            GoldenNeedleCommand.SelectCameraViewPreset,
+            GoldenNeedleCommand.SelectCameraViewPreset,
+            GoldenNeedleCommand.SelectCameraViewPreset,
+        };
+        var parameters = new[]
+        {
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            "Back",
+            "Front",
+            "Left",
+            "Right",
+            "FullBody",
+            "Hands",
+            "LeftHand",
+            "RightHand",
+        };
+
+        var resolver = new SpeechCommandResolver(configuration);
+        True(resolver.IsValid, "default resolver valid");
+        True(resolver.EffectivePhrases.Count == phrases.Length, "default phrase count unchanged");
+        for (var i = 0; i < phrases.Length; i++)
+        {
+            var mapping = configuration.mappings[i];
+            True(mapping != null && mapping.enabled, $"default mapping {i} enabled");
+            Equal(phrases[i], mapping.phrase, $"default phrase {i} unchanged");
+            True(mapping.command == commands[i], $"default command {i} unchanged");
+            Equal(parameters[i], mapping.parameter, $"default parameter {i} unchanged");
+            True(mapping.minimumConfidence == SpeechRecognitionConfidence.Low, $"default mapping {i} minimum Low");
+            True(
+                resolver.TryResolve(phrases[i], SpeechRecognitionConfidence.Low, out var request, out var reason),
+                $"Low-confidence default phrase resolves: {phrases[i]} ({reason})");
+            True(request.command == commands[i], $"Low-confidence command preserved: {phrases[i]}");
+            Equal(parameters[i], request.parameter, $"Low-confidence parameter preserved: {phrases[i]}");
         }
     }
 

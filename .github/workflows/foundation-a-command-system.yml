@@ -62,13 +62,21 @@ jobs:
               'public SpeechRecognitionConfidence minimumConfidence = SpeechRecognitionConfidence.Medium;',
               'public string wakePrefix = string.Empty;',
               'NormalizePhrase(', 'BuildEffectivePhrase(', 'Ambiguous speech phrase:',
-              'new SpeechCommandMapping("begin calibration", GoldenNeedleCommand.BeginCalibration)',
-              'new SpeechCommandMapping("reset calibration", GoldenNeedleCommand.ResetCalibration)',
-              'new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter)',
-              'new SpeechCommandMapping("retry tracking", GoldenNeedleCommand.RetryTracking)',
-              'new SpeechCommandMapping("game view", GoldenNeedleCommand.SetGamePresentation)',
-              'new SpeechCommandMapping("lab view", GoldenNeedleCommand.SetLabPresentation)',
           ], 'speech policy')
+
+          create_default = policy[policy.index('public static SpeechCommandConfiguration CreateDefault()'):policy.index('public sealed class SpeechCommandResolver')]
+          default_phrases = [
+              'begin calibration', 'reset calibration', 'recenter', 'retry tracking',
+              'game view', 'lab view', 'back view', 'front view', 'left view', 'right view',
+              'full body view', 'hands view', 'left hand view', 'right hand view',
+          ]
+          for phrase in default_phrases:
+              if f'"{phrase}"' not in create_default:
+                  raise SystemExit(f'default speech phrase changed/missing: {phrase}')
+          if create_default.count('SpeechRecognitionConfidence.Low') != 14:
+              raise SystemExit('all 14 default speech mappings must explicitly require Low confidence')
+          if 'wakePrefix = string.Empty,' not in create_default:
+              raise SystemExit('default wake prefix is no longer empty')
 
           require(speech_input, [
               'public interface ISpeechInputProvider : IDisposable',
@@ -155,6 +163,7 @@ jobs:
           print('SHARED_COMMAND_ROUTING=PASS')
           print('KEYBOARD_MIGRATION_F1_F12_R_V_C_X_K=PASS')
           print('SPEECH_POLICY_AND_PROVIDER_BOUNDARY=PASS')
+          print('DEFAULT_SPEECH_ALL_LOW=PASS')
           print('SPEECH_WINDOWS_STATUS_ERROR_LIFECYCLE=PASS')
           print('SPEECH_NO_PARALLEL_MIC_CAPTURE_OR_WINDOWS_AUTH_PROMPT=PASS')
           print('SPEECH_LAB_DIAGNOSTICS_SURFACE=PASS')
