@@ -6,6 +6,7 @@ on:
       - engine/pose-tracking-spike
     paths:
       - 'Assets/GoldenNeedle/Core/Motion/Retargeting/**'
+      - 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs'
       - 'Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs'
       - 'Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs.meta'
       - 'Tools/FoundationERetargetingSmoke/**'
@@ -61,6 +62,8 @@ jobs:
           detail_math = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/FoundationERetargetMath.cs').read_text(encoding='utf-8')
           hook = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/IHumanoidPostSolveDetailLayer.cs').read_text(encoding='utf-8')
           explicit_detail = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/IExplicitHumanoidDetailRigSource.cs').read_text(encoding='utf-8')
+          presenter_path = 'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs'
+          presenter = Path(presenter_path).read_text(encoding='utf-8')
           d_workflow = Path('.github/workflows/foundation-d-hand-tracking.yml').read_text(encoding='utf-8')
           e_workflow = Path('.github/workflows/foundation-e-retargeting.yml').read_text(encoding='utf-8')
           editor_tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs').read_text(encoding='utf-8')
@@ -95,12 +98,26 @@ jobs:
               'RestorePresentationLocalRotations(',
           ], 'retargeter post-solve ordering')
           forbidden_retargeter = [
-              'RichMotionFrame', 'CanonicalHandFrame', 'HandMotionRuntime',
+              'RichHumanoidDetailRetargeter', 'RichMotionFrame', 'CanonicalHandFrame', 'HandMotionRuntime',
               'MediaPipe', 'HandLandmarkId', 'HumanoidFingerBoneId',
           ]
           leaked = [token for token in forbidden_retargeter if token in retargeter]
           if leaked:
               raise SystemExit(f'Foundation E detail/provider logic leaked into HumanoidRetargeter: {leaked}')
+
+          require(presenter, [
+              'if (GetComponent<RichHumanoidDetailRetargeter>() == null)',
+              'gameObject.AddComponent<RichHumanoidDetailRetargeter>();',
+              'retargeter = retargeter == null ? GetComponent<HumanoidRetargeter>() : retargeter;',
+          ], 'live spike Foundation E composition')
+          presenter_awake = presenter[presenter.index('        private void Awake()'):presenter.index('        private void OnEnable()')]
+          detail_add_index = presenter_awake.index('gameObject.AddComponent<RichHumanoidDetailRetargeter>();')
+          retarget_ensure_index = presenter_awake.index('retargeter = retargeter == null ? GetComponent<HumanoidRetargeter>() : retargeter;')
+          if detail_add_index > retarget_ensure_index:
+              raise SystemExit('live spike creates Foundation E detail after retargeter composition instead of before it')
+          retargeter_start = retargeter[retargeter.index('        private void Start()'):retargeter.index('        private void OnValidate()')]
+          if 'ResolvePostSolveDetailLayers();' not in retargeter_start:
+              raise SystemExit('HumanoidRetargeter.Start no longer rediscovers post-solve detail layers after scene Awake composition')
 
           require(binding, [
               'public bool IsBound => _isBound;',
@@ -222,6 +239,7 @@ jobs:
               'Assets/GoldenNeedle/Core/Motion/Retargeting/FoundationERetargetMath.cs.meta',
               'Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs',
               'Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs.meta',
+              'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs',
               'Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs',
               'Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs.meta',
               '.github/workflows/foundation-d-hand-tracking.yml',
@@ -250,6 +268,8 @@ jobs:
           print('FOUNDATION_E_STATIC_AUDIT=PASS')
           print('FOUNDATION_E_PHASE4_APPLY_MOTION_FRAME_EXACT=PASS')
           print('FOUNDATION_E_OPTIONAL_POST_SOLVE_BOUNDARY=PASS')
+          print('FOUNDATION_E_LIVE_SPIKE_COMPOSITION=PASS')
+          print('FOUNDATION_E_POST_SOLVE_DISCOVERY_TIMING=PASS')
           print('FOUNDATION_E_MASTER_DISABLED_PHASE4_COMPATIBLE=PASS')
           print('FOUNDATION_E_OPTIONAL_BINDING_SEMANTICS=PASS')
           print('FOUNDATION_E_EIGHT_RICH_LIMB_CHANNELS_ONLY=PASS')
