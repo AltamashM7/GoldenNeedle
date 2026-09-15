@@ -9,7 +9,8 @@ namespace GoldenNeedle.Core.Motion.Retargeting
 {
     /// <summary>
     /// Foundation E additive post-Phase-4 detail layer. Phase 4 remains the endpoint/swing owner;
-    /// this component contributes only rich axial limb twist plus optional palm/finger detail.
+    /// rich limb axial twist is experimental/research-only, while optional palm/finger detail remains
+    /// independently gated by its own trusted data source.
     /// </summary>
     public sealed class RichHumanoidDetailRetargeter : MonoBehaviour, IHumanoidPostSolveDetailLayer
     {
@@ -62,7 +63,8 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         [SerializeField] private MotionEngineRuntime bodyRuntime;
         [SerializeField] private HandMotionRuntime handRuntime;
         [SerializeField] private bool enableFoundationE = true;
-        [SerializeField] private bool enableRichLimbAxialDetail = true;
+        [Tooltip("Experimental/research-only axial limb detail. Keep OFF for the low-end single-RGB-camera production baseline.")]
+        [SerializeField] private bool enableRichLimbAxialDetail = false;
         [SerializeField] private bool enablePalmOrientation = true;
         [SerializeField] private bool enableFingerArticulation = true;
         [SerializeField, Min(0.1f)] private float detailResponse = 24f;
@@ -131,6 +133,9 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             }
             else
             {
+                // HumanoidRetargeter has already rebuilt the authoritative Phase 4 body pose for
+                // this frame. With experimental axial detail OFF, apply no inverse/corrective twist;
+                // just discard E-owned axial state so a later opt-in starts from a clean reference.
                 ClearRichTargetsAndContributions();
             }
 
