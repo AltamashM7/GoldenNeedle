@@ -178,6 +178,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
     public sealed class HumanoidRetargeter : MonoBehaviour
     {
         private const float MinimumDirectionSquared = 0.00000001f;
+        private const int MaxPostSolveDetailLayers = 8;
 
         [SerializeField] private MotionEngineRuntime runtime;
         [SerializeField] private HumanoidRigBinding binding;
@@ -209,11 +210,14 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             new Quaternion[CanonicalRotationFrame.BoneCount];
         private readonly Quaternion[] _presentationSolvedLocalRotations =
             new Quaternion[CanonicalRotationFrame.BoneCount];
+        private readonly IHumanoidPostSolveDetailLayer[] _postSolveDetailLayers =
+            new IHumanoidPostSolveDetailLayer[MaxPostSolveDetailLayers];
 
         private MotionCalibrationProfile _characterizationProfile;
         private int _characterizationBindingVersion = -1;
         private int _presentationBindingVersion = -1;
         private int _drivenLimbBoneCount;
+        private int _postSolveDetailLayerCount;
 
         public MotionEngineRuntime Runtime => runtime;
         public HumanoidRigBinding Binding => binding;
@@ -251,6 +255,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 {
                     ClearDiagnostics();
                     ResetPresentationSmoothingState();
+                    ResetPostSolveDetailLayers();
                     binding?.ResetToReferencePose();
                 }
             }
@@ -260,12 +265,14 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         {
             runtime = runtime == null ? GetComponent<MotionEngineRuntime>() : runtime;
             binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
+            ResolvePostSolveDetailLayers();
         }
 
         private void Start()
         {
             runtime = runtime == null ? GetComponent<MotionEngineRuntime>() : runtime;
             binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
+            ResolvePostSolveDetailLayers();
         }
 
         private void OnValidate()
@@ -284,6 +291,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             {
                 ClearDiagnostics();
                 ResetPresentationSmoothingState();
+                ResetPostSolveDetailLayers();
                 binding?.ResetToReferencePose();
                 return;
             }
@@ -297,6 +305,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             {
                 ClearDiagnostics();
                 ResetPresentationSmoothingState();
+                ResetPostSolveDetailLayers();
                 binding.ResetToReferencePose();
                 return;
             }
@@ -327,6 +336,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                     targets,
                     profile,
                     deltaTime);
+                ApplyPostSolveDetailLayers(deltaTime);
                 return;
             }
 
@@ -346,6 +356,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                     targets,
                     profile,
                     deltaTime);
+                ApplyPostSolveDetailLayers(deltaTime);
                 return;
             }
 
@@ -357,6 +368,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 targets,
                 profile,
                 deltaTime);
+            ApplyPostSolveDetailLayers(deltaTime);
 
             if (!TryCapturePresentationLocalRotations(
                     _presentationSolvedLocalRotations))
@@ -1206,10 +1218,89 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             Array.Clear(_chainDebugStates, 0, _chainDebugStates.Length);
         }
 
+        private void ResolvePostSolveDetailLayers()
+        {
+            _postSolveDetailLayerCount = 0;
+            for (var i = 0; i < _postSolveDetailLayers.Length; i++)
+            {
+                _postSolveDetailLayers[i] = null;
+            }
+
+            var components = GetComponents<MonoBehaviour>();
+            for (var i = 0;
+                 i < components.Length &&
+                 _postSolveDetailLayerCount < _postSolveDetailLayers.Length;
+                 i++)
+            {
+                if (components[i] is IHumanoidPostSolveDetailLayer layer)
+                {
+                    _postSolveDetailLayers[_postSolveDetailLayerCount++] = layer;
+                }
+            }
+        }
+
+        private void ApplyPostSolveDetailLayers(float deltaTime)
+        {
+            for (var i = 0; i < _postSolveDetailLayerCount; i++)
+            {
+                var layer = _postSolveDetailLayers[i];
+                if (layer == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    if (layer.IsPostSolveDetailEnabled)
+                    {
+                        layer.ApplyPostSolveDetail(binding, deltaTime);
+                    }
+                    else
+                    {
+                        layer.ResetPostSolveDetailState(binding);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"[Foundation E] Optional post-solve detail layer degraded without affecting Phase 4: {exception.Message}");
+                    try
+                    {
+                        layer.ResetPostSolveDetailState(binding);
+                    }
+                    catch (Exception)
+                    {
+                        // Optional detail must never break the established body solve.
+                    }
+                }
+            }
+        }
+
+        private void ResetPostSolveDetailLayers()
+        {
+            for (var i = 0; i < _postSolveDetailLayerCount; i++)
+            {
+                var layer = _postSolveDetailLayers[i];
+                if (layer == null)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    layer.ResetPostSolveDetailState(binding);
+                }
+                catch (Exception)
+                {
+                    // Optional detail must never break the established body solve.
+                }
+            }
+        }
+
         private void OnDisable()
         {
             ClearDiagnostics();
             ResetPresentationSmoothingState();
+            ResetPostSolveDetailLayers();
             binding?.ResetToReferencePose();
         }
 
