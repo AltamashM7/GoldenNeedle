@@ -34,11 +34,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
 
-            var consumeTime = Time.unscaledTimeAsDouble;
-            var callbackDelayMilliseconds = _mainSnapshot.callbackStopwatchTicks > 0
-                ? StopwatchElapsedMilliseconds(_mainSnapshot.callbackStopwatchTicks, Stopwatch.GetTimestamp())
-                : 0d;
-            _lastResultReceivedAtSeconds = Math.Max(0d, consumeTime - callbackDelayMilliseconds * 0.001d);
+            // receivedAtSeconds was captured in the callback from the exact body-provider Stopwatch.
+            // Do not reconstruct semantic receive time from Unity time; body/hand age and skew require one epoch.
+            _lastResultReceivedAtSeconds = _mainSnapshot.receivedAtSeconds;
             _latestDetectedHandCount = _mainSnapshot.handCount;
             var bodyEvidence = BuildBodyWristEvidence(bodyFrame);
             var first = _mainSnapshot.handCount > 0
@@ -146,6 +144,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _activeStartedStopwatchTicks = 0;
             _activeSubmittedTimestampMillisec = 0;
             _latestDetectedHandCount = 0;
+            _lastResultReceivedAtSeconds = 0d;
             _rateWindowStartSeconds = 0d;
             _rateWindowSubmittedStart = _submittedCount;
             _rateWindowCallbackStart = _callbackCount;
@@ -206,30 +205,31 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _capturePixels = null;
         }
 
-        private void UpdateDiagnostics(double nowSeconds)
+        private void UpdateDiagnostics(double cadenceNowSeconds)
         {
             if (_rateWindowStartSeconds <= 0d)
             {
-                _rateWindowStartSeconds = nowSeconds;
+                _rateWindowStartSeconds = cadenceNowSeconds;
                 _rateWindowSubmittedStart = _submittedCount;
                 _rateWindowCallbackStart = _callbackCount;
             }
             else
             {
-                var rateWindow = nowSeconds - _rateWindowStartSeconds;
+                var rateWindow = cadenceNowSeconds - _rateWindowStartSeconds;
                 if (rateWindow >= 1d)
                 {
                     _actualSubmissionRate = (float)((_submittedCount - _rateWindowSubmittedStart) / rateWindow);
                     _actualCallbackRate = (float)((_callbackCount - _rateWindowCallbackStart) / rateWindow);
-                    _rateWindowStartSeconds = nowSeconds;
+                    _rateWindowStartSeconds = cadenceNowSeconds;
                     _rateWindowSubmittedStart = _submittedCount;
                     _rateWindowCallbackStart = _callbackCount;
                 }
             }
 
-            var latestAge = _lastResultReceivedAtSeconds <= 0d
+            var semanticNowSeconds = BodyTimelineSeconds();
+            var latestAge = _lastResultReceivedAtSeconds <= 0d || semanticNowSeconds <= 0d
                 ? double.PositiveInfinity
-                : Math.Max(0d, (nowSeconds - _lastResultReceivedAtSeconds) * 1000d);
+                : Math.Max(0d, (semanticNowSeconds - _lastResultReceivedAtSeconds) * 1000d);
             var ageText = double.IsInfinity(latestAge) ? "-" : $"{latestAge:0}ms";
             diagnosticSummary =
                 $"Hands: {(IsReady ? "ready" : _initializing ? "initializing" : "waiting")} target/actual={targetHandInferenceFps:0.#}/{_actualCallbackRate:0.0}/s submit={_actualSubmissionRate:0.0}/s " +
