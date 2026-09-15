@@ -3,7 +3,11 @@
 Authoritative current-state refresh: 2026-09-15.
 
 Latest substantive runtime/code checkpoint before this documentation refresh:
-`e16a93c5fd4802d97dc081a2d5f5c9f402ec7067` — Foundation D separate MediaPipe Hand Landmarker integration plus deterministic hand/scheduler verification and permanent read-only Foundation D CI.
+`9e4c4ac3a9d87eade06a43e2833481cce22b70f9` — Foundation D Orchestrator corrective implementation complete: accidental USER-commit Unity/project state cleaned by forward commits, official Hand Landmarker binary preserved and bundled, shared body/hand provider timeline preserved, Foundation C provider-isolation audit narrowed to actual provider-native/raw-index leakage, and corrective Foundation C/D verification green.
+
+Corrective verification at that checkpoint:
+- Foundation C workflow run `34919859131`, job `104225315113`: **PASS**.
+- Foundation D workflow run `34919859137`, job `104225315428`: **PASS**.
 
 Working branch: `engine/pose-tracking-spike`.
 
@@ -29,7 +33,7 @@ This document records what is true **now**. Historical experiment details remain
 - Foundation A — Unified Command System + modular speech input: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Foundation B — Camera View / Focus Preset System: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Foundation C — Rich Canonical Motion / Orientation Architecture: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
-- Foundation D — MediaPipe Hand Landmarker integration: **IMPLEMENTED / BUILDER AUTOMATED/CODE VERIFICATION COMPLETE / ORCHESTRATOR AUDIT PENDING / USER MANUAL QA DEFERRED**.
+- Foundation D — MediaPipe Hand Landmarker integration: **IMPLEMENTED / BUILDER CORRECTION COMPLETE / ORCHESTRATOR RE-AUDIT PENDING / USER MANUAL QA DEFERRED**.
 - Foundation E — Orientation-aware + optional hand/finger retarget: **NOT STARTED**.
 - Phase 5A — support-foot locomotion / Lab-Game presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
@@ -49,7 +53,7 @@ B — Camera View / Focus Preset System                  IMPLEMENTED / Orchestra
     ↓
 C — Rich canonical motion/orientation architecture     IMPLEMENTED / Orchestrator audited / manual QA deferred
     ↓
-D — MediaPipe hand-landmark integration                IMPLEMENTED / Builder verified / Orchestrator audit pending / manual QA deferred
+D — MediaPipe hand-landmark integration                IMPLEMENTED / Builder correction complete / Orchestrator re-audit pending / manual QA deferred
     ↓
 E — Orientation-aware + optional hand/finger retarget  NOT STARTED
     ↓
@@ -127,11 +131,11 @@ Concrete implementation:
 - `HumanoidRetargeter` remains production-authoritative on the accepted `AvatarDriveFrame`/Phase 4 path. Foundation C does not apply rich orientation to the avatar; that belongs to Foundation E;
 - a compact `RichMotionSummary` exposes source availability, schema version, valid-basis count and observed/held/reference-fallback/unobservable twist counts without frame-log spam.
 
-Automated proof coverage remains green in the permanent read-only Foundation C workflow, and the independent Orchestrator code audit is complete. Unity Editor NUnit test source for the critical behaviors is present, but an actual Unity Editor compilation/Test Runner execution was **not** performed in the Builder environment. USER visual/runtime twist behavior and Unity runtime acceptance therefore remain deferred and must not be inferred from pure/static verification.
+Automated proof coverage remains green in the permanent read-only Foundation C workflow, and the independent Orchestrator code audit is complete. Corrective workflow run `34919859131` (job `104225315113`) passed at `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`, including provider-type isolation, raw MediaPipe numeric/index isolation, optional-source compatibility, single-observation reuse, stable stabilizer→calibration authority, legacy Phase 4 production authority, no rich canonical Quaternion authority, and the final read-only dirty-tree guard. Unity Editor NUnit test source for the critical behaviors is present, but an actual Unity Editor compilation/Test Runner execution was **not** performed in the Builder environment. USER visual/runtime twist behavior and Unity runtime acceptance therefore remain deferred and must not be inferred from pure/static verification.
 
 ### Foundation D — MediaPipe hands
 
-Status: **IMPLEMENTED / BUILDER AUTOMATED/CODE VERIFICATION COMPLETE / ORCHESTRATOR AUDIT PENDING / USER MANUAL QA DEFERRED**.
+Status: **IMPLEMENTED / BUILDER CORRECTION COMPLETE / ORCHESTRATOR RE-AUDIT PENDING / USER MANUAL QA DEFERRED**.
 
 Foundation D preserves the optimized body provider and adds a separate optional MediaPipe Hand Landmarker stream rather than migrating body tracking to Holistic.
 
@@ -143,6 +147,8 @@ Current implementation:
 - `HandFeatureSolver` derives per-finger curl features plus conservative `Open`, `Fist`, `Pointing`, `Intermediate`, and `Unknown` summaries; perfect finger mocap is not required;
 - `HandAssociationSolver` prefers association to the accepted body pose wrists when both are trustworthy, supports a single-wrist case, falls back conservatively to MediaPipe handedness when necessary, and exposes ambiguous association instead of forcing an unsafe side;
 - left and right hands have independent freshness. Default maximum hand age is `350 ms` and default body↔hand source skew is `200 ms`; stale/skewed samples become unavailable for live fusion without changing body tracking state;
+- the existing `MediaPipePoseProvider` `Stopwatch _clock` is the single semantic/fusion timing authority for body and hands: Hand Landmarker submission/source timestamps, callback receive timing, canonical hand evaluation, hand age and body↔hand source skew all use the same provider epoch. `Time.unscaledTimeAsDouble` remains only for the independent hand-capture cadence and is not used for fusion timing;
+- the shared-timeline surface is additive/read-only and does not alter body inference cadence, OpenVINO worker/mailbox scheduling, body acquisition, existing body timestamps, serialized defaults or provider lifecycle;
 - one missing/stale hand does not invalidate the other hand or the body stream;
 - hand session state is cleared when the body provider coordinate/session convention changes so stale callbacks cannot cross a camera/session boundary;
 - `ICanonicalHandSource` is an optional additive capability; CanonicalBodyV1 and `ICanonicalPoseSource` remain unchanged;
@@ -152,10 +158,11 @@ Current implementation:
 - hand acquisition uses two reusable RGBA slots with one active inference and at most one replaceable latest pending snapshot. There is no FIFO/history/replay/catch-up queue and the accepted OpenVINO body mailbox is not reused or modified;
 - callback conversion is isolated from Unity scene/time APIs and copies MediaPipe task results into project-owned snapshot data before publication;
 - the official Hand Landmarker bundle is locked to Google MediaPipe `float16/1`, `7,819,105` bytes, SHA-256 `fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1`;
-- the runtime prefers an expected local StreamingAssets/cache copy and otherwise may bootstrap the exact versioned Google model into a private cache only after SHA-256 verification. Download/model failure disables the optional hand stream without invalidating body tracking;
+- that exact model is now physically bundled at `Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task`, so a normal fresh repository checkout does **not** require network access before detailed hand tracking can initialize;
+- runtime prefers the verified bundled StreamingAssets copy. The existing SHA-verified private-cache/official-download path remains only as an optional fallback; model failure disables the optional hand stream without invalidating body tracking;
 - no finger, hand, or rich-orientation data is applied to the production avatar yet. That application belongs to Foundation E.
 
-Builder verification is green in permanent read-only workflow run `34914680954` at `e16a93c5fd4802d97dc081a2d5f5c9f402ec7067`. The run passed Foundation A/B/C regressions, the Foundation D hand math/scheduler smoke, exact official model size/SHA verification, provider isolation, 21-landmark contract, hand-local coordinate ownership, latest-only scheduling, unchanged body/OpenVINO defaults, unchanged CanonicalBodyV1, unchanged Phase 4 production retargeting, Foundation E-not-started checks, and the final read-only dirty-tree guard.
+Corrective Builder verification is green at `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`. Foundation D workflow run `34919859137` (job `104225315428`) passed Foundation A/B/C regressions, the Foundation D hand/timeline/scheduler smoke, checked-in and official-remote model identity, shared provider timeline and monotonic hand timestamp checks, provider isolation, 21-landmark semantic contract, hand-local coordinate ownership, latest-only scheduling, unchanged body/OpenVINO protected paths, unchanged CanonicalBodyV1, unchanged Phase 4 production retargeting, Foundation E-not-started checks, and the final read-only dirty-tree guard. The companion Foundation C workflow run `34919859131` also passed at the same checkpoint after narrowing its landmark isolation rule to actual provider-specific/raw-index access rather than the generic method name `GetLandmark`.
 
 Unity Editor NUnit test source covers the corresponding deterministic hand cases, but actual Unity Editor compilation/Test Runner and real webcam hand inference were **not** performed by this Builder. USER runtime QA remains intentionally deferred to the comprehensive A–E pass. Do not infer live hand quality, CPU cost, gesture quality, association quality, or real-world freshness behavior from the pure/static verification alone.
 
@@ -444,7 +451,7 @@ avatar-drive latency tuning    preserved and deferrable
 Foundation A                   implemented; Orchestrator audited; manual QA deferred
 Foundation B                   implemented; Orchestrator audited; manual QA deferred
 Foundation C                   implemented; Orchestrator audited; manual QA deferred
-Foundation D                   implemented; Builder verified; Orchestrator audit pending; manual QA deferred
+Foundation D                   implemented; Builder correction complete; Orchestrator re-audit pending; manual QA deferred
 Foundation E                   not started
 locomotion                     implemented, not accepted
 ```
@@ -470,7 +477,7 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 
 - Do not merge to `main` without explicit USER approval.
 - Do not mark Foundations A, B, C, or D USER accepted until the deferred comprehensive USER manual/runtime QA pass succeeds.
-- Do not start Foundation E until Foundation D receives the required independent Orchestrator audit/authorization and the USER explicitly advances the sequence.
+- Do not start Foundation E until Foundation D receives the required independent Orchestrator re-audit/authorization and the USER explicitly advances the sequence.
 - Do not mark Phase 5A accepted.
 - Do not start Phase 6.
 - Do not delete or weaken the stock MediaPipe/TFLite fallback.
@@ -490,6 +497,6 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 
 ## Immediate next step
 
-Foundation D implementation and Builder automated/code verification are complete. The next gate is an **independent Orchestrator audit of Foundation D**. USER Unity/runtime acceptance remains intentionally deferred to the comprehensive A–E pass.
+Foundation D implementation and Builder corrective automated/code verification are complete. The next gate is an **independent Orchestrator re-audit of the Foundation D correction**. USER Unity/runtime acceptance remains intentionally deferred to the comprehensive A–E pass.
 
 Do **not** begin Foundation E from this checkpoint until the Orchestrator and USER explicitly advance the sequence.
