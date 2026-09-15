@@ -454,7 +454,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             var baselineLocalRotation = binding.GetChainTipBindLocalRotation(chainId);
             if (!FoundationERetargetMath.TryBuildAbsolutePalmLocalRotation(
                     in _handReferenceBases[sideIndex],
-                    in hand.palmBasis,
+                    hand.palmBasis,
                     _targetPalmPrimaryParentLocal[sideIndex],
                     _targetPalmSecondaryParentLocal[sideIndex],
                     _targetPalmThirdParentLocal[sideIndex],
@@ -593,7 +593,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                     !TryHandSegment(hand, local, out var sourceDirection) ||
                     !FoundationERetargetMath.TryMapDirectionBetweenBases(
                         sourceDirection,
-                        in hand.palmBasis,
+                        hand.palmBasis,
                         targetPrimary,
                         targetSecondary,
                         targetThird,
