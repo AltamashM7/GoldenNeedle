@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/CanonicalHandFrame.cs" Link="CanonicalHandFrame.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/HandFeatureSolver.cs" Link="HandFeatureSolver.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/HandAssociationSolver.cs" Link="HandAssociationSolver.cs" />
+    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/BoundedHandInferenceScheduler.cs" Link="BoundedHandInferenceScheduler.cs" />
+  </ItemGroup>
+</Project>
