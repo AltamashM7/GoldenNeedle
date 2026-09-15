@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using GoldenNeedle.Core.Commands;
 
 internal static class Program
@@ -55,55 +56,173 @@ internal static class Program
 
             var defaults = SpeechCommandConfiguration.CreateDefault();
             var defaultResolver = new SpeechCommandResolver(defaults);
+            True(string.IsNullOrEmpty(defaults.wakePrefix), "default speech has no wake phrase");
             True(defaultResolver.TryResolve("hands view", SpeechRecognitionConfidence.Medium, out var handsRequest, out _), "default hands speech mapping resolves");
             True(handsRequest.command == GoldenNeedleCommand.SelectCameraViewPreset, "hands speech maps to preset command");
             Equal("Hands", handsRequest.parameter, "hands speech parameter");
 
-            var now = 5d;
-            var recenterCalls = 0;
-            var fake = new FakeProvider();
-            var recenterRouter = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets { Recenter = () => recenterCalls++ });
-            var cooldownConfig = Config(new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter));
-            cooldownConfig.commandCooldownSeconds = 1f;
-            using (var input = new SpeechCommandInput(cooldownConfig, recenterRouter, _ => fake, () => now))
-            {
-                True(input.Start(), "fake provider starts");
-                fake.Emit("recenter", SpeechRecognitionConfidence.Medium);
-                fake.Emit("recenter", SpeechRecognitionConfidence.Medium);
-                True(recenterCalls == 1, "speech cooldown blocks duplicate");
-                True(input.LastRejectionReason.Contains("cooldown", StringComparison.OrdinalIgnoreCase), "cooldown diagnostic");
-
-                True(recenterRouter.Execute(new GoldenNeedleCommandRequest(GoldenNeedleCommand.Recenter)).Succeeded, "direct shared router remains responsive");
-                True(recenterCalls == 2, "keyboard path bypasses speech cooldown");
-
-                now = 6.1d;
-                fake.Emit("recenter", SpeechRecognitionConfidence.Medium);
-                True(recenterCalls == 3, "speech resumes after cooldown");
-            }
-
-            var unsupported = new FakeProvider { Supported = false };
-            using (var input = new SpeechCommandInput(
-                Config(new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter)),
-                recenterRouter,
-                _ => unsupported,
-                () => now))
-            {
-                True(!input.Start(), "unsupported provider fails closed");
-                True(!string.IsNullOrEmpty(input.LastRejectionReason), "unsupported diagnostic");
-            }
+            RawRecognitionAndPolicyDiagnostics();
+            LifecycleIsIdempotentAndRestartable();
+            UnsupportedProviderIsNonfatal();
 
             Console.WriteLine("FOUNDATION_A_COMMAND_SMOKE=PASS");
             Console.WriteLine("NORMALIZATION_WAKE_DUPLICATES=PASS");
             Console.WriteLine("CONFIDENCE_COOLDOWN=PASS");
             Console.WriteLine("PARAMETER_AND_CAMERA_PRESET_COMMAND=PASS");
             Console.WriteLine("DEFAULT_CAMERA_SPEECH_MAPPINGS=PASS");
+            Console.WriteLine("RAW_RECOGNITION_DIAGNOSTICS=PASS");
+            Console.WriteLine("SPEECH_LIFECYCLE_IDEMPOTENT=PASS");
             Console.WriteLine("UNSUPPORTED_SPEECH_FALLBACK=PASS");
+            Console.WriteLine("SHARED_COMMAND_ROUTING=PASS");
             return 0;
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine(exception);
             return 1;
+        }
+    }
+
+    private static void RawRecognitionAndPolicyDiagnostics()
+    {
+        var now = 5d;
+        var calls = 0;
+        var fake = new FakeProvider();
+        var router = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets
+        {
+            Recenter = () => calls++,
+        });
+        var config = Config(new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter));
+        config.commandCooldownSeconds = 1f;
+        using (var input = new SpeechCommandInput(config, router, _ => fake, () => now))
+        {
+            True(input.Start(), "fake provider starts");
+            fake.Emit("recenter", SpeechRecognitionConfidence.Medium);
+            True(calls == 1, "recognized command dispatched");
+            True(input.RecognitionEventCount == 1, "raw event counted before policy");
+            True(input.LastRawConfidence == SpeechRecognitionConfidence.Medium, "raw confidence retained");
+            True(input.LastMappingFound, "mapping diagnostic true");
+            True(input.LastDispatchAttempted, "dispatch diagnostic true");
+            True(input.LastRecognitionOutcome == SpeechRecognitionOutcome.Dispatched, "dispatch outcome recorded");
+
+            fake.Emit("recenter", SpeechRecognitionConfidence.Medium);
+            True(calls == 1, "speech cooldown blocks duplicate");
+            True(input.RecognitionEventCount == 2, "cooldown still counts raw recognition");
+            True(input.LastCooldownRejected, "cooldown rejection classified");
+            True(input.LastRecognitionOutcome == SpeechRecognitionOutcome.CooldownRejected, "cooldown outcome recorded");
+            True(!input.LastDispatchAttempted, "cooldown does not attempt dispatch");
+
+            True(router.Execute(new GoldenNeedleCommandRequest(GoldenNeedleCommand.Recenter)).Succeeded, "direct shared router remains responsive");
+            True(calls == 2, "keyboard/shared route bypasses speech cooldown");
+
+            now = 6.1d;
+            fake.Emit("recenter", SpeechRecognitionConfidence.Medium);
+            True(calls == 3, "speech resumes after cooldown");
+        }
+
+        var lowCalls = 0;
+        var lowFake = new FakeProvider();
+        using (var input = new SpeechCommandInput(
+            Config(new SpeechCommandMapping(
+                "recenter",
+                GoldenNeedleCommand.Recenter,
+                minimumConfidence: SpeechRecognitionConfidence.High)),
+            new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets { Recenter = () => lowCalls++ }),
+            _ => lowFake,
+            () => 10d))
+        {
+            True(input.Start(), "confidence fake starts");
+            lowFake.Emit("recenter", SpeechRecognitionConfidence.Low);
+            True(input.RecognitionEventCount == 1, "low-confidence raw event visible");
+            True(input.LastMappingFound, "low-confidence phrase mapped");
+            True(input.LastConfidenceRejected, "low-confidence rejection classified");
+            True(input.LastRecognitionOutcome == SpeechRecognitionOutcome.ConfidenceRejected, "confidence outcome recorded");
+            True(!input.LastDispatchAttempted && lowCalls == 0, "confidence rejection does not dispatch");
+            True(input.LastRejectionReason.Contains("minimum", StringComparison.OrdinalIgnoreCase), "minimum confidence shown diagnostically");
+        }
+
+        var unmappedFake = new FakeProvider();
+        using (var input = new SpeechCommandInput(
+            Config(new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter)),
+            router,
+            _ => unmappedFake,
+            () => 12d))
+        {
+            True(input.Start(), "unmapped fake starts");
+            unmappedFake.Emit("not a configured phrase", SpeechRecognitionConfidence.High);
+            True(input.RecognitionEventCount == 1, "unmapped raw event visible");
+            True(!input.LastMappingFound, "unmapped classification recorded");
+            True(input.LastRecognitionOutcome == SpeechRecognitionOutcome.Unmapped, "unmapped outcome recorded");
+            True(!input.LastDispatchAttempted, "unmapped phrase does not dispatch");
+        }
+    }
+
+    private static void LifecycleIsIdempotentAndRestartable()
+    {
+        var providers = new List<FakeProvider>();
+        var calls = 0;
+        var factoryCalls = 0;
+        var router = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets
+        {
+            Recenter = () => calls++,
+        });
+        var input = new SpeechCommandInput(
+            Config(new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter)),
+            router,
+            _ =>
+            {
+                factoryCalls++;
+                var provider = new FakeProvider();
+                providers.Add(provider);
+                return provider;
+            },
+            () => 20d);
+
+        True(input.Start(), "first lifecycle start");
+        True(input.Start(), "repeated start is idempotent");
+        True(factoryCalls == 1, "repeated start did not create duplicate provider");
+        True(providers[0].StartCalls == 1, "repeated start did not restart provider");
+        True(providers[0].SubscriberCount == 1, "repeated start did not duplicate phrase subscription");
+
+        input.Stop();
+        True(providers[0].StopCalls == 1, "stop reached provider once");
+        True(providers[0].DisposeCalls == 1, "stop disposed provider resources once");
+        True(providers[0].SubscriberCount == 0, "stop removed phrase callback");
+        providers[0].Emit("recenter", SpeechRecognitionConfidence.High);
+        True(calls == 0, "stopped input cannot dispatch stale provider event");
+
+        True(input.Start(), "start after stop succeeds");
+        True(factoryCalls == 2, "restart creates exactly one fresh provider");
+        providers[1].Emit("recenter", SpeechRecognitionConfidence.High);
+        True(calls == 1, "restarted provider dispatches once");
+
+        input.Dispose();
+        input.Dispose();
+        True(providers[1].StopCalls == 1, "dispose stops active provider once");
+        True(providers[1].DisposeCalls == 1, "dispose is idempotent");
+        True(providers[1].SubscriberCount == 0, "dispose removes phrase callback");
+    }
+
+    private static void UnsupportedProviderIsNonfatal()
+    {
+        var calls = 0;
+        var provider = new FakeProvider { Supported = false };
+        var router = new GoldenNeedleCommandRouter(new GoldenNeedleCommandTargets
+        {
+            Recenter = () => calls++,
+        });
+        using (var input = new SpeechCommandInput(
+            Config(new SpeechCommandMapping("recenter", GoldenNeedleCommand.Recenter)),
+            router,
+            _ => provider,
+            () => 30d))
+        {
+            True(!input.Start(), "unsupported provider fails closed");
+            True(input.LifecycleState == SpeechProviderLifecycleState.Unsupported, "unsupported lifecycle exposed");
+            True(!string.IsNullOrEmpty(input.LastRejectionReason), "unsupported diagnostic available");
+            True(calls == 0, "unsupported speech did not dispatch");
+            True(router.Execute(new GoldenNeedleCommandRequest(GoldenNeedleCommand.Recenter)).Succeeded, "shared router survives speech failure");
+            True(calls == 1, "shared route remains functional after speech failure");
         }
     }
 
@@ -133,17 +252,55 @@ internal static class Program
 
     private sealed class FakeProvider : ISpeechInputProvider
     {
-        public event Action<SpeechRecognitionSample> PhraseRecognized;
+        private Action<SpeechRecognitionSample> _phraseRecognized;
+
+        public event Action<SpeechRecognitionSample> PhraseRecognized
+        {
+            add
+            {
+                _phraseRecognized += value;
+                SubscriberCount++;
+            }
+            remove
+            {
+                _phraseRecognized -= value;
+                SubscriberCount = Math.Max(0, SubscriberCount - 1);
+            }
+        }
+
         public bool Supported { get; set; } = true;
         public string BackendName => "Fake";
         public string Status => IsRunning ? "Listening" : Supported ? "Ready" : "Unsupported";
         public string LastError => Supported ? string.Empty : "Unsupported fake backend";
         public bool IsSupported => Supported;
         public bool IsRunning { get; private set; }
-        public bool Start() { IsRunning = Supported; return IsRunning; }
-        public void Stop() { IsRunning = false; }
-        public void Dispose() { IsRunning = false; }
-        public void Emit(string phrase, SpeechRecognitionConfidence confidence) =>
-            PhraseRecognized?.Invoke(new SpeechRecognitionSample(phrase, confidence));
+        public int StartCalls { get; private set; }
+        public int StopCalls { get; private set; }
+        public int DisposeCalls { get; private set; }
+        public int SubscriberCount { get; private set; }
+
+        public bool Start()
+        {
+            StartCalls++;
+            IsRunning = Supported;
+            return IsRunning;
+        }
+
+        public void Stop()
+        {
+            StopCalls++;
+            IsRunning = false;
+        }
+
+        public void Dispose()
+        {
+            DisposeCalls++;
+            IsRunning = false;
+        }
+
+        public void Emit(string phrase, SpeechRecognitionConfidence confidence)
+        {
+            _phraseRecognized?.Invoke(new SpeechRecognitionSample(phrase, confidence));
+        }
     }
 }

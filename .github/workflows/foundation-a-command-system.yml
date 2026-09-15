@@ -60,6 +60,7 @@ jobs:
           require(policy, [
               'public float commandCooldownSeconds = 0.75f;',
               'public SpeechRecognitionConfidence minimumConfidence = SpeechRecognitionConfidence.Medium;',
+              'public string wakePrefix = string.Empty;',
               'NormalizePhrase(', 'BuildEffectivePhrase(', 'Ambiguous speech phrase:',
               'new SpeechCommandMapping("begin calibration", GoldenNeedleCommand.BeginCalibration)',
               'new SpeechCommandMapping("reset calibration", GoldenNeedleCommand.ResetCalibration)',
@@ -71,10 +72,19 @@ jobs:
 
           require(speech_input, [
               'public interface ISpeechInputProvider : IDisposable',
+              'public enum SpeechProviderLifecycleState',
+              'public enum SpeechRecognitionOutcome',
+              'public interface ISpeechInputProviderDiagnostics',
+              'public long RecognitionEventCount',
+              'public SpeechRecognitionConfidence LastRawConfidence',
+              'public bool LastMappingFound',
+              'public bool LastConfidenceRejected',
+              'public bool LastCooldownRejected',
+              'public bool LastDispatchAttempted',
               '_resolver.TryResolve(', '_cooldown.CanDispatch(',
-              'var result = _dispatcher.Execute(request);', '_cooldown.MarkDispatched(now);',
+              'result = _dispatcher.Execute(request);', '_cooldown.MarkDispatched(now);',
               'provider.PhraseRecognized -= OnPhraseRecognized;', 'provider.Dispose();',
-          ], 'speech input boundary')
+          ], 'speech input boundary and diagnostics')
           if any(token in speech_input for token in ['Keyboard.current', 'InputSystem']):
               raise SystemExit('speech input must not simulate keyboard input')
           if any('UnityEngine' in text for text in [command, policy, speech_input]):
@@ -83,12 +93,26 @@ jobs:
           require(windows, [
               '#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN || UNITY_WSA',
               'using UnityEngine.Windows.Speech;', 'PhraseRecognitionSystem.isSupported',
+              'PhraseRecognitionSystem.Status',
+              'PhraseRecognitionSystem.OnStatusChanged += HandlePhraseSystemStatusChanged;',
+              'PhraseRecognitionSystem.OnStatusChanged -= HandlePhraseSystemStatusChanged;',
+              'PhraseRecognitionSystem.OnError += HandlePhraseSystemError;',
+              'PhraseRecognitionSystem.OnError -= HandlePhraseSystemError;',
               'new KeywordRecognizer(_keywords, ConfidenceLevel.Low)',
               '_recognizer.OnPhraseRecognized += HandlePhraseRecognized;',
+              '_recognizer.OnPhraseRecognized -= HandlePhraseRecognized;',
               '_recognizer.Stop();', '_recognizer.Dispose();',
-          ], 'Windows speech backend')
-          if any(token in windows for token in ['BeginCalibration', 'ResetCalibration', '.Recenter(', 'ToggleGameView', 'RequestCycleCamera']):
-              raise SystemExit('Windows speech backend contains domain-command knowledge')
+              'var devices = Microphone.devices;',
+              'SpeechError.MicrophoneUnavailable',
+          ], 'Windows speech backend lifecycle/observability')
+          forbidden_windows = [
+              'Microphone.Start(',
+              'RequestUserAuthorization(',
+              'BeginCalibration', 'ResetCalibration', '.Recenter(', 'ToggleGameView', 'RequestCycleCamera',
+          ]
+          found_windows = [token for token in forbidden_windows if token in windows]
+          if found_windows:
+              raise SystemExit(f'Windows speech backend crossed input/permission boundary: {found_windows}')
 
           require(presenter, [
               'private GoldenNeedleCommandRouter _commandRouter;',
@@ -96,7 +120,8 @@ jobs:
               'public GoldenNeedleCommandResult SubmitCommand(',
               'new GoldenNeedleCommandRouter(targets);',
               'phrases => new WindowsKeywordSpeechProvider(phrases)',
-          ], 'presenter wiring')
+              '_speechCommandInput.DiagnosticSummary',
+          ], 'presenter wiring and Lab diagnostics')
 
           update_start = presenter.index('        private void Update()')
           on_gui_start = presenter.index('        private void OnGUI()', update_start)
@@ -130,6 +155,9 @@ jobs:
           print('SHARED_COMMAND_ROUTING=PASS')
           print('KEYBOARD_MIGRATION_F1_F12_R_V_C_X_K=PASS')
           print('SPEECH_POLICY_AND_PROVIDER_BOUNDARY=PASS')
+          print('SPEECH_WINDOWS_STATUS_ERROR_LIFECYCLE=PASS')
+          print('SPEECH_NO_PARALLEL_MIC_CAPTURE_OR_WINDOWS_AUTH_PROMPT=PASS')
+          print('SPEECH_LAB_DIAGNOSTICS_SURFACE=PASS')
           print('EXISTING_RUNTIME_AUTHORITIES_PRESERVED=PASS')
           PY
 
