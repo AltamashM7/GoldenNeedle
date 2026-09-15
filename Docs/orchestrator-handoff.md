@@ -12,19 +12,19 @@ Before changing anything:
 
 1. fetch/inspect the live remote `engine/pose-tracking-spike` branch;
 2. read `Docs/current-state.md` first;
-3. read this handoff;
-4. inspect any USER QA evidence supplied with the new conversation;
-5. independently verify repository/worker claims rather than accepting summaries at face value.
+3. read `Docs/optimization-orchestrator-handoff.md` second;
+4. read this handoff;
+5. read `Docs/decisions.md` when a locked/current architectural decision is relevant;
+6. inspect any USER QA evidence supplied with the new conversation;
+7. independently verify repository/worker claims rather than accepting summaries at face value.
 
-At the time this handoff was prepared, the runtime/code checkpoint before documentation updates was:
+The previous Orchestrator owned **both** the low-end optimization/OpenVINO track and the later Foundations A–E track. Foundations A–E were built on top of the optimized body pipeline; they are not a separate replacement architecture. The dedicated optimization handoff is therefore mandatory reading before changing inference, acquisition, scheduling, responsiveness, or performance behavior.
+
+At the time this handoff was prepared, the last runtime/code checkpoint before documentation-only commits was:
 
 `ee5a64d479c0710a0548cdbe0bbb90bbe80efc40`
 
-`Docs/current-state.md` was then refreshed in commit:
-
-`4315a0cbf29ae30a92c663b53f4e6079186e5ece`
-
-The live branch will be one documentation commit newer after this handoff file itself is written. Treat the actual live remote HEAD as authoritative and verify it before acting.
+The branch then received documentation-only handoff commits. Verify the actual live remote HEAD before acting rather than assuming the SHA in this paragraph is still the branch tip.
 
 ## 2. Governance — do not violate
 
@@ -37,8 +37,49 @@ The live branch will be one documentation commit newer after this handoff file i
 - Phase 5A is implemented but **NOT USER accepted**.
 - Phase 6 is **NOT STARTED**.
 - Do not resume Phase 5A work until the comprehensive Foundations A–E QA gate has been assessed.
+- Do not reopen accepted optimization decisions merely to chase small benchmark gains. Reopen them only when new reproducible evidence identifies a real bottleneck/regression.
 
-## 3. Current phase/foundation status
+## 3. Mandatory optimization context
+
+Read `Docs/optimization-orchestrator-handoff.md` before touching performance code.
+
+The current best-tested low-end body path is conceptually:
+
+```text
+Unity WebCamTexture
+-> WebCamCPU/GetPixels32 reusable acquisition
+-> reusable CPU resize/orientation preparation to 320x240
+-> bounded two-slot latest-frame mailbox
+-> one persistent OpenVINO CPU FP32 worker
+-> MediaPipe 0.10.22 preprocessing/tracking/decode/world semantics
+-> 33 normalized + world landmarks
+-> Golden Needle canonical body
+-> stable calibration/locomotion authority
+-> selectable avatar-drive filtering
+-> Phase 4 positional/IK retarget
+-> optional Foundation E detail
+-> presentation
+```
+
+Critical preserved optimization decisions:
+
+- OpenVINO CPU FP32 is the best-tested low-end accelerated backend;
+- stock MediaPipe/TFLite remains fallback/reference;
+- `WebCamCpuPixels`/GetPixels32 is the best-tested OpenVINO acquisition path;
+- ExistingReadback remains fallback/reference;
+- Immediate Launch After Readback remains accepted;
+- the OpenVINO worker/mailbox is one active inference + at most one replaceable newest pending frame;
+- no FIFO/history/replay/catch-up queue;
+- latest useful frame wins;
+- body input remains approximately 320x240 for the current low-end baseline;
+- Raw avatar drive is the subjective latency reference;
+- Stable remains stability/calibration/locomotion authority;
+- responsive A/B/C/D avatar-only profiles remain preserved, with final winner/default intentionally deferred;
+- Presentation Smoothing is downstream visual behavior, not a substitute for inference optimization.
+
+The optimization handoff contains the full chronology, measurements, Sentis rejection, OpenVINO Gate A/B evidence, native integration, scheduling fix, WebCamCPU/readback fix, responsiveness experiments, diagnosis order, and locked boundaries.
+
+## 4. Current phase/foundation status
 
 - Phase 1: **PASS WITH NOTES**.
 - Phase 2: **PASS**.
@@ -55,7 +96,7 @@ The live branch will be one documentation commit newer after this handoff file i
 
 The USER is about to run the single comprehensive A–E Unity/manual/runtime QA pass and will provide the results to the new Orchestrator.
 
-## 4. Current QA baseline — preserve for the first complete pass
+## 5. Current QA baseline — preserve for the first complete pass
 
 The USER explicitly enabled and intends to keep the following fixed during the first comprehensive test pass:
 
@@ -70,7 +111,9 @@ Do not ask the USER to change these during the first pass merely to hide a failu
 
 Presentation smoothing is intentionally OFF so real tracking/retarget behavior is visible directly.
 
-## 5. Important recent Unity compilation event
+This is a test of Foundations A–E **on top of the accepted optimized body baseline**. If performance regresses, use the diagnosis procedure in `Docs/optimization-orchestrator-handoff.md` before changing architecture.
+
+## 6. Important recent Unity compilation event
 
 The first true local Unity compilation gate caught problems that Builder-side deterministic/static CI had not caught.
 
@@ -113,7 +156,7 @@ Therefore local Unity compilation is currently **PASS**.
 
 The earlier Visual Studio/Unity UDP port `56662` warning was non-blocking IDE integration noise and was not the Safe Mode cause.
 
-## 6. Known CI hygiene issue at the current code checkpoint
+## 7. Known CI hygiene issue at the current code checkpoint
 
 Foundation E workflow run:
 
@@ -153,7 +196,7 @@ Do not broadly disable this guard. Update it narrowly after/alongside the QA ass
 
 Foundation D run `34939208754` at `c44bd4137900876c38d2ceae475967ed53644e86` was **SUCCESS** after the relevant D-side compile corrections.
 
-## 7. Key accepted automated evidence before the compile corrections
+## 8. Key accepted automated evidence before the compile corrections
 
 Retain these as useful provenance:
 
@@ -176,7 +219,7 @@ Foundation E deterministic evidence included:
 
 These do not replace the USER's live Unity/webcam/avatar QA.
 
-## 8. Foundation A summary
+## 9. Foundation A summary
 
 Purpose: one shared command/action layer for keyboard, speech and future UI.
 
@@ -190,7 +233,7 @@ Important current behavior:
 
 USER QA should verify real microphone recognition, keyboard equivalence, cooldown and camera/calibration commands.
 
-## 9. Foundation B summary
+## 10. Foundation B summary
 
 One `ThirdPersonLabCamera` remains the gameplay/presentation camera authority.
 
@@ -211,7 +254,7 @@ Focus fallbacks should safely fall from hand targets to lower-arm/body/root as a
 
 Temporary heading loss should retain last valid heading rather than snap to a hard-coded global direction.
 
-## 10. Foundation C summary
+## 11. Foundation C summary
 
 Foundation C adds provider-independent rich anatomical orientation while preserving CanonicalBodyV1 and the accepted Phase 4 positional path.
 
@@ -227,7 +270,7 @@ Important boundaries:
 
 USER QA should look for useful axial detail, no sudden twist flips, sensible ambiguity fallback and no endpoint corruption.
 
-## 11. Foundation D summary
+## 12. Foundation D summary
 
 Separate MediaPipe Hand Landmarker alongside the accepted body provider.
 
@@ -247,7 +290,7 @@ Important current design:
 
 USER QA should verify both hands, one-hand loss, body independence, stale behavior and association recovery.
 
-## 12. Foundation E summary
+## 13. Foundation E summary
 
 Foundation E is additive and post-Phase-4.
 
@@ -287,34 +330,6 @@ USER QA should especially watch for:
 - sensible finger articulation where avatar finger bones exist;
 - E category/master toggles returning to Phase 4 baseline;
 - no limb endpoint displacement from axial detail.
-
-## 13. Current accepted body runtime path
-
-The best-tested low-end path remains:
-
-```text
-WebCamTexture
--> WebCamCPU/GetPixels32
--> reusable CPU body preparation/downscale to 320x240
--> bounded latest-frame mailbox
--> persistent OpenVINO CPU FP32 worker
--> MediaPipe pose semantics
--> 33 landmarks
--> Golden Needle canonical body
--> stable calibration/locomotion authority
--> Phase 4 positional retarget
--> optional E detail
--> avatar
-```
-
-Preserve:
-
-- stock MediaPipe/TFLite fallback/reference;
-- ExistingReadback fallback/reference;
-- one active + one replaceable newest pending body frame;
-- no body backlog/history/replay;
-- OpenVINO CPU FP32 as best-tested low-end backend, not as reason to delete fallbacks;
-- stable Phase 3 filter for calibration/locomotion.
 
 ## 14. Phase 5A known issues — do not misclassify during foundation QA
 
@@ -356,12 +371,14 @@ After reading the USER's QA result:
    - foundation major regression;
    - minor/tuning issue;
    - known Phase 5A issue;
+   - optimization/performance regression;
    - unrelated environment warning;
-4. inspect repository source before proposing a fix;
-5. use a Web Builder only for actual implementation work that is needed;
-6. independently audit Builder results;
-7. update the E workflow scope guard narrowly so the legitimate compile fixes no longer generate a false positive;
-8. once A–E QA genuinely passes, update docs and only then return to Phase 5A acceptance/fixes.
+4. for any performance complaint, use `Docs/optimization-orchestrator-handoff.md` to identify the stage before changing code;
+5. inspect repository source before proposing a fix;
+6. use a Web Builder only for actual implementation work that is needed;
+7. independently audit Builder results;
+8. update the E workflow scope guard narrowly so the legitimate compile fixes no longer generate a false positive;
+9. once A–E QA genuinely passes, update docs and only then return to Phase 5A acceptance/fixes.
 
 Do not mark A–E USER accepted merely because Unity compiles.
 
@@ -370,12 +387,13 @@ Do not mark A–E USER accepted merely because Unity compiles.
 Read in this order:
 
 1. `Docs/current-state.md`
-2. `Docs/decisions.md`
+2. `Docs/optimization-orchestrator-handoff.md`
 3. `Docs/orchestrator-handoff.md`
-4. `Docs/pre-phase5a-foundations.md`
-5. `Docs/architecture.md` + `Docs/motion-engine.md`
+4. `Docs/decisions.md`
+5. `Docs/pre-phase5a-foundations.md`
+6. `Docs/architecture.md` + `Docs/motion-engine.md`
 
-Where older documents describe pre-Foundation or pre-OpenVINO states, the newer current-state/handoff wins.
+Where older documents describe pre-Foundation or pre-OpenVINO states, the newer current-state/optimization/handoff docs win.
 
 ## 18. What not to do immediately
 
@@ -386,6 +404,7 @@ Where older documents describe pre-Foundation or pre-OpenVINO states, the newer 
 - Do not weaken CI guards broadly to make them green.
 - Do not replace Phase 4 endpoint/IK authority with rich orientation.
 - Do not make hand/finger tracking mandatory for body validity.
-- Do not reopen accepted OpenVINO body architecture unless USER evidence points to a real regression.
+- Do not reopen accepted OpenVINO scheduling/acquisition architecture without a measured regression.
+- Do not use presentation smoothing to conceal correctness problems during the current first-pass QA.
 
 The next meaningful input should be the USER's comprehensive A–E Unity/manual/runtime QA result.
