@@ -189,7 +189,7 @@ The exact body-pose semantic landmarks used for coarse hands are:
 - left elbow `13`, left wrist `15`, left pinky `17`, left index `19`, left thumb `21`;
 - right elbow `14`, right wrist `16`, right pinky `18`, right index `20`, right thumb `22`.
 
-Those numeric MediaPipe indices are isolated in `MediaPipeCoarseHandEvidenceMapper.cs`. Core hand-state logic consumes semantic elbow/wrist/pinky/index/thumb evidence and contains no MediaPipe provider knowledge.
+Those numeric MediaPipe indices are isolated in `MediaPipeCoarseHandEvidenceMapper.cs`. Core hand-state logic consumes semantic elbow/wrist/pinky/index/thumb evidence and contains no MediaPipe provider knowledge downstream.
 
 ### Provider-independent contract and estimator
 
@@ -427,3 +427,41 @@ The decisive USER test is:
 **Status:** `AWAITING ORCHESTRATOR REVIEW / USER OPTIMIZED-BASELINE RUNTIME QA`
 
 Do not begin another coarse-hand implementation, Batch 4B, detailed-hand optimization, new rich-orientation work, Phase 5A fixes, Phase 6, or general CI cleanup until the Orchestrator/USER explicitly advances the project.
+
+## Corrective Restoration R1 — Compile Closure
+
+**Purpose:** restore Unity compile closure after the pre-Foundation-C Phase 3/4 production runtime restoration removed the runtime rich-motion API while a stale Foundation E component remained under live `Assets`.
+
+**Starting remote SHA:** `a67eb939a13cac6009b2504fdbb26c8cd6a4340f`
+
+**R1 implementation ending SHA:** `49739ea0d7d34c410b495e2424cbc8d78a812742`
+
+### USER Safe Mode symptom and root cause
+
+After pulling the restoration, Unity `6000.5.0f1` entered Safe Mode with CS1061 at `Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs(240,65)`: `MotionEngineRuntime` had no definition for `RichMotionFrame`.
+
+This was a stale compile-time dependency, not a Unity configuration problem. The restored `MotionEngineRuntime` correctly matches the accepted pre-Foundation-C implementation and intentionally has no `RichMotionFrame`. `RichHumanoidDetailRetargeter.cs`, however, survived as live-compiled source and still requested `_motionRuntime.RichMotionFrame`. The current `PoseTrackingSpikePresenter` no longer composes that component, and the restored `HumanoidRetargeter` no longer has Foundation E post-solve detail-layer composition, so the component was orphaned research-era code rather than part of the accepted production runtime.
+
+### Exact correction
+
+- Removed `Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs`.
+- Removed `Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs.meta`.
+- Strengthened `.github/workflows/pose-baseline-restoration.yml` so its production-runtime guard forbids `RichMotionFrame` from being reintroduced into `MotionEngineRuntime` and requires the obsolete rich-detail component pair to remain absent.
+
+`RichMotionFrame` was **not** added back to `MotionEngineRuntime`; Foundation C rich-basis generation was **not** restored; Foundation E axial/twist application was **not** restored; no dummy/stub/fabricated rich frame was added. Foundation C research contracts/solver files remain as dormant research source, but normal production composition no longer requests them.
+
+### Validation actually performed
+
+Repository inspection established that the R1 implementation commit changed only the obsolete rich-detail component pair plus the focused restoration workflow guard. The accepted restored production files remain the same pre-C baseline objects guarded by the restoration workflow, including `MotionEngineRuntime`, `MediaPipeCanonicalPoseSource`, `HumanoidRetargeter`, `PoseTrackingSpikePresenter`, `MediaPipePoseProvider`, `WebCamCpuFramePreparation`, `CanonicalPoseFrame`, and `CanonicalRotationSolver`.
+
+The focused restoration workflow triggered at implementation SHA `49739ea0d7d34c410b495e2424cbc8d78a812742` as run `35013163754`, job `104529900018`, but the runner again failed before checkout: the job contains an empty step list. Therefore Foundation A/B managed smoke, ManagedWebCamCPU smoke, the updated restoration static guard, and its read-only assertion did **not** execute in that run. No Unity C# assembly compile occurred in Builder CI, and no Unity compile PASS is claimed.
+
+A historical Foundation E workflow also triggered because its old path filter includes retargeting changes. R1 intentionally did not broaden into Foundation E CI hygiene or repair retired research expectations.
+
+### USER QA still required
+
+Pull the final branch head and open the project in Unity `6000.5.0f1`. Unity must leave Safe Mode / compile scripts without the prior `RichHumanoidDetailRetargeter -> MotionEngineRuntime.RichMotionFrame` CS1061. Then open the normal Pose Tracking Spike scene and verify the restored WebCamCPU/OpenVINO body path, Phase 3 stable calibration/filtering, and accepted Phase 4 signed mapping/analytic IK behave as before. This Builder does not claim Unity compile closure until that USER Unity compile succeeds.
+
+**Status:** `AWAITING ORCHESTRATOR REVIEW / USER UNITY QA`
+
+No coarse-hand work, Phase 5A, Phase 6, speech changes, or unrelated Foundation-E/CI cleanup is authorized or included in R1.
