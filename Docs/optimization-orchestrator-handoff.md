@@ -1,3 +1,9 @@
+> **CURRENT-STATUS ADDENDUM — 2026-09-16**
+>
+> The optimization chronology and measurements below are preserved as historical evidence. After later Foundation C/D/E/coarse-hand experiments, corrective pose-baseline restoration returned normal production pose composition to Phase 3 + Phase 4, and the USER subsequently reported that low-end performance appears restored. Current optimization status is `USER SATISFIED FOR CURRENT HACKATHON MILESTONE / FURTHER PERFORMANCE WORK DEFERRED`. The normal downstream production path is now `Phase 3 -> Phase 4 -> presentation`; Foundation E is not active production detail. Stock MediaPipe/TFLite and ExistingReadback remain fallback/reference paths. References below to a then-current comprehensive Foundations A–E QA, Foundation E in the then-current pipeline, or Foundation E as a then-current post-solve invariant describe the historical checkpoint at which this handoff was first written and are superseded for present-state authority by `Docs/current-state.md`.
+
+---
+
 # Golden Needle — Optimization Orchestrator Handoff
 
 Handoff date: 2026-09-15

@@ -465,3 +465,57 @@ Pull the final branch head and open the project in Unity `6000.5.0f1`. Unity mus
 **Status:** `AWAITING ORCHESTRATOR REVIEW / USER UNITY QA`
 
 No coarse-hand work, Phase 5A, Phase 6, speech changes, or unrelated Foundation-E/CI cleanup is authorized or included in R1.
+
+## Motion Engine Completion Sequence — Post-Restoration USER Outcome
+
+**Documentation synchronization reference checkpoint:** `f1819fda36547343bb32a972d39405d0a6be6f72`
+
+This section records the USER/runtime outcome that supersedes the pending-QA status at the end of the restoration entries above. The historical entries remain unchanged because they accurately describe what was known at those earlier checkpoints.
+
+### Final compile closure after R1
+
+After production `RichHumanoidDetailRetargeter` was removed in R1, its obsolete Foundation-E Editor tests were also removed at:
+
+`f1819fda36547343bb32a972d39405d0a6be6f72`
+
+The USER subsequently reopened Unity and confirmed **zero red errors**. The stale Foundation-E compile/test closure is therefore no longer an outstanding USER compilation gate.
+
+### Post-restoration performance decision
+
+The USER then manually tested the restored optimized body path and reports that performance appears restored. The USER explicitly decided not to continue performance optimization for the present hackathon milestone.
+
+Current optimization status is:
+
+`USER SATISFIED FOR CURRENT HACKATHON MILESTONE / FURTHER PERFORMANCE WORK DEFERRED`
+
+The accepted body path remains WebCamCPU/GetPixels32 + reusable 320x240 preparation + bounded newest-only two-slot scheduling + persistent OpenVINO CPU FP32 + MediaPipe 0.10.22 semantics, followed by CanonicalBodyV1, Phase 3 and Phase 4. Performance remains modular work that can be reopened later if new evidence warrants it.
+
+### Current foundation disposition
+
+- **Foundation A:** shared command/speech architecture retained; USER microphone QA succeeded. All 14 product-default speech mappings are now Low confidence; wake prefix remains configurable and empty by default.
+- **Foundation B:** unified camera preset architecture retained.
+- **Foundation C:** `DEFERRED / DORMANT RESEARCH — NOT PRODUCTION POSE AUTHORITY`.
+- **Foundation D:** detailed Hand Landmarker tracking `DEFERRED` after unacceptable low-end runtime impact.
+- **Foundation E:** no longer production-wired; production execution is `Phase 4 solve -> presentation`.
+- **Coarse hands / former Batch 4A:** rolled back and `DEFERRED`. The project does not claim the coarse arithmetic alone was proven to cause the observed slowdown.
+
+### Active Motion Engine work
+
+Phase 5A is now the main unfinished Motion Engine target. Horizontal infrastructure already exists, but Phase 5A remains unaccepted. Current USER observations carried forward are:
+
+- planted-feet lean suppression appears mostly successful but awaits final integrated testing;
+- moving/lifting one leg while the other remains planted can still trigger false physical translation;
+- cadence works but takes longer than desired to acquire;
+- cadence travel distance/speed after activation is not yet satisfactory.
+
+Jump and crouch have now been promoted to **Motion Engine V1 requirements**. Jump must eventually use coherent support/body evidence, distinguish true jump from single-leg lift, reject noise, and have takeoff/airborne/landing lifecycle. Crouch must use normalized body-compression/height evidence, support a held state, and use acquisition/release hysteresis. Exact algorithms are intentionally deferred to the implementation audit.
+
+### Approved three-batch completion plan
+
+1. **Batch 1 — documentation synchronization.** No runtime/code changes.
+2. **Batch 2 — horizontal locomotion completion.** Audit Phase 5A, fix swing-leg false translation, regression-check lean suppression, improve cadence acquisition, make cadence distance/speed clearly Inspector-tunable, and verify lateral/depth/heading/recenter/fusion coherence. Do not add jump/crouch yet.
+3. **Batch 3 — vertical locomotion + final Motion Engine V1 completion.** Implement jump and crouch, distinguish jump from single-leg lift, expose appropriate tuning, integrate without corrupting Phase 4 pose, and prepare the final comprehensive USER Motion Engine QA.
+
+The USER explicitly chose to defer USER/runtime testing until all three batches have been implemented. Batch 1 needs no runtime test; Batch 2 should not stop awaiting USER QA; Batch 3 prepares the integrated final pass. Builder-side validation does not replace USER acceptance.
+
+**Current status:** `BATCH 1 COMPLETE / AWAITING ORCHESTRATOR REVIEW BEFORE BATCH 2`

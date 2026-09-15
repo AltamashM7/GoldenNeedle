@@ -1,3 +1,9 @@
+> **SUPERSESSION NOTICE — 2026-09-16**
+>
+> This file is preserved as **historical design context**, not current implementation authority. Foundation A's shared command/speech architecture and Foundation B's camera preset architecture were retained. The planned production rollout of Foundations C/D/E was later reversed/deferred after USER runtime evidence and corrective pose-baseline restoration: C is dormant research, D detailed hands are deferred, and E is no longer production-wired. Current production pose authority is Phase 3 + Phase 4 and is documented in `Docs/current-state.md`. The original foundation order, rollout requirements, QA sequence and “Immediate next implementation target” below describe the earlier approved design checkpoint and must not be read as the current project plan.
+
+---
+
 # Golden Needle — Pre-Phase 5A Foundation Architecture
 
 Status: **USER APPROVED DIRECTION / IMPLEMENTATION NOT STARTED**

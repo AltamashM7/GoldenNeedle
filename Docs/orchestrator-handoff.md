@@ -1,410 +1,199 @@
-# Golden Needle — New Orchestrator Handoff
+# Golden Needle — Orchestrator Handoff
 
-Handoff date: 2026-09-15
+Handoff refresh: 2026-09-16
 
 Repository: `AltamashM7/GoldenNeedle`
 
 Active branch: `engine/pose-tracking-spike`
 
-## 1. First actions for the new Orchestrator
+## 1. First actions for the next Orchestrator
 
 Before changing anything:
 
-1. fetch/inspect the live remote `engine/pose-tracking-spike` branch;
-2. read `Docs/current-state.md` first;
-3. read `Docs/optimization-orchestrator-handoff.md` second;
-4. read this handoff;
-5. read `Docs/decisions.md` when a locked/current architectural decision is relevant;
-6. inspect any USER QA evidence supplied with the new conversation;
-7. independently verify repository/worker claims rather than accepting summaries at face value.
+1. verify the live remote `engine/pose-tracking-spike` HEAD;
+2. read `Docs/current-state.md` as the primary current authority;
+3. read `Docs/optimization-orchestrator-handoff.md` for optimization history and preserved invariants;
+4. read `Docs/decisions.md` for current/superseded architectural decisions;
+5. inspect the current source before writing any Builder brief;
+6. independently verify Builder/repository claims rather than accepting summaries at face value.
 
-The previous Orchestrator owned **both** the low-end optimization/OpenVINO track and the later Foundations A–E track. Foundations A–E were built on top of the optimized body pipeline; they are not a separate replacement architecture. The dedicated optimization handoff is therefore mandatory reading before changing inference, acquisition, scheduling, responsiveness, or performance behavior.
+Do **not** merge to `main` without explicit USER approval. Do not force-push, rebase, amend, reset, or rewrite published/shared history.
 
-At the time this handoff was prepared, the last runtime/code checkpoint before documentation-only commits was:
+## 2. Current code/runtime baseline
 
-`ee5a64d479c0710a0548cdbe0bbb90bbe80efc40`
+The code/runtime checkpoint entering Motion Engine Completion Batch 1 is:
 
-The branch then received documentation-only handoff commits. Verify the actual live remote HEAD before acting rather than assuming the SHA in this paragraph is still the branch tip.
+`f1819fda36547343bb32a972d39405d0a6be6f72`
 
-## 2. Governance — do not violate
+That commit removed obsolete Foundation-E Editor tests after production `RichHumanoidDetailRetargeter` had already been retired. The preceding corrective pose-baseline work restored normal production composition to the accepted optimization-era Phase 3 + Phase 4 architecture.
 
-- Do **not** merge to `main` without explicit USER approval.
-- Do not force-push, rebase, amend, reset, or rewrite shared history merely to make checkpoint history cleaner.
-- GitHub is shared authoritative state; USER normally works through GitHub Desktop.
-- One builder should mutate the long-lived engine branch at a time.
-- USER performs decisive Unity/manual/runtime QA.
-- Phase 4 is USER accepted and must be preserved.
-- Phase 5A is implemented but **NOT USER accepted**.
-- Phase 6 is **NOT STARTED**.
-- Do not resume Phase 5A work until the comprehensive Foundations A–E QA gate has been assessed.
-- Do not reopen accepted optimization decisions merely to chase small benchmark gains. Reopen them only when new reproducible evidence identifies a real bottleneck/regression.
+The USER subsequently opened Unity with zero red errors and reports that performance appears restored. The USER explicitly decided not to continue performance optimization now.
 
-## 3. Mandatory optimization context
+Current performance milestone:
 
-Read `Docs/optimization-orchestrator-handoff.md` before touching performance code.
+`USER SATISFIED FOR CURRENT HACKATHON MILESTONE / FURTHER PERFORMANCE WORK DEFERRED`
 
-The current best-tested low-end body path is conceptually:
+Do not reopen performance architecture unless new reproducible evidence justifies it.
+
+## 3. Preserved optimized body path
+
+Current best-tested normal body path:
 
 ```text
 Unity WebCamTexture
--> WebCamCPU/GetPixels32 reusable acquisition
--> reusable CPU resize/orientation preparation to 320x240
--> bounded two-slot latest-frame mailbox
--> one persistent OpenVINO CPU FP32 worker
--> MediaPipe 0.10.22 preprocessing/tracking/decode/world semantics
+-> reusable WebCamCPU/GetPixels32 acquisition
+-> reusable 320x240 CPU preparation
+-> bounded newest-only two-slot scheduling
+-> persistent OpenVINO CPU FP32 worker
+-> MediaPipe 0.10.22 pose semantics
 -> 33 normalized + world landmarks
--> Golden Needle canonical body
--> stable calibration/locomotion authority
--> selectable avatar-drive filtering
--> Phase 4 positional/IK retarget
--> optional Foundation E detail
+-> CanonicalBodyV1
+-> Phase 3 stabilization/calibration authority
+-> Phase 4 positional/IK avatar control
 -> presentation
 ```
 
-Critical preserved optimization decisions:
+Preserve these boundaries:
 
-- OpenVINO CPU FP32 is the best-tested low-end accelerated backend;
 - stock MediaPipe/TFLite remains fallback/reference;
-- `WebCamCpuPixels`/GetPixels32 is the best-tested OpenVINO acquisition path;
 - ExistingReadback remains fallback/reference;
-- Immediate Launch After Readback remains accepted;
-- the OpenVINO worker/mailbox is one active inference + at most one replaceable newest pending frame;
-- no FIFO/history/replay/catch-up queue;
-- latest useful frame wins;
-- body input remains approximately 320x240 for the current low-end baseline;
-- Raw avatar drive is the subjective latency reference;
-- Stable remains stability/calibration/locomotion authority;
-- responsive A/B/C/D avatar-only profiles remain preserved, with final winner/default intentionally deferred;
-- Presentation Smoothing is downstream visual behavior, not a substitute for inference optimization.
+- at most one active body inference plus one replaceable newest pending frame;
+- latest useful frame wins; no FIFO/history/replay/catch-up backlog;
+- stable Phase 3 canonical data remains calibration/locomotion authority;
+- Phase 4 signed canonical-to-avatar mapping and analytic two-bone IK remain accepted production pose authority;
+- monocularly unobservable free axial/twist motion is not fabricated in normal production operation.
 
-The optimization handoff contains the full chronology, measurements, Sentis rejection, OpenVINO Gate A/B evidence, native integration, scheduling fix, WebCamCPU/readback fix, responsiveness experiments, diagnosis order, and locked boundaries.
+The normal downstream production path is now `Phase 4 solve -> presentation`, not `Phase 4 -> Foundation E -> presentation`.
 
-## 4. Current phase/foundation status
+## 4. Current phase status
 
-- Phase 1: **PASS WITH NOTES**.
-- Phase 2: **PASS**.
-- Phase 3: **PASS**.
-- Phase 4: **USER ACCEPTED — PASS**.
-- Motion-engine latency/performance milestone: **CURRENT MILESTONE COMPLETE; further tuning deferred**.
-- Foundation A: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA PENDING**.
-- Foundation B: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA PENDING**.
-- Foundation C: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA PENDING**.
-- Foundation D: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA PENDING**.
-- Foundation E: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / UNITY COMPILATION PASS / USER MANUAL QA PENDING**.
-- Phase 5A: **IMPLEMENTED / NOT USER ACCEPTED**.
-- Phase 6: **NOT STARTED**.
+- Phase 1 — provider/raw pose: **PASS WITH NOTES**.
+- Phase 2 — canonical skeleton: **PASS**.
+- Phase 3 — stabilization/confidence/calibration foundation: **PASS**.
+- Phase 4 — humanoid retargeting: **USER ACCEPTED — PASS**.
+- Low-end optimization milestone: **USER SATISFIED / FROZEN FOR CURRENT MILESTONE**.
+- Phase 5A — locomotion: **IMPLEMENTED / NOT YET USER ACCEPTED / NOW ACTIVE DEVELOPMENT TARGET**.
+- Phase 6 — graybox vertical slice: **NOT STARTED**.
 
-The USER is about to run the single comprehensive A–E Unity/manual/runtime QA pass and will provide the results to the new Orchestrator.
+Do not mark Phase 5A or Motion Engine V1 accepted before final integrated USER QA.
 
-## 5. Current QA baseline — preserve for the first complete pass
+## 5. Foundation disposition
 
-The USER explicitly enabled and intends to keep the following fixed during the first comprehensive test pass:
+### Foundation A — commands/speech
 
-- Body Reference Downscale: **ON**
-- Immediate Launch After Readback: **ON**
-- WebCam CPU Pixels: **ON**
-- Direct Body CPU Readback: **ON**
-- OpenVINO CPU: **ON**
-- Presentation Smoothing: **OFF**
+**Retained and working.** The shared command router remains the authority for keyboard and speech actions. USER microphone QA succeeded. The Windows phrase system/`KeywordRecognizer` recognized and dispatched configured commands; Low-confidence results were common in noisy conditions and clearer/louder speech produced successful cases.
 
-Do not ask the USER to change these during the first pass merely to hide a failure.
+All 14 product-default mappings created by `SpeechCommandConfiguration.CreateDefault()` now explicitly use `SpeechRecognitionConfidence.Low`. The generic/custom mapping default remains Medium. `wakePrefix` remains configurable and empty by default.
 
-Presentation smoothing is intentionally OFF so real tracking/retarget behavior is visible directly.
+### Foundation B — camera presets
 
-This is a test of Foundations A–E **on top of the accepted optimized body baseline**. If performance regresses, use the diagnosis procedure in `Docs/optimization-orchestrator-handoff.md` before changing architecture.
+**Retained.** One primary camera owns the data-driven presets:
 
-## 6. Important recent Unity compilation event
+`Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, `RightHand`.
 
-The first true local Unity compilation gate caught problems that Builder-side deterministic/static CI had not caught.
+Preset commands share the command architecture. F12 Lab/Game presentation remains a separate mode toggle.
 
-Unity version: `6000.5.0f1`.
+### Foundation C — rich orientation
 
-### First Safe Mode error
+`DEFERRED / DORMANT RESEARCH — NOT PRODUCTION POSE AUTHORITY`
 
-`RichHumanoidDetailRetargeter.cs` failed because `CanonicalBoneId` was referenced without importing:
+Research contracts/solver may remain in source history/current tree, but `MotionEngineRuntime` and the production pose composition were restored to the pre-C baseline. Do not treat C as a required next milestone.
 
-`GoldenNeedle.Core.Motion.Rotation`
+### Foundation D — detailed hands
 
-This was fixed at:
+`DEFERRED`
 
-`a1a3071da5bda48b53ccfd875e3e569ed48bd6dc`
+The independent Hand Landmarker caused unacceptable low-end impact in USER testing, with the full detailed stream entering roughly the 10–15 FPS class. Existing research/lifecycle fixes may remain, but detailed hands are not normal production operation or a current hackathon requirement.
 
-### Second Safe Mode batch
+### Foundation E — post-Phase-4 detail
 
-After that import was fixed, Unity exposed the remaining visible compiler errors:
+`RETIRED FROM PRODUCTION`
 
-- two `Object` ambiguities in `ThirdPersonLabCamera.cs` (`System.Object` vs `UnityEngine.Object`);
-- three `Debug.LogWarning` namespace collisions against project namespace `GoldenNeedle.Debug` in:
-  - `HandMotionRuntime.cs`;
-  - `MediaPipeHandLandmarkerSource.Results.cs`;
-  - `HumanoidRetargeter.cs`;
-- two `CS8156` errors from passing property expression `hand.palmBasis` using `in` inside `RichHumanoidDetailRetargeter.cs`.
+Production `RichHumanoidDetailRetargeter` was removed; stale Editor tests were removed at `f1819fda36547343bb32a972d39405d0a6be6f72`. Historical E research remains provenance only.
 
-They were fixed mechanically, without intended runtime-semantic redesign:
+### Coarse hands / former Batch 4A
 
-- camera lookups use `UnityEngine.Object.FindAnyObjectByType(...)`;
-- warnings use `UnityEngine.Debug.LogWarning(...)`;
-- the illegal readonly-ref property argument pattern was removed while preserving the same E math call semantics.
+`DEFERRED`
 
-Final compile-fix checkpoint:
+The zero-extra-inference coarse hand signal was Builder/static validated, then rejected after USER runtime evaluation and rolled back. Do not claim the coarse arithmetic itself was uniquely proven to cause the performance drop; the USER chose the known optimized baseline over this feature/value tradeoff.
 
-`ee5a64d479c0710a0548cdbe0bbb90bbe80efc40`
+## 6. Phase 5A is the active unfinished Motion Engine target
 
-After pulling that checkpoint, the USER confirmed **Unity opens with zero red compilation errors**.
+Most horizontal locomotion infrastructure already exists:
 
-Therefore local Unity compilation is currently **PASS**.
+- physical camera-space/root displacement;
+- lateral and toward/away movement;
+- body heading;
+- cadence/in-place movement;
+- physical/cadence fusion;
+- recenter;
+- Lab/Game presentation;
+- third-person follow/preset camera.
 
-The earlier Visual Studio/Unity UDP port `56662` warning was non-blocking IDE integration noise and was not the Safe Mode cause.
+The current controller consumes the stabilized Phase 3 frame and writes avatar-root X/Z only, preserving root Y and rotation.
 
-## 7. Known CI hygiene issue at the current code checkpoint
+Known current issues/observations:
 
-Foundation E workflow run:
+1. Planted-feet lean suppression appears mostly successful, but is not finally accepted because integrated runtime testing is deferred.
+2. **Raised/swing-leg false translation:** lifting/moving one leg while the other remains planted can trigger physical locomotion. The current support midpoint/common-displacement model allows one-foot movement to shift the midpoint. Batch 2 must distinguish support/planted motion from swing-leg motion.
+3. Cadence works but acquires more slowly than desired.
+4. Cadence travel distance/speed after activation is not satisfactory.
+5. The source already contains Inspector-facing cadence settings including event threshold, acquisition-event count, acquire/sustain confidence, virtual stride per step, maximum virtual speed, step-rate range, timeout and signal response. Batch 2 should audit/use/expose them coherently rather than rebuild cadence from scratch.
+6. Existing lateral/depth/heading/recenter/fusion behavior should be audited for consistency, not assumed accepted.
 
-- run `34939309536`
-- head `ee5a64d479c0710a0548cdbe0bbb90bbe80efc40`
-- overall result: **FAILURE**
+## 7. Jump and crouch are Motion Engine V1 requirements
 
-This failure is presently understood as a static scope-guard false positive, not a deterministic regression.
+### Jump
 
-The workflow actually completed and passed:
+Physical jumping must produce corresponding vertical game movement. The eventual implementation must use coherent body/support evidence, distinguish a true jump from single-leg lift, reject ordinary tracking noise, have a clear takeoff/airborne/landing lifecycle and expose useful tuning controls. Do not pre-commit to a final algorithm before Batch 3 implementation audit.
 
-- Foundation A smoke;
-- Foundation B smoke;
-- Foundation C smoke;
-- Foundation D smoke;
-- Foundation E deterministic smoke;
-- all 24 E deterministic checks.
+### Crouch
 
-It failed later because the historical Foundation E locked-scope allowlist treats three legitimate compile-fix files as forbidden scope:
+Physical crouching must correspondingly lower/crouch the character. The eventual implementation must use normalized body-compression/height evidence rather than fragile raw-pixel-only thresholds, support held crouch state, use acquire/release hysteresis and expose useful tuning controls. Do not pre-commit to a final algorithm before Batch 3.
 
-- `Assets/GoldenNeedle/Core/Motion/Hands/HandMotionRuntime.cs`
-- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.Results.cs`
-- `Assets/GoldenNeedle/Debug/PoseTrackingSpike/ThirdPersonLabCamera.cs`
+## 8. Approved three-batch Motion Engine completion sequence
 
-The exact failure was the E static audit reporting those files as unexpected Foundation-E scope.
+### Batch 1 — documentation synchronization
 
-Do not broadly disable this guard. Update it narrowly after/alongside the QA assessment so these already-reviewed compile-only compatibility fixes are allowed while real protections remain intact:
+Documentation only. This batch must finish and receive Orchestrator review before implementation resumes.
 
-- body/OpenVINO paths;
-- CanonicalBodyV1;
-- Phase 4 compatibility solve;
-- Phase 5A;
-- scene YAML;
-- ProjectSettings/packages;
-- provider/application boundaries;
-- read-only workflow behavior.
+### Batch 2 — horizontal locomotion completion
 
-Foundation D run `34939208754` at `c44bd4137900876c38d2ceae475967ed53644e86` was **SUCCESS** after the relevant D-side compile corrections.
+- audit existing Phase 5A;
+- fix raised/swing-leg false physical translation;
+- regression-check the mostly successful lean suppression;
+- improve cadence acquisition responsiveness;
+- make cadence travel distance/speed clearly Inspector-tunable;
+- verify lateral/depth/heading/recenter/fusion coherence;
+- do not add jump/crouch yet.
 
-## 8. Key accepted automated evidence before the compile corrections
+### Batch 3 — vertical locomotion + final Motion Engine V1 completion
 
-Retain these as useful provenance:
+- implement jump detection/application;
+- implement crouch detection/application;
+- distinguish jump from single-leg lift;
+- expose appropriate Inspector tuning;
+- integrate with Phase 5A without corrupting Phase 4 body pose;
+- prepare one final comprehensive USER Motion Engine QA.
 
-- Foundation C correction: run `34919859131`, job `104225315113`, SHA `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`: **PASS**.
-- Foundation D correction: run `34920144300`, job `104226227007`, SHA `864b39a520c78db1a0572b87a7d42c9da5cedaa4`: **PASS**.
-- Foundation D E-compatible boundary migration: run `34930150745`, job `104256492165`, SHA `44a39d5ef566b800587a3be73345e843fffe5ac0`: **PASS**.
-- Foundation E palm-corrected exact-head verification: run `34933354209`, job `104265988449`, SHA `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`: **PASS**.
-- Foundation D compatibility at same SHA: run `34933354189`, job `104265988337`: **PASS**.
-- Foundation E runtime-wiring exact-head verification: run `34935841592`, job `104273421820`, SHA `c91574a7b3557bc749ed74c87e5a46107fd018c8`: **PASS**.
-- Foundation D compatibility at same SHA: run `34935841602`, job `104273421255`: **PASS**.
+After Batch 3, all Motion Engine testing is performed together. If accepted, Motion Engine V1 is essentially complete for the hackathon and the USER will provide the next game-development direction.
 
-Foundation E deterministic evidence included:
+## 9. Testing policy
 
-- 24/24 smoke checks;
-- endpoint residual `0`;
-- repeated palm target drift `0°`;
-- stale palm residual `0°`;
-- parent-relative palm local drift `0°`;
-- bounded reacquisition step `2.68084192°`.
+The USER explicitly deferred USER/runtime testing until all three batches are implemented.
 
-These do not replace the USER's live Unity/webcam/avatar QA.
+- Do not request Batch 1 runtime QA.
+- Batch 2 must not stop merely to wait for USER QA.
+- Batch 3 prepares the final integrated QA.
+- Builder compile/static/deterministic checks remain useful where appropriate but never create USER acceptance.
+- Do not mark untested runtime behavior accepted.
 
-## 9. Foundation A summary
+## 10. Phase 6 / game boundary
 
-Purpose: one shared command/action layer for keyboard, speech and future UI.
+Phase 6 remains **NOT STARTED**. Do not begin graybox/playable vertical-slice work from Batch 1 or Batch 2. Hub/course implementation has not begun merely because the Motion Engine roadmap is synchronized.
 
-Important current behavior:
+## 11. Immediate next action after this documentation batch
 
-- keyboard meanings R/V/F1–F12/C/X/K route through project command authority;
-- speech is a replaceable provider and current Windows implementation uses `KeywordRecognizer`;
-- speech does not synthesize key presses;
-- cooldown, confidence, optional wake prefix and mappings are configurable;
-- camera preset speech goes through the same command layer.
+**STOP after Batch 1.** The next Orchestrator must independently review the synchronized docs and source, then issue a separate Batch 2 Builder brief if the state is coherent.
 
-USER QA should verify real microphone recognition, keyboard equivalence, cooldown and camera/calibration commands.
-
-## 10. Foundation B summary
-
-One `ThirdPersonLabCamera` remains the gameplay/presentation camera authority.
-
-Presets:
-
-- Back
-- Front
-- Left
-- Right
-- FullBody
-- Hands
-- LeftHand
-- RightHand
-
-Preset selection is orthogonal to F12 Lab/Game mode.
-
-Focus fallbacks should safely fall from hand targets to lower-arm/body/root as appropriate.
-
-Temporary heading loss should retain last valid heading rather than snap to a hard-coded global direction.
-
-## 11. Foundation C summary
-
-Foundation C adds provider-independent rich anatomical orientation while preserving CanonicalBodyV1 and the accepted Phase 4 positional path.
-
-Important boundaries:
-
-- `CanonicalAnatomicalBasis` is canonical orientation authority;
-- no canonical Quaternion authority;
-- no second body inference;
-- MediaPipe 33-landmark observation is reused;
-- legacy stable pose remains calibration/locomotion authority;
-- partial-body channels are independent;
-- twist observability states are `Observed`, `Held`, `ReferenceFallback`, `Unobservable`.
-
-USER QA should look for useful axial detail, no sudden twist flips, sensible ambiguity fallback and no endpoint corruption.
-
-## 12. Foundation D summary
-
-Separate MediaPipe Hand Landmarker alongside the accepted body provider.
-
-Important current design:
-
-- CPU `LIVE_STREAM`;
-- `numHands=2`;
-- approximately 12 Hz default hand cadence;
-- separate reusable 480x360 preparation;
-- one active + at most one replaceable newest pending hand frame;
-- no FIFO/history/replay;
-- project-owned 21-landmark semantic contract;
-- body-provider Stopwatch is shared semantic timing epoch;
-- independent left/right freshness;
-- bundled official model;
-- D produces hand data only and does not drive avatar transforms.
-
-USER QA should verify both hands, one-hand loss, body independence, stale behavior and association recovery.
-
-## 13. Foundation E summary
-
-Foundation E is additive and post-Phase-4.
-
-Execution concept:
-
-```text
-exact Phase 4 positional/IK solve
--> optional Foundation E detail
--> presentation layer
-```
-
-With presentation smoothing OFF for current QA, E output is exposed directly after the exact Phase 4 solve.
-
-Key implementation facts:
-
-- generic `IHumanoidPostSolveDetailLayer` boundary;
-- code-owned `RichHumanoidDetailRetargeter` composition in `PoseTrackingSpikePresenter.Awake()`;
-- `HumanoidRetargeter.Start()` re-discovers optional detail layers;
-- `HumanoidRigBinding.IsBound` remains required-body semantics only;
-- optional detail/fingers never become required body validity;
-- production rich channels are exactly bilateral upper/lower arms and upper/lower legs;
-- pelvis/chest/feet remain deferred;
-- rich axial twist is signed-map aware and downstream compensated;
-- palm target is absolute/reference-based, not cumulative;
-- target palm reference is parent-relative and derived from real avatar finger geometry;
-- stale/master/category/reset paths remove E-owned palm/finger contribution;
-- reacquisition establishes a fresh zero-delta source reference;
-- no inference/camera/provider scheduling/history exists in E.
-
-USER QA should especially watch for:
-
-- E component auto-presence without manual Add Component;
-- no palm rotation accumulation while holding a fixed pose;
-- stale hand return;
-- controlled reacquisition;
-- independent left/right behavior;
-- sensible finger articulation where avatar finger bones exist;
-- E category/master toggles returning to Phase 4 baseline;
-- no limb endpoint displacement from axial detail.
-
-## 14. Phase 5A known issues — do not misclassify during foundation QA
-
-Phase 5A is still unaccepted.
-
-Known pre-existing issues:
-
-- planted-feet leaning can cause unwanted translation;
-- stationary cadence stepping is not robust enough.
-
-If the USER reports these again during the foundation pass, do not automatically classify them as new A–E regressions.
-
-## 15. Expected USER handoff to the next Orchestrator
-
-The USER said they will provide the comprehensive testing result to the new Orchestrator.
-
-Likely evidence includes:
-
-- exact test SHA;
-- Unity compilation/Test Runner result;
-- Foundation A keyboard/speech behavior;
-- Foundation B preset/fallback behavior;
-- Foundation C partial-body/twist behavior;
-- Foundation D hand startup/both-hands/one-hand-loss behavior;
-- Foundation E auto-wiring, palm drift, stale return, reacquisition, finger articulation and toggle behavior;
-- performance/endurance notes;
-- screenshots/video/logs for failures.
-
-Treat that USER evidence as the decisive runtime gate.
-
-## 16. Recommended next-Orchestrator decision flow
-
-After reading the USER's QA result:
-
-1. verify live branch and exact USER-tested SHA;
-2. record Unity Test Runner/compilation outcome;
-3. classify each failure as:
-   - foundation blocker;
-   - foundation major regression;
-   - minor/tuning issue;
-   - known Phase 5A issue;
-   - optimization/performance regression;
-   - unrelated environment warning;
-4. for any performance complaint, use `Docs/optimization-orchestrator-handoff.md` to identify the stage before changing code;
-5. inspect repository source before proposing a fix;
-6. use a Web Builder only for actual implementation work that is needed;
-7. independently audit Builder results;
-8. update the E workflow scope guard narrowly so the legitimate compile fixes no longer generate a false positive;
-9. once A–E QA genuinely passes, update docs and only then return to Phase 5A acceptance/fixes.
-
-Do not mark A–E USER accepted merely because Unity compiles.
-
-## 17. Current documentation authority
-
-Read in this order:
-
-1. `Docs/current-state.md`
-2. `Docs/optimization-orchestrator-handoff.md`
-3. `Docs/orchestrator-handoff.md`
-4. `Docs/decisions.md`
-5. `Docs/pre-phase5a-foundations.md`
-6. `Docs/architecture.md` + `Docs/motion-engine.md`
-
-Where older documents describe pre-Foundation or pre-OpenVINO states, the newer current-state/optimization/handoff docs win.
-
-## 18. What not to do immediately
-
-- Do not merge to `main`.
-- Do not start Phase 6.
-- Do not resume Phase 5A before A–E QA is assessed.
-- Do not change the locked first-pass QA settings before evidence is collected.
-- Do not weaken CI guards broadly to make them green.
-- Do not replace Phase 4 endpoint/IK authority with rich orientation.
-- Do not make hand/finger tracking mandatory for body validity.
-- Do not reopen accepted OpenVINO scheduling/acquisition architecture without a measured regression.
-- Do not use presentation smoothing to conceal correctness problems during the current first-pass QA.
-
-The next meaningful input should be the USER's comprehensive A–E Unity/manual/runtime QA result.
+Do not resume Foundation C/D/E/coarse-hand work, performance optimization, Phase 6, or unrelated CI cleanup as part of the locomotion completion sequence unless the USER explicitly changes scope.

@@ -1,282 +1,264 @@
-# Planned V1 Motion Engine
+# Golden Needle — Motion Engine V1
 
-Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / AWAITING USER QA.** Phase 1 accepted SHA: `88ff29bfe6b8b89536e6b3b274177f8f8f0e8fd6`. Phase 2 accepted SHA: `f5a15648607adf6034800c6a2b4d685b0e6f03ea`. Phase 3 accepted SHA: `2ee4d6eb606a8b845183cc44126ecf9530d8280b`. Phase 4 accepted implementation SHA: `f0c81e84d0a482c40448505f2904af93ef4aa881`.
+Status: **PHASE 4 USER ACCEPTED — PASS. PHASE 5A IMPLEMENTED / NOT USER ACCEPTED / ACTIVE DEVELOPMENT TARGET.**
 
-<!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:START -->
-## Current Phase 5A runtime checkpoint
+Authoritative roadmap refresh: 2026-09-16.
 
-Starting correction checkpoint: `6a98003efd427e1c8570bab9b32565673a1f268d`.
+The Motion Engine V1 objective is a responsive webcam-driven embodied-control system that works on low-end CPU-first hardware, reproduces trustworthy body pose through the accepted Phase 3 + Phase 4 stack, and translates deliberate user movement into gameplay locomotion without conflating pose reproduction with world movement.
 
-Phase 4 remains accepted. Phase 5A remains unaccepted. Final locomotion QA is waiting on external/full-body camera infrastructure and the 30 FPS inference-target baseline.
+## Current phase status
 
-`MediaPipePoseProvider` remains the one authoritative camera pipeline. `preferredCameraName` stores a WebCamDevice name; the custom Inspector enumerates `WebCamTexture.devices`; `V` cycles non-depth/non-IR devices. Phones work only when Windows exposes them as UVC/standard/virtual webcams.
+| Phase | Status |
+|---|---|
+| Phase 1 — provider/raw pose | **PASS WITH NOTES** |
+| Phase 2 — canonical skeleton | **PASS** |
+| Phase 3 — stabilization/confidence/calibration foundation | **PASS** |
+| Phase 4 — humanoid retargeting | **USER ACCEPTED — PASS** |
+| Low-end optimization milestone | **USER SATISFIED / FROZEN FOR CURRENT MILESTONE** |
+| Phase 5A — horizontal locomotion | **IMPLEMENTED / NOT YET USER ACCEPTED / ACTIVE DEVELOPMENT TARGET** |
+| Phase 6 — graybox vertical slice | **NOT STARTED** |
 
-Switching is safe and serialized: a pending request prevents new old-camera launches, existing readback/inference finishes, the old camera/PoseLandmarker is cleaned up, the source/session convention version increments, observations clear, and one new provider pipeline bootstraps. Runtime convention reset invalidates calibration; Phase 5A resets support/cadence/fusion state through its existing invalid-calibration path.
+## Normal production body pipeline
 
-Orientation supports Auto or manual 0/90/180/270. One effective quarter-turn drives both MediaPipe preparation and Lab display/convention state. Front-facing metadata still never implies horizontal inference mirroring.
+```text
+Unity WebCamTexture
+-> reusable WebCamCPU/GetPixels32 acquisition
+-> reusable 320x240 CPU preparation
+-> bounded newest-only two-slot scheduling
+-> persistent OpenVINO CPU FP32 worker
+-> MediaPipe 0.10.22 pose semantics
+-> 33 normalized + world landmarks
+-> CanonicalBodyV1
+-> Phase 3 stabilization/calibration authority
+-> Phase 4 positional/IK avatar control
+-> presentation
+```
 
-Camera request defaults remain `640x480 @ 30`; `480x640 @ 30` is a supported lightweight portrait request. Actual resolution/FPS is driver dependent.
+Stock MediaPipe/TFLite and ExistingReadback remain fallback/reference paths. The accepted scheduling model allows one active body inference and at most one replaceable newest pending frame. No FIFO/history/replay/catch-up backlog is part of the normal architecture.
 
-Pose target is now **30 FPS**. The provider still allows only one readback/inference and no queue/catch-up loop. A one-bit latest-frame freshness latch prevents duplicate inference on unchanged WebCamTexture images while allowing a frame that arrived just before scheduler eligibility to be consumed once.
+The USER reports that performance appears restored after the corrective pose-baseline work and has explicitly closed further optimization for the current hackathon milestone. Performance can be revisited later if new evidence justifies it.
 
-Actual Pose Results/s may remain below 30 when CPU inference is the limiter. Render-rate avatar smoothing remains independent of real result cadence.
-<!-- PHASE5A_LATEST_RUNTIME_CHECKPOINT:END -->
+## Phase 1 — provider/raw pose boundary
 
-## Phase 1 spike boundary
+`MediaPipePoseProvider` remains the single normal body-provider pipeline. MediaPipe-specific result structures stay upstream. The provider preserves MediaPipe 0.10.22 preprocessing/tracking/decode/world semantics around the accelerated OpenVINO neural execution path, and publishes the 33 normalized/world pose landmarks through project-owned observation state.
 
-- `MediaPipePoseProvider` owns the WebCamTexture capture, MediaPipe Tasks API integration, CPU configuration, cadence limiting, async result callback, and per-landmark trust classification.
-- `PoseObservation` is the raw provider-boundary observation type. It remains upstream-only and is not a gameplay contract.
-- `MediaPipeCanonicalPoseMapper` converts the raw provider observation into the engine-owned `CanonicalPoseFrame`. It is the only Phase 2 runtime mapping location that knows the 33-landmark source indices.
-- `PoseTrackingSpikePresenter` is a diagnostic consumer that draws the camera texture, raw and canonical trusted landmarks/connections, a canonical local-space 3D view, and runtime statistics.
-- The current Windows integration uses the repository-local MediaPipeUnityPlugin `0.16.3` CPU prebuilt runtime and a local Pose Landmarker Lite model. Windows support is documented as experimental by the plugin, so the Orchestrator should treat the USER’s physical QA as the acceptance authority.
-- The spike accepts partial bodies through per-landmark trust. Missing or untrusted lower-body landmarks do not invalidate trusted upper-body observations.
+The provider remains replaceable. Downstream game and course systems must not depend directly on MediaPipe classes or source landmark indices.
 
-## Motion Engine runtime boundary
+## Phase 2 — CanonicalBodyV1
 
-`ICanonicalPoseSource` is the narrow provider-independent source contract. The MediaPipe adapter maps the latest provider observation into `CanonicalPoseFrame`; `MotionEngineRuntime` then owns the single canonical source -> stabilization -> calibration -> rotation path. The presenter, retargeter, and future gameplay consumers read runtime-owned outputs rather than rebuilding stages or depending on MediaPipe structures.
-
-## Camera
-
-- Webcam capture is integrated into the Unity application.
-- Approximately 640x480 is the initial processing target.
-- Camera capture may run around 30 FPS, independently of pose inference and Unity rendering.
-- Raw webcam video is not stored or recorded by default.
-
-## Pose Provider
-
-- MediaPipe Pose Landmarker is the planned V1 backend.
-- Processing is local, CPU-oriented, and single-person.
-- Approximately 20 usable pose results per second is the initial target.
-- Pose inference frequency remains independent from Unity's rendering frequency.
-- The provider measures its minimum request interval from the **last accepted request**. If readback/inference is busy after the interval elapsed, the skip does not move a future slot; the next free Update may launch immediately.
-- Consumers should use the latest usable pose rather than allowing an unbounded inference backlog. At most one readback and one inference remain outstanding.
-- MediaPipe is replaceable; downstream game and course systems must not be rewritten when the backend changes.
-
-## Raw pose boundary
-
-The upstream MediaPipe model provides approximately 33 pose landmarks. MediaPipe-specific result structures must remain inside the provider/integration boundary. They are not the canonical data contract for downstream systems.
-
-## Canonical skeleton
-
-Phase 2 exposes a smaller engine-owned body representation suitable for later filtering, reconstruction, retargeting, and locomotion interpretation. The current exact 20-joint set is:
+The engine-owned `CanonicalPoseFrame` remains the accepted 20-joint contract:
 
 `Pelvis, Spine, Chest, Head, LeftShoulder, LeftElbow, LeftWrist, RightShoulder, RightElbow, RightWrist, LeftHip, LeftKnee, LeftAnkle, LeftHeel, LeftToe, RightHip, RightKnee, RightAnkle, RightHeel, RightToe`.
 
-Direct joints are mapped from the required MediaPipe source landmarks. Pelvis is the trusted midpoint of both hips, Chest is the trusted midpoint of both shoulders, and Spine is the trusted midpoint of Pelvis and Chest. Derived confidence is the minimum input confidence. A missing joint leaves that canonical joint unavailable without invalidating the rest of the frame.
+Partial bodies remain valid per joint/chain; unavailable lower-body landmarks do not invalidate trustworthy upper-body data. Canonical axes remain +X camera/view right, +Y up, +Z away.
 
-Canonical image coordinates are x left-to-right and y bottom-to-top. Canonical 3D uses +X camera/view right, +Y up, and +Z away from the camera. The canonical inference frame is the correctly oriented image presented to MediaPipe after sensor/storage and pixel preparation, before optional display-only mirroring. `MediaPipeCanonicalPoseMapper` performs only `canonicalImage=(x,1-y)` and `canonicalWorld=(x,-y,z)`; it does not inverse-transform returned data using input H/V/rotation. World positions are converted once and are pelvis-relative when a trusted canonical pelvis exists; if the pelvis is unavailable, available source-world data remains in the provider's hip-centered frame. Phase 3 filters canonical image positions and canonical world positions independently per joint, then rebuilds stabilized local/root-relative positions from stabilized world positions. If the pelvis is unavailable, tracked joints remain usable in the available hip-centered frame.
+## Phase 3 — stabilization and calibration authority
 
-### Explicit coordinate spaces
+Stable Phase 3 canonical data remains the trusted calibration and locomotion input. The existing independent per-joint confidence/hysteresis/dropout logic and One Euro filtering remain preserved.
 
-1. **WebCamTexture / sensor space** — physical camera pixels and Unity texture orientation.
-2. **Pixel transport space** — the texture memory/readback layout after Unity-to-MediaPipe H/V preparation.
-3. **Canonical inference/image frame** — the correctly oriented image actually interpreted by MediaPipe.
-4. **Raw MediaPipe normalized coordinates** — normalized landmark output in the canonical inference frame, with Y top-down.
-5. **Raw MediaPipe world coordinates** — metric pose-world output in the canonical inference frame, with Y negative above the hip-centered origin.
-6. **Golden Needle canonical image space** — normalized X right, Y up.
-7. **Golden Needle canonical 3D space** — X right, Y up, Z away.
-8. **Display space** — GUI presentation after optional user-facing mirror/layout.
+Phase 4 modular calibration remains accepted: comfortable body reference establishes torso/reference geometry and limb chains accumulate their own geometry independently. Missing limbs do not globally block usable body control.
 
-Every conversion names its input and output space. Pixel preparation is used to construct the canonical inference frame; it is not automatically reapplied to raw world coordinates. A user-facing display mirror is presentation-only. A horizontal inference mirror is likewise not inferred from camera-facing metadata because it would change the physical image handed to the anatomical landmark model and can reverse Golden Needle's semantic Left/Right identity.
+Raw/responsive avatar-drive sources remain engineering options for avatar responsiveness, but they do not silently replace the stable calibration/locomotion authority.
 
-## Camera orientation and debug views
+## Phase 4 — production body-pose authority
 
-The provider separates sensor/storage metadata, MediaPipe pixel preparation, canonical data conversion, and display presentation. **Front-facing status does not imply a horizontal inference mirror or a horizontal presentation mirror.** For the integrated front-camera baseline, `ImageTransformationOptions.Build` is invoked with `shouldFlipHorizontally=false`; vertical/rotation transport correction remains active as required by Unity texture orientation. This preserves MediaPipe's fixed anatomical landmark IDs against the unmirrored physical camera source. Raw/canonical 2D overlays are converted from inference coordinates back through the inverse inference preparation to sensor/display coordinates before GUI placement. The resulting display-texture normalized coordinate is then converted once into Unity IMGUI's top-down screen convention by `guiY = 1 - displayY`. Display mirroring is explicit and disabled by default; OFF adds no X flip, while ON mirrors preview and overlays together at presentation only and never changes canonical left/right or world semantics. The debug spike exposes raw, canonical 2D, canonical 3D, and stabilized canonical 2D views with `F1`, `F2`, `F3`, and `F4`; `C` begins calibration, `X` cancels/resets it, and `R` retries startup. `F6` is the read-only coordinate/Z-yaw inspector: it retains the raw-world/canonical sample and now also prints calibration/live source bases, semantic shoulder/hip depth dZ, immutable target basis, signed source→target map evidence, mapped live basis, source/mapped/applied torso yaw, and optional Animator foot/toe forward evidence. None of those F6 calculations mutate runtime state or participate in production retarget decisions.
+Phase 4 remains USER accepted.
 
-## Calibration
+Production behavior preserves:
 
-Phase 4 supersedes the old hard bilateral T-pose gate with modular measurement calibration. The state flow is `Idle -> AwaitingBodyReference -> SamplingBodyReference -> AcquiringGeometry -> Ready`. **Usability begins when the body reference is valid**, even if the state remains `AcquiringGeometry` because some optional chains are still missing.
+- signed canonical-to-avatar reference mapping;
+- stable source/target basis semantics;
+- canonical positional targets;
+- project-owned analytic two-bone IK;
+- avatar-authored limb proportions;
+- partial-body/per-chain validity;
+- accepted pelvis/chest orientation behavior;
+- modular measurement calibration.
 
-Body reference uses only pelvis/chest plus bilateral shoulders/hips and a short comfortable stable hold. It captures shoulder width, hip width, torso length, neutral pelvis/chest/shoulder/hip positions, and semantic Right/Up/Forward. Knees, ankles, elbows, wrists, and a special T-pose are not required for this stage.
+Normal limb orientation remains deliberately swing/position based where the monocular source does not reliably observe axial twist. The production system does not fabricate free pronation/supination or other unobservable axial DOFs.
 
-LeftArm, RightArm, LeftLeg, and RightLeg accumulate independently on stabilized frames when their own root/mid/tip joints have trustworthy 3D positions. Each sample measures `upperLength = |root-mid|` and `lowerLength = |mid-tip|`; `reach = upperLength + lowerLength`. Segment lengths and optional segment reference directions are confidence-weighted across a short fixed sample count (default 8). A bent arm is therefore not shortened to the shoulder→wrist chord, and one unavailable chain never resets or invalidates another.
-
-The profile schema is version `5`. It carries `bodyReferenceValid` plus four independent `MotionCalibrationChainGeometry` records. Compatibility `isValid` now means body-reference usability only, not all-chain completeness. The Lab displays body readiness and per-chain READY/sample/waiting reasons instead of an opaque permanent T-pose 0%.
-
-## Confidence and filtering
-
-- `CanonicalStabilizerSettings` centralizes acquire confidence `0.60`, sustain confidence `0.40`, acquire samples `2`, loss grace `0.10 s`, and reset-after-loss `0.25 s`.
-- Each canonical joint has independent acquisition, filter, dropout, loss, and reacquisition state. A joint must meet the acquire threshold for consecutive samples, uses the lower sustain threshold while active, preserves the prior stabilized sample during the grace window, becomes unavailable after grace, and resets filters after the reset interval before reacquiring from the new sample.
-- Project-owned pure One Euro filters use min cutoff `1.0`, beta `0.05`, and derivative cutoff `1.0`. The derivative is filtered first, then drives the dynamic cutoff for the position low-pass. Actual pose/received timestamps provide delta time; zero, negative, large, and non-finite intervals are sanitized/clamped.
-- Lost or occluded joints fail gracefully without stale indefinite tracking or violent snapping. Quaternion interpolation remains a downstream rotation concern and is not part of Phase 3.
-
-## Phase 4 canonical rotation reconstruction
-
-The project-owned `CanonicalRotationFrame` has ten bones: Pelvis, Chest, LeftUpperArm, LeftLowerArm, RightUpperArm, RightLowerArm, LeftUpperLeg, LeftLowerLeg, RightUpperLeg, and RightLowerLeg. Each output includes tracking, confidence, optional vectors, and a `rotationDeltaFromCalibration`; the frame is preallocated and independently partial-body valid. Phase 4 retains this frame for torso orientation, diagnostics, and future orientation consumers; it is not the primary limb-pose contract.
-
-For diagnostic `CanonicalRotationFrame` limb swing, each calibrated chain contributes independently sampled upper/lower reference segment directions. Runtime directions remain shoulder→elbow/elbow→wrist or hip→knee/knee→ankle. Uncalibrated chains simply omit those diagnostic bones. Production limb posing continues to use positional `CanonicalKinematicTargets`, not these diagnostic rotations.
-
-Pelvis and chest rotation diagnostics use anatomical Right = right hip/shoulder minus left hip/shoulder and Up = chest minus pelvis, followed by finite validation and orthonormalization. Golden Needle canonical +X means **viewer/camera right**. Therefore, for an unmirrored person facing the webcam, anatomical Right is approximately -X, Up approximately +Y, and frontal anatomical Forward approximately -Z. Calibration now constructs that Forward as `Cross(Right, Up)`, matching `CanonicalRotationSolver.TryBuildBodyRotation()`. The resulting neutral source basis is expected to be proper/handedness +1.
-
-All limb and torso outputs are swing-only. Monocular webcam input does not reliably observe forearm pronation/supination or upper-arm axial roll, so the implementation does not invent those twists. Head, hand, and foot orientation are not driven in Phase 4.
-
-## Phase 4 humanoid retargeting
-
-`CanonicalKinematicTargetBuilder` consumes stabilized canonical positions once the body reference is usable, then evaluates calibration per chain. A chain is emitted only when its own `MotionCalibrationChainGeometry` is valid; its source reach is the calibrated upper+lower segment sum. Root plus effector remains the minimum live positional target, and the current mid is preferred for the bend plane. An uncalibrated or currently unavailable chain does not block other chains.
-
-`HumanoidRigBinding` captures the actual root/mid/tip Transform for each explicit or Animator Humanoid chain, bind local rotations, upper/lower world lengths, total reach, original local positions/scales, and a proper target anatomical reference basis from actual bound joint positions. That target basis is cached during `CaptureReferencePose()`, returned immutably during live retargeting, and cleared/rebuilt with the binding so already-driven transforms cannot feed back into the next canonical-to-avatar map. `MotionEngineRuntime` owns the preallocated target output, and `HumanoidRetargeter` consumes stabilized canonical positions plus those targets in `LateUpdate`.
-
-Production mapping uses one explicit signed-axis transform `M`. The source basis preserves calibration Right/Up/Forward and records handedness explicitly; the target basis is proper/right-handed. The current unmirrored front-camera calibration is expected to produce source handedness +1, so with the validated proper target basis the neutral reference map determinant is expected to be +1. The signed representation remains general enough to diagnose unexpected reflected inputs rather than silently encoding them in a quaternion.
+The current normal execution boundary is:
 
 ```text
-normalizedEffector = (sourceEffector - sourceRoot) / sourceReach
-normalizedHint = (sourceMid - sourceRoot) / sourceReach
-
-mappedEffector = M(normalizedEffector)
-mappedHint = M(normalizedHint)
-
-targetEffector = currentTargetRootPosition + mappedEffector * targetReach
-targetHint = currentTargetRootPosition + mappedHint * targetReach
-
-c = clamp(distance(root, targetEffector), abs(a-b)+epsilon, (a+b)-epsilon)
-n = normalize(targetEffector - root)
-x = (a² - b² + c²) / (2c)
-y = sqrt(max(a² - x², 0))
-solvedMid = root + n*x + p*y
-solvedTip = root + n*c
+Phase 4 solve
+-> presentation
 ```
 
-Pelvis/chest are derived from live canonical lateral + up axes, converted through the same signed map to a proper target-body rotation, and applied as a delta from the avatar's reference body basis. This avoids the old reflected source quaternion and avoids forward-hemisphere forcing during large yaw/side views. The previous per-chain quaternion characterization/current-parent implementation remains compatibility-only and is not the production `LateUpdate` path.
+Foundation C rich anatomical orientation and Foundation E post-solve detail are not normal production authorities. `MotionEngineRuntime` has no production `RichMotionFrame`; `HumanoidRetargeter` is restored to the Phase-4 solve/presentation path; production `RichHumanoidDetailRetargeter` was removed.
 
-The bend direction `p` uses the current mapped hint, previous valid plane, calibrated/reference body axis, then a deterministic orthogonal fallback. Sign continuity protects near-degenerate planes while a clearly opposite valid hint can intentionally change sides. Pelvis/chest are applied first; each live chain restores root/mid bind-local rotations, rotates the root toward `root -> solvedMid`, then rotates the mid toward `mid -> solvedTip`. The actual Transform hierarchy—not a fake 2D drawing—is the result. Invalid chains return toward bind/reference and do not freeze forever. Diagnostics keep retarget fidelity, IK endpoint residual, and bend-plane error as separate metrics. `CanonicalRotationFrame` remains available for torso orientation, diagnostics, and future orientation layers.
+## Retained operational foundations
 
-Only rotations are written. Avatar root position, authored local bone positions, and local scales remain unchanged. An unavailable bone returns toward its bind/reference rotation over a centralized approximately `0.20 s` fallback window. No general quaternion smoothing was added on top of Phase 3 positional stabilization.
+### Foundation A — shared commands and speech
 
-The procedural `DebugAvatarRoot` is an acceptance harness, not an art asset. Its T-pose hierarchy uses authored local offsets and simple primitive segment visuals. A dedicated runtime camera renders that actual hierarchy into the Lab's procedural-rig panel, with distinct desired wrist/ankle and elbow/knee world-space markers. Compact diagnostics identify rig presence, binding, driving, rotation solve, `Kinematic targets`, `Source chains valid x/4`, `Targets generated x/4`, `IK chains solved x/4`, `Limb bones driven x/8`, and the separate retarget-fidelity, IK-endpoint-residual, and bend-plane metrics. `F5` starts OFF, enables/disables live IK driving, and returns the same rig to bind pose when disabled; `F1`–`F4`, `R`, `C`, and `X` remain available. Directional and geometric EditMode tests inspect actual wrist/ankle positions, elbow/knee bend geometry, asymmetric sides, chain isolation, fixed root, unchanged local positions/scales, current-parent behavior, and torso ordering. The Animator Humanoid path has been physically tested with the NekoLegends `android01.fbx`: binding, limb response, neutral facing/orientation, and approximately 45° left/right torso yaw all passed USER QA.
+The shared command/action system is retained. Keyboard and speech invoke the same command router rather than simulating key presses or duplicating behavior.
 
-## Locomotion
+USER microphone QA succeeded with the Windows phrase system/`KeywordRecognizer`. The configured commands were recognized and dispatched; noisy conditions frequently yielded Low-confidence results, while clearer/louder speech produced successful cases.
 
-Locomotion is a separate subsystem, likely CharacterController-based initially. Candidate interpreted actions include:
+All 14 mappings from `SpeechCommandConfiguration.CreateDefault()` explicitly use `SpeechRecognitionConfidence.Low`. The configurable wake prefix remains empty by default. Custom mappings still default to Medium unless changed.
 
-- walking or jogging in place;
-- body heading;
-- lateral stepping;
-- crouching;
-- jumping.
+### Foundation B — camera presets
 
-Exact movement mapping is **OPEN / MAY CHANGE** until prototypes establish responsive, safe, and CPU-appropriate behavior.
+The unified primary-camera preset architecture is retained:
 
-## Performance boundaries
+`Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, `RightHand`.
 
-- The baseline must not require a dedicated GPU.
-- There is no face model in V1.
-- There is no detailed finger/hand model in V1.
-- There is no segmentation in V1 unless later justified.
-- Expensive inference must not stall Unity's rendering loop.
-- Unnecessary allocations and frame copies should be avoided where practical.
-- Phase 4 adds no inference/capture queue, pose history, or per-frame reflection. Rotation output and rig references are preallocated/cached, and the debug hierarchy is built once at startup rather than reconstructed per frame.
+Camera preset selection uses shared command ownership. F12 Lab/Game mode remains presentation-only and orthogonal to the selected preset.
 
+## Deferred/rejected pose-detail experiments
 
-## Phase 5A embodied hybrid locomotion
+### Foundation C
 
-Phase 4 canonical pose/retargeting remains accepted and unchanged. Phase 5A adds a parallel locomotion interpretation path.
+`DEFERRED / DORMANT RESEARCH — NOT PRODUCTION POSE AUTHORITY`.
 
-### Camera-space root tracking
+Rich-motion contracts/solver code may remain for historical research, but corrective restoration removed the rich path from normal `MotionEngineRuntime` composition.
 
-MediaPipe pose-world and canonical local positions remain body/pelvis-relative and are **not** treated as absolute room coordinates. `CameraSpaceRootTracker` uses stabilized canonical **support-foot image positions** as physical room-translation authority.
+### Foundation D
 
-Each left/right support foot is a weighted centroid of available ankle/heel/toe observations; at least two trusted points are required per foot. Recenter stores each foot's own image reference plus a body-scale reference. Current per-foot X/Y displacement is normalized by that fixed reference scale.
+`DEFERRED`.
 
-The tracker derives common displacement `(L+R)/2` and differential displacement `(L-R)/2`. Common X is the lateral room-position authority and updates continuously, including the first half of a normal step. Differential motion is retained as gait evidence rather than being used as a global hard gate.
+The separate MediaPipe Hand Landmarker stream produced unacceptable low-end performance in USER testing, entering roughly the 10–15 FPS class with detailed hands active. Existing research/lifecycle code may remain, but detailed hand inference is not normal production operation or a Motion Engine V1 requirement for this hackathon.
 
-Camera-depth authority remains support-based. Common support-foot Y is the depth candidate. Meaningful nonzero depth still requires same-sign torso apparent-scale evidence, so torso lean cannot initiate Z by itself. Strong differential foot-Y progressively lowers depth reliability between the Inspector thresholds `depthDifferentialStart` and `depthDifferentialFull`, reducing foot-lift contamination without blocking lateral motion. If feet/support disappear temporarily, the tracker holds instead of falling back to torso motion.
+### Foundation E
 
-A lightweight exponential response filters only trusted support-base displacement/velocity. The first valid calibrated sample with support + body-scale evidence establishes the physical tracking origin automatically.
+`RETIRED FROM PRODUCTION`.
 
-### Cadence and heading
+The production `RichHumanoidDetailRetargeter` was removed and obsolete Foundation-E Editor tests were removed at `f1819fda36547343bb32a972d39405d0a6be6f72`. Foundation-E files that remain are research/history, not live post-Phase-4 execution.
 
-`CadenceDetector` builds a normalized alternating signal from left/right ankle image-Y separation with knee separation as support. Alternating threshold events produce step intervals; valid interval consistency raises confidence. Cadence acquires after a short event sequence and clears after a short no-event timeout. Virtual cadence speed is step rate times a configurable virtual stride, clamped to a prototype maximum.
+### Coarse hand / fist experiment
 
-`BodyHeadingEstimator` derives live torso Right/Up from stabilized canonical 3D, reconstructs Forward with the source handedness, maps it through the accepted Phase 4 signed source-to-avatar basis, and projects the mapped Forward onto world X/Z. Cadence therefore follows torso/avatar heading.
+`DEFERRED`.
 
-### Fusion and application
+Former Batch 4A reused pose landmarks without extra inference and passed Builder/static checks, but the USER rejected the feature/value tradeoff after runtime evaluation and the feature was rolled back. The project does not claim the coarse vector arithmetic alone was proven to cause the observed slowdown.
 
-`LocomotionFusion` scales the trusted camera-space support X/Z displacement independently (current defaults `0.9` lateral / `1.5` depth), embeds it as `(cameraX, 0, cameraZ)`, maps it through the accepted Phase 4 reference `CanonicalToAvatarAxisMap`, then projects the mapped result to game-world X/Z. The same mapping is applied to scaled physical velocity before computing `physicalActivity`. Live body heading is used only for cadence travel; it never rotates physical room displacement. Cadence blend is approximately:
+## POSE != LOCOMOTION
 
-```text
-cadenceBlend = cadenceConfidence * (1 - physicalActivity)
-```
+Pose reproduction and game-world movement remain separate concerns.
 
-so real translation dominates while in-place rhythm extends range.
+Phase 4 controls body pose. Phase 5 locomotion interprets the stable canonical body/support evidence and moves the player/avatar root for gameplay. Locomotion must not corrupt the accepted Phase 4 body solve.
 
-`EmbodiedLocomotionController` integrates cadence into a virtual origin and applies:
+## Phase 5A — current horizontal locomotion architecture
 
-```text
-GamePositionXZ = VirtualOriginXZ + MappedPhysicalWorldDisplacementXZ
-```
+Phase 5A is already substantially implemented.
 
-to the bound avatar root. Root Y and root rotation are preserved.
+### Physical camera-space/root tracking
 
-`Recenter()` preserves the current world X/Z as the new virtual origin, then resets the physical origin. This keeps the avatar stationary in the virtual world during recenter and provides a clean future discrete-command API. Speech recognition itself is excluded.
+`CameraSpaceRootTracker` builds each support-foot estimate from trusted ankle/heel/toe image observations. Relative foot displacement is normalized by a body-scale reference. The current common component `(leftDelta + rightDelta) / 2` drives physical room displacement; the differential component `(leftDelta - rightDelta) / 2` is gait/asymmetry evidence that attenuates camera-depth trust.
 
-The Lab uses **K** for recenter and shows physical displacement/confidence, cadence state/rate, heading, physical/cadence contributions, final frame motion, and recenter state. A runtime-created fixed grid viewport provides visual world-reference feedback.
+Torso apparent scale is auxiliary normalization/depth-corroboration evidence and does not independently initiate room translation.
 
+This current midpoint/common-displacement design is also the source-level reason the known **raised/swing-leg false translation** defect is plausible: one foot moving while the other remains planted can shift the two-foot midpoint. Batch 2 must distinguish planted/support motion from swing-leg movement rather than interpreting every midpoint change as room translation.
 
-### Phase 5A Inspector tuning
+Current root-tracker settings include support confidence/scale thresholds, depth-differential attenuation, depth corroboration thresholds, position/velocity response, and a depth-proxy clamp.
 
-The permanent Motion Engine Lab serializes a real `EmbodiedLocomotionController` on the `PoseTrackingSpike` GameObject. The presenter resolves/reuses it and retains runtime `AddComponent` only as a defensive fallback.
+### Cadence
 
-Inspector groups are:
+`CadenceDetector` uses alternating lower-body image rhythm. Ankle vertical separation is primary and knee separation is supporting evidence, normalized by apparent body scale.
 
-- **Root / Physical Tracking** — support joint confidence, minimum image measurement, yaw floor, support agreement tolerance, depth corroboration thresholds, position/velocity response, depth clamp.
-- **Physical Locomotion / Fusion** — lateral/depth scale, X/Z deadzones, physical suppression start/full thresholds, minimum trusted support confidence.
-- **Cadence** — lower-body confidence, signal response, event threshold, step-rate limits, acquisition events, acquire/sustain confidence, stop timeout, virtual stride, maximum virtual speed.
-- **Heading** — heading response.
+Current Inspector-facing settings already include:
 
-These are the same settings objects consumed by the runtime modules, so Play Mode edits affect the active prototype without a duplicate tuning system.
+- `minimumJointConfidence = 0.40`;
+- `signalResponse = 14`;
+- `eventThreshold = 0.07`;
+- `minimumStepRate = 0.8`;
+- `maximumStepRate = 4.5`;
+- `acquisitionEvents = 3`;
+- `acquireConfidence = 0.50`;
+- `sustainConfidence = 0.25`;
+- `stopTimeoutSeconds = 0.50`;
+- `virtualStridePerStep = 0.42`;
+- `maximumVirtualSpeed = 2.5`.
 
+These values are current code defaults, not final accepted tuning. USER observation is that cadence activates more slowly than desired and current travel distance/speed after activation is not satisfactory. Batch 2 must audit/tune the existing settings path so responsiveness and distance are clearly controllable from the Inspector without code edits.
 
-### Phase 5A Lab/Game presentation mode
+### Heading and fusion
 
-`F12` toggles presentation mode only.
+`BodyHeadingEstimator` supplies mapped world heading for cadence travel.
 
-- **Lab View:** the existing webcam fullscreen presentation, F1–F11 overlays, diagnostics, and RenderTexture debug views behave as before.
-- **Game View:** webcam IMGUI and all debug IMGUI are skipped; the existing full-screen `PoseTrackingSpikeCamera` is enabled and controlled by `ThirdPersonLabCamera`.
-- Engine components are never disabled by F12.
+`LocomotionFusion`:
 
-`ThirdPersonLabCamera` is not parented to the avatar. It follows the bound avatar root from behind the retained mapped Phase 5A heading:
+- scales/deadzones physical lateral/depth displacement;
+- maps physical camera-space displacement through the accepted Phase 4 canonical-to-avatar reference map;
+- suppresses cadence progressively while trusted physical motion is active to avoid obvious double counting;
+- holds the last trusted physical offset through temporary root-tracking loss.
 
-```text
-camera = avatarPosition - heading * followDistance + up * cameraHeight
-look   = avatarPosition + up * lookHeight
-```
+Current fusion defaults include lateral/depth scale `0.9 / 1.5`, lateral/depth deadzones `0.012 / 0.012`, physical velocity suppression from `0.08` to `0.32`, and minimum trusted root confidence `0.30`. These remain tuning values, not final acceptance constants.
 
-The camera smooths heading and position. If current heading data disappears, it retains the last valid heading rather than snapping to global Forward. Inspector settings expose Follow Distance, Camera Height, Look Height, Position Response, Heading Response, and Field Of View.
+### Controller and recenter
 
-The screen camera is serialized disabled in Lab View. RenderTexture cameras for the procedural rig and Phase 5A world viewport remain separate debug cameras, so there is no second active full-screen game camera in Lab View.
+`EmbodiedLocomotionController` consumes `runtime.StabilizedFrame` and currently writes only avatar-root world **X/Z**, preserving the current Y and root rotation. Cadence integrates a virtual origin; physical displacement is added as a mapped offset. `Recenter()` makes the current physical position the new tracking origin while preserving the current virtual world X/Z.
 
+Lab/Game presentation and third-person camera operation are already implemented around this locomotion prototype.
 
-### Phase 4/5A avatar presentation layer
+## Phase 5A known issues entering Batch 2
 
-The accepted Phase 4 solve math remains the authoritative pose target. Runtime presentation smoothing wraps that solve rather than modifying its source inputs or IK math.
+1. **Planted-feet lean:** suppression appears mostly successful in current USER observation, but is not finally accepted because integrated runtime testing is deferred.
+2. **Raised/swing-leg false translation:** one lifted/moving leg while the other remains planted can trigger locomotion. This is a required Batch 2 fix.
+3. **Cadence acquisition:** works but activates slower than desired.
+4. **Cadence travel distance:** current travel after activation is unsatisfactory.
+5. **Horizontal consistency audit:** lateral/depth/heading/recenter/fusion already exist but must be audited together before acceptance.
 
-For a valid runtime frame:
+Phase 5A is not being rebuilt from scratch.
 
-```text
-capture visible local rotations
--> exact ApplyMotionFrame solve
--> capture exact solved local rotations
--> restore visible rotations
--> bounded render-rate quaternion transition toward newest solved rotations
-```
+## Jump — Motion Engine V1 requirement
 
-Because each production IK chain already restores its cached reference root/mid rotations before solving, the exact limb target is isolated from the currently displayed smoothed limb state. Torso target rotations are likewise solved exactly before being captured. Diagnostics/fidelity metrics are computed from that exact solve.
+A real physical jump must produce corresponding vertical game movement.
 
-The bounded quaternion transition combines response-based convergence with a hard maximum duration. If an unchanged target remains for multiple render frames, presentation keeps advancing each frame. A newer target replaces the old one immediately and restarts from the current visible pose; no pose history or delayed interpolation buffer is used.
+The Batch 3 implementation must, at a requirements level:
 
-Invalid runtime/tracking state resets presentation transition state and preserves the existing reference-return behavior. Smoothing OFF runs the exact direct solve behavior.
+- use coherent body/support evidence;
+- distinguish a real jump from lifting only one leg;
+- reject ordinary tracking noise;
+- expose a clear takeoff/airborne/landing lifecycle;
+- expose useful Inspector tuning where appropriate;
+- integrate without corrupting the Phase 4 body pose.
 
-This layer affects only the ten driven humanoid local rotations. It does not write canonical data, stabilization output, calibration, support tracking, cadence, heading or locomotion fusion.
+Batch 1 deliberately does not prescribe the final algorithm.
 
+## Crouch — Motion Engine V1 requirement
 
-### Camera selection, portrait capture, and manual orientation
+A real physical crouch must correspondingly lower/crouch the game character.
 
-Camera configuration remains on `MediaPipePoseProvider`: preferred device name, requested width/height/FPS, manual rotation override, display mirror, and target inference FPS. The custom Editor renders the preferred name as a device dropdown and preserves disconnected serialized names instead of silently replacing them.
+The Batch 3 implementation must, at a requirements level:
 
-Auto orientation uses `WebCamTexture.videoRotationAngle`. Manual 0/90/180/270 replaces that reported quarter-turn and is used by both `ImageTransformationOptions.Build` and `CameraOrientationState`, so inference and Lab presentation stay in one coordinate convention. Vertical-mirror metadata handling is unchanged.
+- use normalized body-compression/height evidence instead of fragile raw-pixel-only thresholds;
+- support holding a crouched state;
+- use acquisition/release hysteresis;
+- expose useful Inspector tuning;
+- integrate without corrupting the Phase 4 body pose.
 
-`V` requests the next ordinary non-depth/non-IR device. While a switch is pending, no new inference request starts. Once bootstrap/readback/inference are idle, the provider restarts and increments the source/session convention version; recalibration and Phase 5A recenter are therefore required.
+Batch 1 deliberately does not prescribe the final algorithm.
 
-### 30 FPS target and fresh-frame gating
+## Final Motion Engine V1 completion plan
 
-`targetInferenceFps = 30` is a maximum scheduler cadence, not a result-rate promise. A fresh-frame latch is set by `WebCamTexture.didUpdateThisFrame` and consumed once by the next legal request. Multiple arrivals while busy collapse to the latest frame. This retains latest-frame semantics, avoids repeated inference on stale images, and creates no frame queue.
+### Batch 1 — documentation synchronization
+
+Synchronize current authority only. No runtime/code changes.
+
+### Batch 2 — horizontal locomotion completion
+
+- audit current Phase 5A;
+- fix raised/swing-leg false physical translation;
+- preserve/regression-check the mostly successful planted-feet lean suppression;
+- improve cadence acquisition responsiveness;
+- make cadence distance/speed clearly Inspector-tunable;
+- verify lateral/depth/heading/recenter/fusion coherence;
+- do not add jump/crouch yet.
+
+### Batch 3 — vertical locomotion + final V1 completion
+
+- implement jump detection/application;
+- implement crouch detection/application;
+- distinguish jump from single-leg lift;
+- expose appropriate Inspector tuning;
+- integrate with current Phase 5A while preserving Phase 4;
+- prepare one final comprehensive USER Motion Engine QA.
+
+## Testing policy
+
+USER/runtime testing is intentionally deferred until all three completion batches have been implemented. Batch 1 requires no USER runtime test. Batch 2 should continue through Builder-side compile/static/deterministic validation as appropriate rather than stop waiting for USER QA. Batch 3 prepares the final integrated runtime pass.
+
+No Builder test result should be described as USER acceptance.
+
+## Phase 6 boundary
+
+Phase 6 remains **NOT STARTED**. It is the later graybox/playable vertical-slice integration step after Motion Engine V1 completion. Do not begin Phase 6 during this documentation batch or the horizontal-locomotion Batch 2 without explicit new USER direction.

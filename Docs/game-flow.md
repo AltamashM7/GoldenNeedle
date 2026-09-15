@@ -2,6 +2,8 @@
 
 Status: **PLANNED; NOT YET IMPLEMENTED.**
 
+Roadmap clarification (2026-09-16): Motion Engine V1 is being completed first through the approved locomotion completion sequence. Phase 6 remains the later graybox/playable vertical-slice integration step. Synchronizing the Motion Engine roadmap does **not** mean Hub/course implementation has begun.
+
 The intended player experience is:
 
 ```text
