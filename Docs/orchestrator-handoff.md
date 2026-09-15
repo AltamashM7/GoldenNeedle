@@ -21,13 +21,19 @@ Do **not** merge to `main` without explicit USER approval. Do not force-push, re
 
 ## 2. Current code/runtime baseline
 
-The code/runtime checkpoint entering Motion Engine Completion Batch 1 is:
+The corrective restoration checkpoint remains:
 
 `f1819fda36547343bb32a972d39405d0a6be6f72`
 
-That commit removed obsolete Foundation-E Editor tests after production `RichHumanoidDetailRetargeter` had already been retired. The preceding corrective pose-baseline work restored normal production composition to the accepted optimization-era Phase 3 + Phase 4 architecture.
+Motion Engine Completion Batch 2 started from the independently verified remote HEAD:
 
-The USER subsequently opened Unity with zero red errors and reports that performance appears restored. The USER explicitly decided not to continue performance optimization now.
+`21184fe89d8f4c6f7b9ec387cdab84f884ad0e41`
+
+The Batch-2 implementation/tests/scene checkpoint before documentation is:
+
+`e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`
+
+The USER previously reopened Unity after corrective restoration with zero red errors and reported restored low-end performance. Further performance optimization remains deferred for the current hackathon milestone.
 
 Current performance milestone:
 
@@ -63,7 +69,7 @@ Preserve these boundaries:
 - Phase 4 signed canonical-to-avatar mapping and analytic two-bone IK remain accepted production pose authority;
 - monocularly unobservable free axial/twist motion is not fabricated in normal production operation.
 
-The normal downstream production path is now `Phase 4 solve -> presentation`, not `Phase 4 -> Foundation E -> presentation`.
+Batch 2 did not modify this path, Phase 3 stabilization/calibration, or Phase 4 production pose code.
 
 ## 4. Current phase status
 
@@ -72,7 +78,7 @@ The normal downstream production path is now `Phase 4 solve -> presentation`, no
 - Phase 3 — stabilization/confidence/calibration foundation: **PASS**.
 - Phase 4 — humanoid retargeting: **USER ACCEPTED — PASS**.
 - Low-end optimization milestone: **USER SATISFIED / FROZEN FOR CURRENT MILESTONE**.
-- Phase 5A — locomotion: **IMPLEMENTED / NOT YET USER ACCEPTED / NOW ACTIVE DEVELOPMENT TARGET**.
+- Phase 5A — locomotion: **BATCH 2 IMPLEMENTED / USER QA DEFERRED / NOT YET USER ACCEPTED**.
 - Phase 6 — graybox vertical slice: **NOT STARTED**.
 
 Do not mark Phase 5A or Motion Engine V1 accepted before final integrated USER QA.
@@ -81,119 +87,101 @@ Do not mark Phase 5A or Motion Engine V1 accepted before final integrated USER Q
 
 ### Foundation A — commands/speech
 
-**Retained and working.** The shared command router remains the authority for keyboard and speech actions. USER microphone QA succeeded. The Windows phrase system/`KeywordRecognizer` recognized and dispatched configured commands; Low-confidence results were common in noisy conditions and clearer/louder speech produced successful cases.
-
-All 14 product-default mappings created by `SpeechCommandConfiguration.CreateDefault()` now explicitly use `SpeechRecognitionConfidence.Low`. The generic/custom mapping default remains Medium. `wakePrefix` remains configurable and empty by default.
+**Retained and working.** The shared command router remains the authority for keyboard and speech actions. USER microphone QA succeeded. All 14 product-default mappings created by `SpeechCommandConfiguration.CreateDefault()` use `SpeechRecognitionConfidence.Low`; custom mappings retain their generic Medium default. The wake prefix remains configurable and empty by default.
 
 ### Foundation B — camera presets
 
-**Retained.** One primary camera owns the data-driven presets:
+**Retained.** One primary camera owns `Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, `RightHand`. F12 Lab/Game presentation remains separate.
 
-`Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, `RightHand`.
+### Foundation C / D / E and coarse hands
 
-Preset commands share the command architecture. F12 Lab/Game presentation remains a separate mode toggle.
+Foundation C remains deferred/dormant research, detailed hands remain deferred for low-end cost, Foundation E remains retired from production, and the former coarse-hand experiment remains deferred/rolled back. None were reopened in Batch 2.
 
-### Foundation C — rich orientation
+## 6. Phase 5A Batch 2 implementation
 
-`DEFERRED / DORMANT RESEARCH — NOT PRODUCTION POSE AUTHORITY`
+Batch 2 completed the authorized horizontal-locomotion changes without adding vertical gameplay.
 
-Research contracts/solver may remain in source history/current tree, but `MotionEngineRuntime` and the production pose composition were restored to the pre-C baseline. Do not treat C as a required next milestone.
+### Support-aware root authority
 
-### Foundation D — detailed hands
+The old two-foot-midpoint assumption was the raised/swing-leg defect: a moving airborne foot shifted `(leftDelta + rightDelta) / 2` even though the other foot was planted.
 
-`DEFERRED`
+`CameraSpaceRootTracker` now keeps a support-authority mode based on body-scale-normalized foot-height separation:
 
-The independent Hand Landmarker caused unacceptable low-end impact in USER testing, with the full detailed stream entering roughly the 10–15 FPS class. Existing research/lifecycle fixes may remain, but detailed hands are not normal production operation or a current hackathon requirement.
+- `Both` for near-equal foot heights, using the midpoint;
+- `Left` when the left foot is clearly lower/supporting;
+- `Right` when the right foot is clearly lower/supporting;
+- hysteresis retains the prior single-foot authority through the ambiguous band.
 
-### Foundation E — post-Phase-4 detail
+Current thresholds are `supportSingleFootEnter = 0.12` and `supportBothEnter = 0.06`.
 
-`RETIRED FROM PRODUCTION`
+On support-mode changes, landing or post-loss reacquisition, the tracker continuity-rebases the new raw authority coordinate to the last filtered displacement. Temporary support loss holds the last trusted root and flags the next valid sample for rebase. This prevents support switching itself from snapping/teleporting the avatar. Genuine bilateral/support-base relocation still moves the physical root, and `Recenter()` still zeroes the current measurement while preserving the controller's virtual position behavior.
 
-Production `RichHumanoidDetailRetargeter` was removed; stale Editor tests were removed at `f1819fda36547343bb32a972d39405d0a6be6f72`. Historical E research remains provenance only.
+No jump/airborne gameplay state was added; the support classifier exists only to make horizontal translation support-aware.
 
-### Coarse hands / former Batch 4A
+### Cadence baseline and Inspector tuning
 
-`DEFERRED`
+Cadence keeps the existing alternating ankle/knee detector and unchanged event threshold. Batch-2 defaults are:
 
-The zero-extra-inference coarse hand signal was Builder/static validated, then rejected after USER runtime evaluation and rolled back. Do not claim the coarse arithmetic itself was uniquely proven to cause the performance drop; the USER chose the known optimized baseline over this feature/value tradeoff.
+- `acquisitionEvents: 3 -> 2`;
+- `acquireConfidence: 0.50 -> 0.38`;
+- `virtualStridePerStep: 0.42 -> 0.60`;
+- `maximumVirtualSpeed: 2.5 -> 3.0`;
+- `eventThreshold = 0.07` unchanged;
+- sustain confidence, stop timeout and step-rate limits unchanged.
 
-## 6. Phase 5A is the active unfinished Motion Engine target
+The serialized field names remain unchanged. Inspector labels now expose `virtualStridePerStep` as **Distance Per Step** and `maximumVirtualSpeed` as **Maximum Cadence Speed**. Existing activation settings remain directly serialized/Inspector-visible.
 
-Most horizontal locomotion infrastructure already exists:
+The active Motion Engine Lab scene had serialized old values, so its relevant locomotion block was updated. Net comparison with the Batch-2 starting SHA shows only the two new support thresholds and the four authorized cadence value changes in that scene; unrelated Unity YAML changes were explicitly restored.
 
-- physical camera-space/root displacement;
-- lateral and toward/away movement;
-- body heading;
-- cadence/in-place movement;
-- physical/cadence fusion;
-- recenter;
-- Lab/Game presentation;
-- third-person follow/preset camera.
+### Existing horizontal systems
 
-The current controller consumes the stabilized Phase 3 frame and writes avatar-root X/Z only, preserving root Y and rotation.
+Heading estimation, signed canonical-to-world mapping, `LocomotionFusion`, physical-motion cadence suppression, F12 Lab/Game separation and the third-person camera architecture were not redesigned. Deterministic coverage for mapping/heading/fusion/recenter remains in the Phase-5 suite.
 
-Known current issues/observations:
+## 7. Batch-2 verification status
 
-1. Planted-feet lean suppression appears mostly successful, but is not finally accepted because integrated runtime testing is deferred.
-2. **Raised/swing-leg false translation:** lifting/moving one leg while the other remains planted can trigger physical locomotion. The current support midpoint/common-displacement model allows one-foot movement to shift the midpoint. Batch 2 must distinguish support/planted motion from swing-leg motion.
-3. Cadence works but acquires more slowly than desired.
-4. Cadence travel distance/speed after activation is not satisfactory.
-5. The source already contains Inspector-facing cadence settings including event threshold, acquisition-event count, acquire/sustain confidence, virtual stride per step, maximum virtual speed, step-rate range, timeout and signal response. Batch 2 should audit/use/expose them coherently rather than rebuild cadence from scratch.
-6. Existing lateral/depth/heading/recenter/fusion behavior should be audited for consistency, not assumed accepted.
+`Assets/GoldenNeedle/Tests/Editor/Phase5LocomotionTests.cs` was updated rather than creating a new test framework. The obsolete `SingleStepOnsetMovesSupportMidpointWithoutHardHolding` expectation was superseded because it conflicted with current USER evidence.
 
-## 7. Jump and crouch are Motion Engine V1 requirements
+Coverage now includes:
+
+- planted-feet lateral lean and torso-scale lean produce no root translation;
+- clearly raised swing-foot lateral/vertical movement does not accumulate physical translation;
+- genuine bilateral relocation still translates and recenter still zeros the tracker;
+- support hysteresis/landing and tracking reacquisition avoid discontinuities;
+- temporary support loss holds last trusted physical displacement;
+- jogging in place keeps physical contribution near zero while cadence can activate;
+- default cadence acquires after two clean alternating events and stops after rhythm loss;
+- one isolated event does not activate;
+- distance-per-step changes virtual speed up to the max-speed clamp;
+- physical/cadence fusion, front-camera axes and heading remain covered.
+
+Environment limitation: no Unity Editor/Test Runner is available to this Builder session and GitHub reports no Actions run or combined status attached to `e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`. Therefore these updated Editor tests were **not executed here**. Source/diff/serialization scope was statically audited. Do not report an automated Unity pass that did not occur.
+
+Batch-2 status vocabulary:
+
+`IMPLEMENTED / AUTOMATED-VERIFIED AS AVAILABLE / USER QA DEFERRED`
+
+No USER runtime QA was requested, per policy.
+
+## 8. Jump and crouch remain Batch 3 requirements
 
 ### Jump
 
-Physical jumping must produce corresponding vertical game movement. The eventual implementation must use coherent body/support evidence, distinguish a true jump from single-leg lift, reject ordinary tracking noise, have a clear takeoff/airborne/landing lifecycle and expose useful tuning controls. Do not pre-commit to a final algorithm before Batch 3 implementation audit.
+Physical jumping must eventually drive vertical game movement using coherent support/body evidence, distinguish a true jump from single-leg lift, reject noise, and implement takeoff/airborne/landing lifecycle.
 
 ### Crouch
 
-Physical crouching must correspondingly lower/crouch the character. The eventual implementation must use normalized body-compression/height evidence rather than fragile raw-pixel-only thresholds, support held crouch state, use acquire/release hysteresis and expose useful tuning controls. Do not pre-commit to a final algorithm before Batch 3.
+Physical crouching must eventually lower the character using normalized body-compression/height evidence, held state and hysteresis.
 
-## 8. Approved three-batch Motion Engine completion sequence
+**Neither jump nor crouch implementation was started in Batch 2.** Root-Y gameplay, CharacterController/gravity work and Phase 6 remain untouched.
 
-### Batch 1 — documentation synchronization
+## 9. Approved completion sequence
 
-Documentation only. This batch must finish and receive Orchestrator review before implementation resumes.
+- **Batch 1 — COMPLETE:** documentation synchronization.
+- **Batch 2 — IMPLEMENTED / USER QA DEFERRED:** horizontal locomotion completion described above.
+- **Batch 3 — NOT STARTED:** vertical locomotion + final Motion Engine V1 completion and final integrated USER QA preparation.
 
-### Batch 2 — horizontal locomotion completion
+## 10. Immediate next action
 
-- audit existing Phase 5A;
-- fix raised/swing-leg false physical translation;
-- regression-check the mostly successful lean suppression;
-- improve cadence acquisition responsiveness;
-- make cadence travel distance/speed clearly Inspector-tunable;
-- verify lateral/depth/heading/recenter/fusion coherence;
-- do not add jump/crouch yet.
+**STOP after Batch 2.** The next Orchestrator must independently audit the live branch, implementation diff, docs and available verification evidence. Only after that review should it issue the Batch-3 Builder handoff.
 
-### Batch 3 — vertical locomotion + final Motion Engine V1 completion
-
-- implement jump detection/application;
-- implement crouch detection/application;
-- distinguish jump from single-leg lift;
-- expose appropriate Inspector tuning;
-- integrate with Phase 5A without corrupting Phase 4 body pose;
-- prepare one final comprehensive USER Motion Engine QA.
-
-After Batch 3, all Motion Engine testing is performed together. If accepted, Motion Engine V1 is essentially complete for the hackathon and the USER will provide the next game-development direction.
-
-## 9. Testing policy
-
-The USER explicitly deferred USER/runtime testing until all three batches are implemented.
-
-- Do not request Batch 1 runtime QA.
-- Batch 2 must not stop merely to wait for USER QA.
-- Batch 3 prepares the final integrated QA.
-- Builder compile/static/deterministic checks remain useful where appropriate but never create USER acceptance.
-- Do not mark untested runtime behavior accepted.
-
-## 10. Phase 6 / game boundary
-
-Phase 6 remains **NOT STARTED**. Do not begin graybox/playable vertical-slice work from Batch 1 or Batch 2. Hub/course implementation has not begun merely because the Motion Engine roadmap is synchronized.
-
-## 11. Immediate next action after this documentation batch
-
-**STOP after Batch 1.** The next Orchestrator must independently review the synchronized docs and source, then issue a separate Batch 2 Builder brief if the state is coherent.
-
-Do not resume Foundation C/D/E/coarse-hand work, performance optimization, Phase 6, or unrelated CI cleanup as part of the locomotion completion sequence unless the USER explicitly changes scope.
+Do not ask for Batch-2 USER QA. Do not resume Foundation C/D/E/coarse-hand work, performance optimization, Phase 6, or unrelated CI cleanup. Do not merge to `main` without explicit USER approval.
