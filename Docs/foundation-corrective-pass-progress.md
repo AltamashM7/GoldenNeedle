@@ -87,9 +87,9 @@ When experimental axial detail is OFF, `HumanoidRetargeter` first rebuilds the a
 - Start-to-validated-implementation diff contains only `RichHumanoidDetailRetargeter.cs` and the focused `ProductionAxialPolicyGuard.cs`. `HumanoidRetargeter.ApplyMotionFrame(...)`, Foundation C solver/schema, `FoundationERetargetMath`, Presenter, scene YAML, body/OpenVINO acquisition/scheduling, Phase 4 math, locomotion/Phase 5A, presentation smoothing, and Batch 1 hand implementation were not modified.
 - Unity Editor compilation/Test Runner and real Unity/webcam visual QA were **not** run by this Builder environment. USER Unity QA remains decisive; do not treat the reported visible axial/foot issue as USER-confirmed solved until that QA passes.
 
-**Status:** `AWAITING ORCHESTRATOR REVIEW / USER UNITY QA`
+**Status:** `CODE-AUDIT PASS / USER POSE-QUALITY QA DEFERRED`
 
-**Next work:** explicitly **not authorized yet**. Do not begin speech/microphone repair, coarse `Open / Closed / Unknown` hand-state work, Phase 5A, Phase 6, broad CI cleanup, or any later corrective batch until the Orchestrator/USER authorizes it.
+**Next work:** pose-quality runtime QA remains deliberately deferred until the USER is in a stable environment. Do not alter the Batch 2 production trust boundary without new USER evidence.
 
 ## Corrective Foundations Batch 3
 
@@ -115,7 +115,7 @@ One concrete lifecycle defect was present: the old `WindowsKeywordSpeechProvider
 
 The old path also exposed only coarse provider status/error text and `IsRunning`; it did not subscribe to `PhraseRecognitionSystem.OnStatusChanged`, did not expose `PhraseRecognitionSystem.Status`, did not distinguish recognizer-created/starting/listening/failed/unsupported/stopped states, and did not surface raw recognition events before policy filtering. Consequently a real Low-confidence recognition, unmapped phrase, cooldown rejection, backend error, or no recognition event could all look similar to the USER as “speech did nothing.”
 
-These findings identify real lifecycle/observability weaknesses, but they do **not** prove the original USER failure had one unique cause. Physical microphone availability, Windows microphone/privacy state, Windows Speech runtime availability, whether the recognizer receives audio, and real spoken-word recognition quality remain USER-runtime questions.
+These findings identify real lifecycle/observability weaknesses, but they do **not** prove the original USER failure had one unique cause. Physical microphone availability, Windows microphone/privacy state, Windows Speech runtime availability, whether the recognizer receives audio, and real spoken-word recognition quality were USER-runtime questions at implementation time.
 
 ### Lifecycle and diagnostics implemented
 
@@ -165,21 +165,129 @@ Diagnostics record microphone device count, the first enumerated device name whe
   - `FOUNDATION_A_WORKFLOW_READ_ONLY=PASS`
 - Foundation B workflow also completed successfully at the same speech implementation SHA (run `34968867834`), providing additional evidence that camera-preset behavior remained intact.
 - The implementation commit changed only the four directly speech/Foundation-A files listed above. No body provider/OpenVINO acquisition/scheduling, Phase 3 stabilization, Phase 4 retarget math, locomotion/Phase 5A, presentation smoothing, Batch 1 hand implementation, Batch 2 rich-axial implementation, or Phase 6 source was changed.
-- Automated CI cannot establish the USER's Windows microphone privacy settings, physical microphone health, Windows Speech runtime health, or spoken-word recognition quality. Real Unity/Windows speech QA therefore remains decisive and Batch 3 is **not USER accepted**.
 
-### Required USER runtime evidence
+### Post-Batch-3 USER QA
 
-In Lab mode with main diagnostics visible, read the `Speech:` line after entering Play Mode and after speaking one configured phrase such as `front view`. The diagnostic now distinguishes examples such as:
+On the Windows proof machine the phrase-recognition backend and `KeywordRecognizer` ran successfully. Spoken configured commands were recognized and dispatched through the shared command router. Low-confidence recognition was common mainly under substantial bus/environment noise; speaking louder and more clearly produced successful command cases. The USER accepted Batch 3 / Foundation A speech.
 
-- backend unsupported/failed and the last phrase-system error;
-- `Starting` versus `Running`, phrase-system state, recognizer running state, keyword count, and microphone-device count;
-- `Events=0`, meaning no phrase-recognition event reached the project;
-- a raw phrase plus confidence followed by `ConfidenceRejected` or `Unmapped`;
-- `CooldownRejected`;
-- `Dispatched` or `DispatchFailed` with the command result status/message.
+**Final Batch 3 status:** `USER ACCEPTED`
 
-The USER should also disable/re-enable the Presenter/GameObject or otherwise exercise the normal Stop/start lifecycle once and verify the event count does not jump from duplicate callbacks. The exact diagnostic line plus any Unity Console speech error should be returned to the Orchestrator if speech still does not act.
+## Corrective Foundations Batch 4A
 
-**Status:** `AWAITING ORCHESTRATOR REVIEW / USER UNITY QA`
+**Purpose:** establish a zero-extra-inference, provider-independent coarse hand-state signal (`Unknown / Open / Closed`) from the already-produced body pose observation and make the signal observable for USER QA. No avatar finger deformation is applied in this batch.
 
-**Next work:** explicitly **not authorized yet**. Do not begin coarse `Open / Closed / Unknown` hand-state detection, Foundation E CI cleanup, Phase 5A work, Phase 6, or unrelated foundation changes until the Orchestrator/USER authorizes the next batch.
+**Starting remote SHA:** `479229daaa39578c10a69d440c03ccc641e30cd2`
+
+**Validated implementation SHA:** `d060083395918c19cb302346dc0938dc3f7835eb`
+
+### Data source and verified semantic landmarks
+
+`PoseObservation` already contains the accepted 33 MediaPipe Pose landmarks with normalized coordinates, world coordinates, visibility, presence, tracked/unavailable trust, source timestamp, and receive time. Batch 4A reuses that already-produced observation; it does not expand `CanonicalPoseFrame V1`.
+
+The exact body-pose semantic landmarks used for coarse hands are:
+
+- left elbow `13`, left wrist `15`, left pinky `17`, left index `19`, left thumb `21`;
+- right elbow `14`, right wrist `16`, right pinky `18`, right index `20`, right thumb `22`.
+
+Those numeric MediaPipe indices are isolated in `MediaPipeCoarseHandEvidenceMapper.cs`. Core hand-state logic consumes semantic elbow/wrist/pinky/index/thumb evidence and contains no MediaPipe provider knowledge.
+
+### Provider-independent contract and estimator
+
+`Core/Motion/Hands` now contains an optional coarse-hand capability with:
+
+- `CoarseHandState`: `Unknown`, `Open`, `Closed`;
+- per-side source timestamp and receive time;
+- stable and instantaneous state;
+- Unknown reason;
+- evidence strength;
+- normalized diagnostic metrics;
+- `ICoarseHandStateSource` so future providers can supply the same capability without MediaPipe knowledge downstream.
+
+The deterministic estimator uses world-space geometry converted through the existing canonical coordinate convention. Forearm length `|wrist - elbow|` is the scale denominator. The normalized metrics are:
+
+- wrist-to-index extension / forearm length;
+- wrist-to-pinky extension / forearm length;
+- index-to-pinky spread / forearm length;
+- wrist-to-thumb extension / forearm length;
+- minimum landmark confidence across elbow/wrist/pinky/index/thumb.
+
+Default Open evidence requires both index and pinky extension to be at least `0.55` forearm lengths and index-pinky spread at least `0.30`. Default Closed evidence is deliberately stricter: minimum landmark confidence at least `0.70`, both index/pinky extensions no greater than `0.38`, spread no greater than `0.22`, and supporting thumb extension no greater than `0.45`. The interval between Open and Closed thresholds is intentionally `Unknown`.
+
+The general minimum landmark confidence is `0.55`. Missing/untracked landmarks, missing world positions, non-finite values, forearm length below `0.04 m`, insufficient confidence, and ambiguous geometry all produce explicit `Unknown` reasons rather than forcing a hand state. False Closed is intentionally disfavored.
+
+### Temporal stability and freshness
+
+Left and right states are independent. The tracker consumes a body source timestamp only once; reprocessing the same timestamp refreshes age only and cannot satisfy acquisition/change confirmation. If timestamps move backwards after a provider restart, temporal confirmation state resets.
+
+Default acquisition/change requires `2` fresh consistent samples. Therefore one contradictory frame does not normally flip a stable Open hand directly to Closed or vice versa. Two fresh Unknown/lost samples clear a held stable state. Any result older than `350 ms` is immediately exposed as `Unknown / Stale`. No history queue, replay buffer, or long smoothing window exists.
+
+### Zero-extra-inference proof and integration
+
+`MediaPipeCanonicalPoseSource.TryCopyLatestCanonicalPose(...)` continues to perform the single existing `provider.CopyLatestObservation(_observation)` call. Immediately after that copy, Batch 4A maps coarse semantic evidence from the same in-memory observation and performs only vector/confidence arithmetic before normal canonical mapping. Duplicate-timestamp handling prevents render-frame reuse from becoming fake new evidence.
+
+The Batch 4A path introduces:
+
+- zero additional webcam reads;
+- zero additional `WebCamTexture.GetPixels32` calls;
+- zero RenderTexture/AsyncGPUReadback operations;
+- zero Hand Landmarker tasks/model initialization;
+- zero additional neural inference;
+- zero inference queues/mailboxes/workers.
+
+The architecture guard verifies those capture/inference mechanisms are absent from the coarse contract, estimator, provider mapper, source update method, and Lab diagnostics. It also verifies `PoseObservation`, `MediaPipePoseProvider`, WebCam CPU preparation, CanonicalBodyV1, Phase 4 rotation, locomotion, `HandMotionRuntime`, Batch 2 retarget detail, and Batch 3 speech files were not changed relative to the Batch 4A baseline.
+
+Batch 1 remains intact: `enableDetailedHands = false` is unchanged, and the lightweight coarse path does not instantiate `MediaPipeHandLandmarkerSource`. Batch 2 remains intact: `enableRichLimbAxialDetail = false` is unchanged. Batch 3 speech implementation is functionally untouched.
+
+### Lab diagnostics
+
+A small read-only `CoarseHandLabDiagnostics` component attaches once to the existing live pose-source object after scene load. It resolves its references once and displays only while the existing main Lab diagnostics are visible and Game View is not active. It does not write to the avatar or command system.
+
+The strip reports stable state, evidence strength, instantaneous/raw state, Unknown reason when applicable, and short normalized index/pinky/spread metrics, for example:
+
+`Coarse hands: L=Open 0.78 raw=Open i/p/s=... | R=Unknown 0.00 raw=Unknown(LowConfidence) i/p/s=...`
+
+### Material changes
+
+- `Assets/GoldenNeedle/Core/Motion/Hands/CoarseHandState.cs` — provider-independent coarse contract/settings/frame/source interface.
+- `Assets/GoldenNeedle/Core/Motion/Hands/CoarseHandStateEstimator.cs` — deterministic geometry estimator and lightweight per-side temporal stability/staleness policy.
+- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCoarseHandEvidenceMapper.cs` — provider-boundary semantic extraction and the only Batch 4A numeric MediaPipe hand indices.
+- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs` — reuses the already-copied body observation to update coarse state and exposes the optional coarse source boundary.
+- `Assets/GoldenNeedle/Debug/PoseTrackingSpike/CoarseHandLabDiagnostics.cs` — compact read-only Lab signal display; no rig application.
+- `Tools/FoundationDHandSmoke/CoarseHandStateSmoke.cs` — deterministic Open/Closed/Unknown, confidence, invalid geometry, scale, independence, duplicate timestamp, hysteresis, loss, and stale-state tests.
+- `Tools/FoundationDHandSmoke/FoundationDHandSmoke.csproj` — includes the provider-independent coarse contract/estimator in the managed smoke build.
+- `.github/workflows/foundation-d-coarse-hand.yml` — focused zero-extra-inference/prior-batch/no-avatar-application architecture guard.
+- Unity `.meta` files for the newly added runtime scripts.
+- `Docs/foundation-corrective-pass-progress.md` — Batch 2 status clarification, Batch 3 USER acceptance, and this Batch 4A record.
+
+### Validation actually performed
+
+- Focused Batch 4A workflow at implementation SHA `d060083395918c19cb302346dc0938dc3f7835eb`: run `34977574085`, job `104409135966` — **SUCCESS**.
+  - Foundation A command/speech smoke PASS, preserving the accepted shared speech/command behavior.
+  - `COARSE_HAND_GEOMETRY=PASS`
+  - `COARSE_HAND_CONFIDENCE_AMBIGUITY=PASS`
+  - `COARSE_HAND_SCALE_INVARIANT=PASS`
+  - `COARSE_HAND_LEFT_RIGHT_INDEPENDENT=PASS`
+  - `COARSE_HAND_TEMPORAL_STABILITY=PASS`
+  - `COARSE_HAND_DUPLICATE_TIMESTAMP=PASS`
+  - `COARSE_HAND_STALE_TO_UNKNOWN=PASS`
+  - existing `FOUNDATION_D_HAND_SMOKE=PASS`
+  - `COARSE_HAND_ZERO_EXTRA_INFERENCE=PASS`
+  - `COARSE_HAND_POSE_SEMANTIC_BOUNDARY=PASS`
+  - `COARSE_HAND_CANONICAL_BODY_V1_UNCHANGED=PASS`
+  - `BATCH1_DETAILED_HAND_DEFAULT_OFF=PASS`
+  - `BATCH2_RICH_AXIAL_DEFAULT_OFF=PASS`
+  - `BATCH3_SPEECH_UNCHANGED=PASS`
+  - `BATCH4A_NO_AVATAR_FINGER_APPLICATION=PASS`
+  - `COARSE_HAND_LAB_DIAGNOSTICS=PASS`
+  - `FOUNDATION_D_COARSE_WORKFLOW_READ_ONLY=PASS`
+- Existing full Foundation D workflow at the same implementation SHA: run `34977574058`, job `104409134678` — **SUCCESS**, including Foundation A/B/C/D managed smokes, model identity checks, shared-timeline/bounded-scheduler checks, permanent application-boundary audit, and read-only verification.
+- Concurrent Foundation C workflow run `34977574116`, job `104409135807` ran Foundation A, B, and C managed smokes successfully, then failed only on the already-known historical static audit `raw numeric/provider landmark-index access leaked downstream: .../RichHumanoidDetailRetargeter.cs`. Batch 4A did not modify that file or weaken/fix the unrelated guard.
+- Builder-side CI proves deterministic estimator behavior and the zero-extra-inference architecture. It cannot prove that MediaPipe Pose's sparse pinky/index/thumb body landmarks reliably distinguish real fists from open hands under the USER's webcam, side-on views, foreshortening, occlusion, subject distance, motion blur, or lighting. Real Unity signal QA remains decisive.
+
+No avatar finger/palm/wrist rotation is driven from `CoarseHandState` in Batch 4A. Existing detailed-hand articulation is untouched.
+
+**Status:** `AWAITING ORCHESTRATOR REVIEW / USER COARSE-HAND SIGNAL QA`
+
+**Batch 4B avatar finger application NOT AUTHORIZED YET.**
+
+Do not begin Batch 4B finger deformation, further detailed-hand work, Batch 2 pose changes, CI hygiene cleanup, Phase 5A, or Phase 6 until the Orchestrator/USER explicitly advances the next batch.
