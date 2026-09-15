@@ -53,39 +53,117 @@ jobs:
           rich_frame = Path('Assets/GoldenNeedle/Core/Motion/Rich/RichMotionFrame.cs').read_text(encoding='utf-8')
           rich_solver = Path('Assets/GoldenNeedle/Core/Motion/Rich/RichAnatomicalOrientationSolver.cs').read_text(encoding='utf-8')
           rich_interface = Path('Assets/GoldenNeedle/Core/Motion/Rich/IRichMotionEvidenceSource.cs').read_text(encoding='utf-8')
+          mapper = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeRichMotionEvidenceMapper.cs').read_text(encoding='utf-8')
           media_source = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs').read_text(encoding='utf-8')
           workflow = Path('.github/workflows/foundation-c-rich-motion.yml').read_text(encoding='utf-8')
 
-          if 'public const int JointCount = 20;' not in canonical or 'RightToe = 19,' not in canonical:
-              raise SystemExit('CanonicalBodyV1 compatibility changed')
+          def require(text, markers, label):
+              missing = [marker for marker in markers if marker not in text]
+              if missing:
+                  raise SystemExit(f'{label}: missing {missing}')
+
+          require(canonical, [
+              'Pelvis = 0,', 'Spine = 1,', 'Chest = 2,', 'Head = 3,',
+              'LeftShoulder = 4,', 'LeftElbow = 5,', 'LeftWrist = 6,',
+              'RightShoulder = 7,', 'RightElbow = 8,', 'RightWrist = 9,',
+              'LeftHip = 10,', 'LeftKnee = 11,', 'LeftAnkle = 12,',
+              'LeftHeel = 13,', 'LeftToe = 14,', 'RightHip = 15,',
+              'RightKnee = 16,', 'RightAnkle = 17,', 'RightHeel = 18,',
+              'RightToe = 19,', 'public const int JointCount = 20;'
+          ], 'CanonicalBodyV1 compatibility')
+
           rich_core = rich_frame + '\n' + rich_solver + '\n' + rich_interface
           if 'Quaternion' in rich_core:
-              raise SystemExit('rich canonical Quaternion authority detected')
-          if 'public struct CanonicalAnatomicalBasis' not in rich_frame or 'public const int OrientationChannelCount = 12;' not in rich_frame:
-              raise SystemExit('Foundation C rich schema missing')
-          for marker in ['Observed = 1,', 'Held = 2,', 'ReferenceFallback = 3,', 'TryBuildBasis(', 'Vector3.Cross(primary, secondary)']:
-              if marker not in rich_core:
-                  raise SystemExit(f'Foundation C invariant missing: {marker}')
-          if 'IRichMotionEvidenceSource' in legacy_source:
+              raise SystemExit('rich canonical authority must not store/use Quaternion')
+          if any(token in rich_core for token in ['PoseObservation', 'PoseLandmarkObservation', 'MediaPipePoseProvider', 'GetLandmark(']):
+              raise SystemExit('provider-native MediaPipe types/indices leaked into rich core')
+
+          require(rich_frame, [
+              'public const int EvidenceCount = 22;',
+              'public const int OrientationChannelCount = 12;',
+              'public struct CanonicalAnatomicalBasis',
+              'public Vector3 primaryAxis;', 'public Vector3 secondaryAxis;', 'public Vector3 thirdAxis;',
+              'public float determinant;', 'CanonicalAnatomicalHandedness handedness;',
+              'Observed = 1,', 'Held = 2,', 'ReferenceFallback = 3,', 'Unobservable = 0,',
+          ], 'rich motion schema')
+          require(rich_solver, [
+              'private static readonly ChannelDescriptor[] Descriptors',
+              'RichOrientationChannelId.Pelvis', 'RichOrientationChannelId.Chest',
+              'RichOrientationChannelId.LeftUpperArm', 'RichOrientationChannelId.RightUpperArm',
+              'RichOrientationChannelId.LeftLowerArm', 'RichOrientationChannelId.RightLowerArm',
+              'RichOrientationChannelId.LeftUpperLeg', 'RichOrientationChannelId.RightUpperLeg',
+              'RichOrientationChannelId.LeftLowerLeg', 'RichOrientationChannelId.RightLowerLeg',
+              'RichOrientationChannelId.LeftFoot', 'RichOrientationChannelId.RightFoot',
+              'TryBuildBasis(', 'Vector3.Cross(primary, secondary)',
+              'RichTwistObservability.Observed', 'RichTwistObservability.Held',
+              'RichTwistObservability.ReferenceFallback', 'ResetReferenceState()',
+          ], 'rich orientation solver')
+
+          if 'IRichMotionEvidenceSource' in legacy_source or 'RichMotion' in legacy_source:
               raise SystemExit('ICanonicalPoseSource was destructively expanded')
-          if 'public interface IRichMotionEvidenceSource' not in rich_interface:
-              raise SystemExit('optional rich source boundary missing')
-          if 'MediaPipeRichMotionEvidenceMapper.Map(' not in media_source:
-              raise SystemExit('MediaPipe rich mapping boundary missing')
-          if 'Quaternion.FromToRotation' not in legacy_solver:
-              raise SystemExit('legacy Phase 4 rotation solver changed')
-          if 'runtime.AvatarDriveFrame' not in retargeter or 'RichMotionFrame' in retargeter:
-              raise SystemExit('production retarget authority changed')
+          require(rich_interface, ['public interface IRichMotionEvidenceSource', 'TryCopyLatestRichMotionEvidence'], 'optional rich source boundary')
+          require(mapper, [
+              'DirectSourceIndices', '11, 12,', '17, 18,', '21, 22,', '29, 30,', '31, 32,',
+              'CanonicalCoordinateSystem.MediaPipeWorldToCanonical',
+              'RichMotionEvidenceId.LeftThumb', 'RichMotionEvidenceId.RightThumb',
+              'RichMotionEvidenceId.LeftPinky', 'RichMotionEvidenceId.RightPinky',
+          ], 'MediaPipe rich mapper')
+          require(media_source, [
+              'ICanonicalPoseSource, IRichMotionEvidenceSource',
+              'private readonly PoseObservation _observation = new PoseObservation();',
+              'MediaPipeRichMotionEvidenceMapper.Map(',
+          ], 'MediaPipe optional rich source')
+          rich_start = media_source.index('public bool TryCopyLatestRichMotionEvidence')
+          rich_end = media_source.index('public bool TryCopyLatestCanonicalHands', rich_start) if 'public bool TryCopyLatestCanonicalHands' in media_source[rich_start:] else len(media_source)
+          rich_method = media_source[rich_start:rich_end]
+          if 'provider.CopyLatestObservation' in rich_method:
+              raise SystemExit('rich capability performs a second provider observation copy/inference path')
+
+          stable_calibration = '''_stabilizer.Stabilize(_rawCanonicalFrame, _stabilizedFrame, _lastEvaluationTimeSeconds);\n            _calibration.Update(_stabilizedFrame, _lastEvaluationTimeSeconds);'''
+          if stable_calibration not in runtime:
+              raise SystemExit('accepted stable stabilizer -> calibration adjacency changed')
+          require(runtime, [
+              'private IRichMotionEvidenceSource _richSource;',
+              'public RichMotionFrame RichMotionFrame => _richMotionFrame;',
+              '_rotationSolver.Solve(avatarDriveFrame, _calibration.Profile, _rotationFrame);',
+              '_kinematicTargetBuilder.Build(avatarDriveFrame, _calibration.Profile, _kinematicTargets);',
+              'UpdateRichMotion();', 'ResetReferenceState();',
+          ], 'additive runtime integration')
           if runtime.index('UpdateRichMotion();') < runtime.index('_kinematicTargetBuilder.Build('):
-              raise SystemExit('rich path preempts accepted production outputs')
-          if 'contents: read' not in workflow or 'contents:' + ' write' in workflow or 'git ' + 'push ' in workflow or 'git ' + 'commit ' in workflow:
-              raise SystemExit('Foundation C verification is not read-only')
+              raise SystemExit('rich side path must not replace/preempt accepted production rotation/IK output')
+
+          if 'Quaternion.FromToRotation' not in legacy_solver:
+              raise SystemExit('legacy swing-only CanonicalRotationSolver was replaced')
+          if 'runtime.AvatarDriveFrame' not in retargeter:
+              raise SystemExit('Phase 4 retargeter no longer consumes accepted AvatarDriveFrame')
+          if 'RichMotionFrame' in retargeter or 'RichOrientation' in retargeter:
+              raise SystemExit('Foundation C must not switch production retargeting to rich orientation')
+
+          for path in Path('Assets/GoldenNeedle/Core/Motion').rglob('*.cs'):
+              text = path.read_text(encoding='utf-8')
+              if 'GetLandmark(' not in text:
+                  continue
+              normalized = path.as_posix()
+              if '/Providers/MediaPipe/' in normalized or normalized.endswith('/Canonical/MediaPipeCanonicalPoseMapper.cs'):
+                  continue
+              raise SystemExit(f'provider landmark access leaked downstream: {normalized}')
+
+          if 'contents: read' not in workflow:
+              raise SystemExit('Foundation C workflow is not contents: read')
+          forbidden = ['git ' + 'push ', 'git ' + 'commit ', 'contents:' + ' write']
+          found = [item for item in forbidden if item in workflow]
+          if found:
+              raise SystemExit(f'Foundation C workflow is not read-only: {found}')
 
           print('FOUNDATION_C_STATIC_AUDIT=PASS')
           print('CANONICAL_BODY_V1_COMPATIBILITY=PASS')
-          print('RICH_CANONICAL_NO_QUATERNION_AUTHORITY=PASS')
+          print('RICH_PROVIDER_TYPE_ISOLATION=PASS')
+          print('MEDIAPIPE_INDEX_ISOLATION=PASS')
           print('OPTIONAL_RICH_SOURCE_BOUNDARY=PASS')
+          print('RICH_SINGLE_BODY_OBSERVATION_REUSE=PASS')
+          print('STABLE_CALIBRATION_AUTHORITY_PRESERVED=PASS')
           print('LEGACY_ROTATION_RETARGET_PATH_PRESERVED=PASS')
+          print('RICH_CANONICAL_NO_QUATERNION_AUTHORITY=PASS')
           print('FOUNDATION_C_WORKFLOW_READ_ONLY=PASS')
           PY
 
