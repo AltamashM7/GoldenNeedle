@@ -1,0 +1,19 @@
+Golden Needle Foundation D — MediaPipe Hand Landmarker model provenance
+
+Official source:
+https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task
+
+Official bundle identity: hand_landmarker / float16 / version 1
+Expected filename: hand_landmarker.task
+Verified size: 7,819,105 bytes
+Verified SHA-256: fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1
+Verification acquisition: GitHub Actions run 34889208460 downloaded the exact versioned Google MediaPipe URL and calculated the hash before Foundation D runtime integration.
+
+Runtime delivery policy:
+- Preferred location: Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task
+- The binary is not currently vendored in Git; Foundation D keeps verification CI read-only and records the exact official identity here.
+- The runtime supports a verified bootstrap fallback: if the exact StreamingAssets bundle is absent, it checks a private persistent cache; if absent there too, it downloads only the exact official URL above, verifies the locked SHA-256, and caches the verified bytes.
+- A missing/download-failed/hash-mismatched hand model disables only optional detailed hands. The accepted body/OpenVINO path continues unchanged.
+
+License/source note:
+MediaPipe source code, including the Tasks Hand Landmarker implementation used through MediaPipeUnityPlugin, is distributed under Apache License 2.0. The model bundle is obtained only from Google's official MediaPipe model bucket; preserve this source/provenance record with any future decision to vendor the binary directly.
