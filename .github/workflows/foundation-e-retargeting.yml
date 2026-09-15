@@ -1,0 +1,246 @@
+name: Foundation E rich detail retargeting
+
+on:
+  push:
+    branches:
+      - engine/pose-tracking-spike
+    paths:
+      - 'Assets/GoldenNeedle/Core/Motion/Retargeting/**'
+      - 'Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs'
+      - 'Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs.meta'
+      - 'Tools/FoundationERetargetingSmoke/**'
+      - '.github/workflows/foundation-d-hand-tracking.yml'
+      - '.github/workflows/foundation-e-retargeting.yml'
+      - 'Docs/current-state.md'
+      - 'Docs/decisions.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Foundation A command and speech smoke
+        run: dotnet run --configuration Release --project Tools/FoundationACommandSmoke/FoundationACommandSmoke.csproj
+
+      - name: Run Foundation B camera preset smoke
+        run: dotnet run --configuration Release --project Tools/FoundationBCameraSmoke/FoundationBCameraSmoke.csproj
+
+      - name: Run Foundation C rich motion smoke
+        run: dotnet run --configuration Release --project Tools/FoundationCRichMotionSmoke/FoundationCRichMotionSmoke.csproj
+
+      - name: Run Foundation D hand math and scheduler smoke
+        run: dotnet run --configuration Release --project Tools/FoundationDHandSmoke/FoundationDHandSmoke.csproj
+
+      - name: Run Foundation E deterministic retarget smoke
+        run: dotnet run --configuration Release --project Tools/FoundationERetargetingSmoke/FoundationERetargetingSmoke.csproj
+
+      - name: Validate Foundation E architecture and locked scope
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
+
+          foundation_e_base = '97f1541c0b2dce5dbf3843bc299a60e7088f1e9b'
+          retarget_path = 'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs'
+          retargeter = Path(retarget_path).read_text(encoding='utf-8')
+          binding = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRigBinding.cs').read_text(encoding='utf-8')
+          capabilities = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRigDetailCapabilities.cs').read_text(encoding='utf-8')
+          detail = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs').read_text(encoding='utf-8')
+          detail_math = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/FoundationERetargetMath.cs').read_text(encoding='utf-8')
+          hook = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/IHumanoidPostSolveDetailLayer.cs').read_text(encoding='utf-8')
+          explicit_detail = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/IExplicitHumanoidDetailRigSource.cs').read_text(encoding='utf-8')
+          d_workflow = Path('.github/workflows/foundation-d-hand-tracking.yml').read_text(encoding='utf-8')
+          e_workflow = Path('.github/workflows/foundation-e-retargeting.yml').read_text(encoding='utf-8')
+          editor_tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs').read_text(encoding='utf-8')
+
+          def require(text, markers, label):
+              missing = [marker for marker in markers if marker not in text]
+              if missing:
+                  raise SystemExit(f'{label}: missing {missing}')
+
+          def extract_phase4_method(text):
+              start = text.index('        public void ApplyMotionFrame(')
+              end = text.index('        /// <summary>\n        /// Compatibility entry point', start)
+              return text[start:end]
+
+          base_retargeter = subprocess.check_output(
+              ['git', 'show', f'{foundation_e_base}:{retarget_path}'], text=True)
+          if extract_phase4_method(retargeter) != extract_phase4_method(base_retargeter):
+              raise SystemExit('ApplyMotionFrame(...) changed from the authorized Phase 4 compatibility solve')
+
+          require(hook, [
+              'public interface IHumanoidPostSolveDetailLayer',
+              'bool IsPostSolveDetailEnabled',
+              'ApplyPostSolveDetail(HumanoidRigBinding binding, float deltaTime)',
+              'ResetPostSolveDetailState(HumanoidRigBinding binding)',
+          ], 'generic optional post-solve boundary')
+          require(retargeter, [
+              'private readonly IHumanoidPostSolveDetailLayer[] _postSolveDetailLayers',
+              'ResolvePostSolveDetailLayers();',
+              'ApplyMotionFrame(',
+              'ApplyPostSolveDetailLayers(deltaTime);',
+              'TryCapturePresentationLocalRotations(',
+              'RestorePresentationLocalRotations(',
+          ], 'retargeter post-solve ordering')
+          forbidden_retargeter = [
+              'RichMotionFrame', 'CanonicalHandFrame', 'HandMotionRuntime',
+              'MediaPipe', 'HandLandmarkId', 'HumanoidFingerBoneId',
+          ]
+          leaked = [token for token in forbidden_retargeter if token in retargeter]
+          if leaked:
+              raise SystemExit(f'Foundation E detail/provider logic leaked into HumanoidRetargeter: {leaked}')
+
+          require(binding, [
+              'public bool IsBound => _isBound;',
+              'public int BoundBoneCount { get; private set; }',
+              'BoundBoneCount = CanonicalRotationFrame.BoneCount;',
+              'public HumanoidRigDetailCapabilities DetailCapabilities => _detailCapabilities;',
+              'public int OptionalDetailBoneCount => _detailCapabilities.AvailableFingerBoneCount;',
+              'BindOptionalDetailCapabilities();',
+          ], 'legacy body binding plus optional detail capabilities')
+          all_bones = binding[binding.index('private bool AllBonesAvailable()'):binding.index('private void ClearBinding()')]
+          if any(token in all_bones for token in ['_detailCapabilities', 'OptionalDetailBoneCount', 'HumanoidFingerBoneId']):
+              raise SystemExit('optional detail affects legacy AllBonesAvailable/IsBound semantics')
+          if 'IExplicitHumanoidRigSource' in explicit_detail:
+              raise SystemExit('optional detail interface destructively expands the legacy explicit body source')
+
+          require(capabilities, [
+              'public const int FingerBoneCount = 30;',
+              'HumanBodyBones.LeftThumbProximal', 'HumanBodyBones.LeftThumbIntermediate', 'HumanBodyBones.LeftThumbDistal',
+              'HumanBodyBones.LeftIndexProximal', 'HumanBodyBones.LeftMiddleProximal', 'HumanBodyBones.LeftRingProximal', 'HumanBodyBones.LeftLittleProximal',
+              'HumanBodyBones.RightThumbProximal', 'HumanBodyBones.RightThumbIntermediate', 'HumanBodyBones.RightThumbDistal',
+              'HumanBodyBones.RightIndexProximal', 'HumanBodyBones.RightMiddleProximal', 'HumanBodyBones.RightRingProximal', 'HumanBodyBones.RightLittleProximal',
+              'AvailableFingerBoneCount', 'CaptureReference()', 'AuthoredPositionsAndScalesIntact',
+          ], 'optional 30-finger capability cache')
+
+          require(detail, [
+              'private const int RichLimbChannelCount = 8;',
+              'enableFoundationE', 'enableRichLimbAxialDetail', 'enablePalmOrientation', 'enableFingerArticulation',
+              'bodyRuntime.RichMotionFrame', 'handRuntime.HandFrame',
+              'RichTwistObservability.Observed', 'RichTwistObservability.Held',
+              'TryMeasureRelativeAxialDegrees', 'MapSignedAxialDegrees',
+              'TryApplyAxialTwistPreservingDownstream',
+              'hand.isFresh', 'hand.isDetected', 'hand.palmBasis.isValid',
+              'ThumbCmc, HandLandmarkId.ThumbMcp',
+              'IndexMcp, HandLandmarkId.IndexPip',
+              'MiddleMcp, HandLandmarkId.MiddlePip',
+              'RingMcp, HandLandmarkId.RingPip',
+              'PinkyMcp, HandLandmarkId.PinkyPip',
+          ], 'Foundation E rich/hand detail application')
+          channels_start = detail.index('private static readonly RichOrientationChannelId[] RichChannels')
+          channels_end = detail.index('private static readonly CanonicalBoneId[] RichBones', channels_start)
+          channels = detail[channels_start:channels_end]
+          expected_channels = [
+              'LeftUpperArm', 'LeftLowerArm', 'RightUpperArm', 'RightLowerArm',
+              'LeftUpperLeg', 'LeftLowerLeg', 'RightUpperLeg', 'RightLowerLeg',
+          ]
+          if any(channels.count(name) != 1 for name in expected_channels):
+              raise SystemExit('production Foundation E rich channel set is not exactly the eight approved limb channels')
+          for deferred in ['Pelvis', 'Chest', 'LeftFoot', 'RightFoot']:
+              if deferred in channels:
+                  raise SystemExit(f'deferred rich channel entered Foundation E production application: {deferred}')
+
+          require(detail_math, [
+              'sourceDegrees * map.DeterminantSign',
+              'TryMeasureRelativeAxialDegrees',
+              'TryApplyAxialTwistPreservingDownstream',
+              'directChild.rotation = childRotation;',
+              'Vector3.Distance(childPosition, directChild.position)',
+          ], 'reflection-aware endpoint-preserving retarget math')
+
+          e_core = '\n'.join([detail, detail_math, capabilities, hook, explicit_detail])
+          forbidden_runtime = [
+              'MediaPipePoseProvider', 'MediaPipeHandLandmarkerSource', 'PoseObservation',
+              'DetectAsync', 'WebCamTexture', 'GetPixels32', 'OpenVino',
+              'Queue<', 'ConcurrentQueue<', 'LinkedList<', 'Enqueue(', 'Dequeue(',
+              'System.Linq', '.ToList(',
+          ]
+          found = [token for token in forbidden_runtime if token in e_core]
+          if found:
+              raise SystemExit(f'inference/camera/provider/history/allocation-prone mechanism leaked into E core: {found}')
+
+          require(editor_tests, [
+              'ProperAndReflectedAxisMapsPreserveAndInvertTwistSign',
+              'RelativeAxialMeasurementUsesFirstBasisAsZeroReference',
+              'ParentAxialTwistCompensatesChildAndPreservesDownstreamEndpoints',
+              'PartialDetailCapabilitiesCacheOnlyAvailableSegmentsAndNeverMutateAuthoredGeometry',
+              'OptionalDetailCountDoesNotParticipateInLegacyBindingValidityOrCount',
+          ], 'Unity Editor Foundation E test source')
+
+          if 'FOUNDATION_D_PRODUCTION_APPLICATION_BOUNDARY_PRESERVED=PASS' not in d_workflow:
+              raise SystemExit('Foundation D permanent application boundary marker missing')
+          if 'FOUNDATION_E_NOT_STARTED=PASS' in d_workflow:
+              raise SystemExit('obsolete Foundation D pre-E guard still present')
+
+          changed = subprocess.check_output(
+              ['git', 'diff', '--name-only', foundation_e_base, 'HEAD'], text=True).splitlines()
+          allowed_exact = {
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRigBinding.cs',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/IHumanoidPostSolveDetailLayer.cs',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/IHumanoidPostSolveDetailLayer.cs.meta',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/IExplicitHumanoidDetailRigSource.cs',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/IExplicitHumanoidDetailRigSource.cs.meta',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRigDetailCapabilities.cs',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRigDetailCapabilities.cs.meta',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/FoundationERetargetMath.cs',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/FoundationERetargetMath.cs.meta',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs',
+              'Assets/GoldenNeedle/Core/Motion/Retargeting/RichHumanoidDetailRetargeter.cs.meta',
+              'Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs',
+              'Assets/GoldenNeedle/Tests/Editor/FoundationERetargetingTests.cs.meta',
+              '.github/workflows/foundation-d-hand-tracking.yml',
+              '.github/workflows/foundation-e-retargeting.yml',
+              'Docs/current-state.md',
+              'Docs/decisions.md',
+          }
+          allowed_prefixes = ('Tools/FoundationERetargetingSmoke/',)
+          unexpected = [p for p in changed if p not in allowed_exact and not p.startswith(allowed_prefixes)]
+          if unexpected:
+              raise SystemExit(f'Foundation E changed locked provider/body/OpenVINO/Phase5A/scene/package scope: {unexpected}')
+
+          canonical_now = Path('Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs').read_text(encoding='utf-8')
+          canonical_base = subprocess.check_output(
+              ['git', 'show', f'{foundation_e_base}:Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs'], text=True)
+          if canonical_now != canonical_base:
+              raise SystemExit('CanonicalBodyV1 changed during Foundation E')
+
+          if 'contents: read' not in e_workflow:
+              raise SystemExit('Foundation E workflow is not contents: read')
+          forbidden_workflow = ['contents:' + ' write', 'git ' + 'push ', 'git ' + 'commit ']
+          found = [token for token in forbidden_workflow if token in e_workflow]
+          if found:
+              raise SystemExit(f'Foundation E workflow is not read-only: {found}')
+
+          print('FOUNDATION_E_STATIC_AUDIT=PASS')
+          print('FOUNDATION_E_PHASE4_APPLY_MOTION_FRAME_EXACT=PASS')
+          print('FOUNDATION_E_OPTIONAL_POST_SOLVE_BOUNDARY=PASS')
+          print('FOUNDATION_E_MASTER_DISABLED_PHASE4_COMPATIBLE=PASS')
+          print('FOUNDATION_E_OPTIONAL_BINDING_SEMANTICS=PASS')
+          print('FOUNDATION_E_EIGHT_RICH_LIMB_CHANNELS_ONLY=PASS')
+          print('FOUNDATION_E_PROVIDER_ISOLATION=PASS')
+          print('FOUNDATION_E_NO_INFERENCE_CAMERA_SCHEDULING=PASS')
+          print('FOUNDATION_E_NO_HISTORY_BACKLOG=PASS')
+          print('FOUNDATION_E_LOCKED_SCOPE_UNCHANGED=PASS')
+          print('FOUNDATION_E_FOUNDATION_D_BOUNDARY_MIGRATED=PASS')
+          PY
+
+      - name: Assert verification is read-only
+        shell: bash
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          echo 'FOUNDATION_E_WORKFLOW_READ_ONLY=PASS'
