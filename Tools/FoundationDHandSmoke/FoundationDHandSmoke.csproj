@@ -10,8 +10,6 @@
     <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/HandFeatureSolver.cs" Link="HandFeatureSolver.cs" />
     <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/HandAssociationSolver.cs" Link="HandAssociationSolver.cs" />
     <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/BoundedHandInferenceScheduler.cs" Link="BoundedHandInferenceScheduler.cs" />
-    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/CoarseHandState.cs" Link="CoarseHandState.cs" />
-    <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Hands/CoarseHandStateEstimator.cs" Link="CoarseHandStateEstimator.cs" />
     <Compile Include="../../Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProviderTimeline.cs" Link="MediaPipePoseProviderTimeline.cs" />
   </ItemGroup>
 </Project>
