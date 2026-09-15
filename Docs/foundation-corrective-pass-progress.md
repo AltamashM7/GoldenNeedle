@@ -99,7 +99,7 @@ When experimental axial detail is OFF, `HumanoidRetargeter` first rebuilds the a
 
 **Actual remote HEAD at this Builder intake:** `8a555d20fd9c2620fde92e7cb54e7794a674b4e0`
 
-The actual intake HEAD was one fast-forward commit ahead of the expected baseline. That commit, `8a555d20fd9c2620fde92e7cb54e7794a674b4e0` (`fix(speech): expose backend and recognition lifecycle`), is a direct child of `4be712288af09bde826d12e44999215fb2dcda74` and contains the coherent Batch 3 speech implementation. It was independently audited rather than overwritten or duplicated.
+The actual intake HEAD was one fast-forward commit ahead of the expected baseline. That commit, `8a555d20fd9c2620fde92e7cb54e7794a674b4e0` (`fix(speech): expose backend and recognition lifecycle`), is a direct child of `4be712288af09bde99bfc213369659f77b935e6e` and contains the coherent Batch 3 speech implementation. It was independently audited rather than overwritten or duplicated.
 
 **Validated Batch 3 implementation SHA:** `8a555d20fd9c2620fde92e7cb54e7794a674b4e0`
 
@@ -291,3 +291,139 @@ No avatar finger/palm/wrist rotation is driven from `CoarseHandState` in Batch 4
 **Batch 4B avatar finger application NOT AUTHORIZED YET.**
 
 Do not begin Batch 4B finger deformation, further detailed-hand work, Batch 2 pose changes, CI hygiene cleanup, Phase 5A, or Phase 6 until the Orchestrator/USER explicitly advances the next batch.
+
+## Corrective Pose Baseline Restoration
+
+**Purpose:** restore normal production pose/body execution to the previously accepted optimization-era Phase 3 + Phase 4 architecture, remove the USER-rejected Batch 4A coarse-hand experiment, disconnect later Foundation C/D/E pose-detail systems from normal runtime, clarify F7 body acquisition/readback diagnostics, and lower all product-default speech mappings to Low confidence.
+
+**Starting remote SHA:** `346002cdecef8a17609a9a757ea6f0015d705172`
+
+**Implementation SHA before this documentation commit:** `494cc865d569a418ad184b948269553bafca6055`
+
+### USER runtime evidence and decision
+
+After Batch 4A, the USER observed approximately `15 FPS` camera capture while testing with the full body visible, compared with the previously accepted optimized behavior in the high-20s / approximately `28–30 FPS` fresh-pose range. This observation is sufficient for the product decision to stop extending the later pose/detail/hand stack, but it does **not** prove that Batch 4A's coarse vector arithmetic by itself caused the slowdown. No controlled A/B isolation was performed at Builder time.
+
+The USER explicitly chose to restore production pose mechanics to the accepted optimization-era baseline rather than continue Batch 4B. Batch 4B was never implemented, and Batch 4A never contained avatar fist/finger deformation.
+
+### Historical baseline references
+
+The principal historical composition reference is commit `8908ca580c8c7251238f75191345d4bf2b5fd04e`, the direct state immediately before Foundation C first entered the branch. Foundation C begins in the following commit, `39eb0b589c43a0b624f1e6e810a4adfa80f908a6` (`feat: add Foundation C rich motion contracts`). The exact pre-Foundation-C production file blobs restored from `8908ca...` are:
+
+- `MotionEngineRuntime.cs` — `766632dd5c08698a1bdde66fd36f322bfdcd9723`;
+- `MediaPipeCanonicalPoseSource.cs` — `6e599a2e931deba3dc23bd587005fff7c7a6a6c9`;
+- `HumanoidRetargeter.cs` — `ecc95aaf5104bcb011cb0436d16ceb7531104336`;
+- `PoseTrackingSpikePresenter.cs` — `41a8fe8adb1a750fbf570d3473e30a34073ab5fe`.
+
+This reference matches `Docs/optimization-orchestrator-handoff.md` because its `MediaPipePoseProvider.cs` is already the exact same optimized provider blob used at restoration intake: `e3f7a55caef9bbe27cd5d4485fc67e096b28c5b8`. Therefore WebCamCPU/GetPixels32 acquisition, reusable CPU preparation/downscale, accepted 320×240 body input, persistent OpenVINO CPU FP32 worker, immediate/newest-only scheduling, two-slot mailbox semantics, MediaPipe Pose semantics, and the accepted optimized provider path were already present before Foundation C/D/E composition was added. The accepted `CanonicalRotationSolver.cs` also remains the same historical/current blob `286442132f864e10907d1c68db68e6e0903aa6b1`, and `CanonicalPoseFrame.cs` remains the 20-joint CanonicalBodyV1 blob `9a0d4c99fb33f2192bcd3937d0ce72de3f2756a5`.
+
+No old whole tree was checked out. These individual files were restored with new forward commits so later unrelated Foundation A/B command/camera work and Batch 3 speech lifecycle/diagnostics remain available.
+
+### Restored production pose authority
+
+Production pose execution is again the optimization-era authority chain:
+
+`optimized body acquisition/inference -> canonical mapping -> Phase 3 stabilization -> stable calibration/avatar-drive authority -> Phase 4 retargeting -> presentation`.
+
+- **Foundation C:** `MotionEngineRuntime` no longer resolves `IRichMotionEvidenceSource`, stores a rich-evidence frame, runs `RichAnatomicalOrientationSolver`, or calls `UpdateRichMotion()` every body frame. `MediaPipeCanonicalPoseSource` no longer implements or maps rich evidence. Foundation C research types/files remain in the repository but are dormant in normal production composition.
+- **Foundation D:** the normal `MediaPipeCanonicalPoseSource` no longer implements `ICanonicalHandSource`, automatically creates `HandMotionRuntime`, or creates/enables `MediaPipeHandLandmarkerSource`. Therefore normal runtime has no detailed-hand model setup/download/verification, separate hand `GetPixels32`, 480×360 hand preparation, hand scheduler, periodic Hand Landmarker inference, or hand-related body binding requirement. The detailed-hand research files remain in the repository, preserving the useful Batch 1 lifecycle/buffer fixes, but are not automatically instantiated by normal production composition.
+- **Foundation E:** `HumanoidRetargeter` is restored to the Phase 4 + presentation form with no post-solve detail-layer registry/application. `PoseTrackingSpikePresenter` no longer auto-adds `RichHumanoidDetailRetargeter`. Foundation E research files remain available for explicit future research only; they do not sit in the normal `Phase 4 solve -> presentation` path.
+
+### Batch 4A rejection and forward rollback
+
+Batch 4A's Builder-side deterministic/architecture checks had passed at `d060083395918c19cb302346dc0938dc3f7835eb`, but subsequent USER runtime evaluation rejected the feature in the low-end production experience. Approximately `15 FPS` camera capture was observed during full-body testing, and the USER chose baseline restoration instead of further coarse-hand work. This does not establish Batch 4A arithmetic as the sole performance cause.
+
+The Batch 4A runtime/test/workflow files were removed in a forward rollback, its `FoundationDHandSmoke.csproj` wiring was restored to the pre-4A form, and all coarse-hand interfaces/wiring were removed from `MediaPipeCanonicalPoseSource`. Historical Batch 4A documentation above is intentionally retained. Coarse-hand work is deferred. Avatar fist deformation was never part of Batch 4A.
+
+### Speech sensitivity policy
+
+Batch 3's `KeywordRecognizer`, phrase-system lifecycle/error/status handling, raw recognition diagnostics, cooldown, shared command routing, microphone diagnostics, and configurable empty `wakePrefix` remain intact.
+
+Only the product-default mapping policy changed: all 14 mappings created by `SpeechCommandConfiguration.CreateDefault()` now explicitly require `SpeechRecognitionConfidence.Low`:
+
+- `begin calibration`
+- `reset calibration`
+- `recenter`
+- `retry tracking`
+- `game view`
+- `lab view`
+- `back view`
+- `front view`
+- `left view`
+- `right view`
+- `full body view`
+- `hands view`
+- `left hand view`
+- `right hand view`
+
+The generic/custom `SpeechCommandMapping` default remains `Medium`; only the product defaults were deliberately lowered. No wake phrase was added. `wakePrefix` remains configurable and empty by default.
+
+### F7 acquisition/readback clarification
+
+The provider contains two distinct concepts: body-frame acquisition (`WebCamCPU/GetPixels32` versus `ExistingReadback`) and the implementation used only by ExistingReadback (`Homuler`, `DirectCPU`, or fallback). The existing provider status text can still include an ExistingReadback implementation label even when that implementation is not the active body acquisition source, which made `Readback: Homuler` ambiguous.
+
+A presentation-only `PoseAcquisitionLabDiagnostics` F7 overlay now reads the provider's requested/active acquisition mode, fallback reason, active ExistingReadback implementation, active backend, and body input size without changing acquisition behavior. Its intended semantics are:
+
+- optimized active path: `Acquisition: WebCamCPU/GetPixels32`, `Readback: N/A (WebCamCPU active)`, `Fallback: none`;
+- requested WebCamCPU with real fallback: `Acquisition: ExistingReadback (WebCamCPU fallback)`, actual `Readback: <implementation>`, and the actual fallback reason;
+- deliberately selected ExistingReadback: `Acquisition: ExistingReadback` plus its genuine implementation.
+
+The diagnostic performs no camera read, neural inference, queueing, or body-path mutation.
+
+### Files changed / removed
+
+Restored/surgically changed production files:
+
+- `Assets/GoldenNeedle/Core/Motion/Runtime/MotionEngineRuntime.cs`
+- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs`
+- `Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs`
+- `Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpikePresenter.cs`
+- `Assets/GoldenNeedle/Core/Commands/SpeechCommandPolicy.cs`
+- `Tools/FoundationACommandSmoke/Program.cs`
+- `Tools/FoundationDHandSmoke/FoundationDHandSmoke.csproj`
+- `.github/workflows/foundation-a-command-system.yml`
+- `Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseAcquisitionLabDiagnostics.cs` and `.meta`
+- `.github/workflows/pose-baseline-restoration.yml`
+- `Docs/foundation-corrective-pass-progress.md`
+
+Removed rejected Batch 4A files:
+
+- `.github/workflows/foundation-d-coarse-hand.yml`
+- `Assets/GoldenNeedle/Core/Motion/Hands/CoarseHandState.cs` and `.meta`
+- `Assets/GoldenNeedle/Core/Motion/Hands/CoarseHandStateEstimator.cs` and `.meta`
+- `Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCoarseHandEvidenceMapper.cs` and `.meta`
+- `Assets/GoldenNeedle/Debug/PoseTrackingSpike/CoarseHandLabDiagnostics.cs` and `.meta`
+- `Tools/FoundationDHandSmoke/CoarseHandStateSmoke.cs`
+
+`MediaPipePoseProvider.cs`, `WebCamCpuFramePreparation.cs`, `CanonicalPoseFrame.cs`, `CanonicalRotationSolver.cs`, locomotion/Phase 5A files, Batch 3 lifecycle/backend files, scene YAML, packages, and ProjectSettings were not modified.
+
+### Validation and CI status
+
+Builder-side repository inspection confirms exact historical blob identity for the restored production-composition files and unchanged optimized provider/Phase 4/CanonicalBodyV1 files. A new read-only `pose-baseline-restoration.yml` guard was added to check the exact baseline blobs, optimized WebCamCPU/OpenVINO/two-slot scheduling markers, absence of Foundation C/D/E production composition, Batch 4A removal, all-14-Low speech defaults, and F7 acquisition/readback semantics. Foundation A deterministic smoke was extended to verify the exact 14 phrases/commands/parameters, empty wake prefix, Low resolution for every product-default phrase, and preserved Batch 3 lifecycle tests.
+
+GitHub Actions did **not** execute the triggered jobs during this restoration window. Runs at pose-restoration commit `5f5fdd5c60b4f55b364b067f4e32a308f58ba637` and implementation commit `494cc865d569a418ad184b948269553bafca6055` all terminated before checkout with empty step lists. This affected established Foundation A/B and historical C/D/E workflows as well as the new restoration workflow, so it is a runner/platform-start failure rather than a substantive test assertion failure. A manual rerun of the restoration job reproduced the same zero-step termination. No historical C/D/E scope guard actually executed in these runs; therefore no new C/D/E guard result is claimed.
+
+Relevant run IDs at `494cc865...`:
+
+- Corrective pose baseline restoration: run `35007661103`, initial job `104511392005`; manual rerun job `104512149328` — both failed before any step executed.
+- Foundation A command system: run `35007660921`, job `104511391227` — failed before any step executed.
+- Foundation B camera presets: run `35007661041`, job `104511391679` — failed before any step executed.
+
+Relevant restoration-commit runs at `5f5fdd5c...` likewise terminated before execution, including Foundation C run `35007178264`, Foundation D run `35007178478`, and Foundation E run `35007178361`. This task intentionally did not alter those historical research workflows merely to make them green after their runtime integrations were retired.
+
+Because the Actions runner did not start, the new/updated managed smoke assertions remain **not executed in CI for this restoration commit**. Previous accepted workflow results recorded above remain historical evidence only, not proof of this new restoration. Unity Editor compilation/Test Runner, actual webcam cadence, and Windows speech sensitivity after the Low-default change also remain USER/runtime checks.
+
+### Required USER runtime QA
+
+The decisive USER test is:
+
+1. Pull the final `engine/pose-tracking-spike` HEAD and open the normal Pose Tracking Spike scene.
+2. Press F7 and verify the authoritative body-path block reports `Acquisition: WebCamCPU/GetPixels32`, `Readback: N/A (WebCamCPU active)`, OpenVINO CPU backend, and the accepted `320x240` body input. If it instead reports `ExistingReadback (WebCamCPU fallback)`, capture the exact fallback reason rather than assuming the implementation label is the active acquisition path.
+3. With the full body visible, measure camera capture cadence and fresh-pose cadence and compare with the previously accepted approximately `28–30 FPS` / fresh-pose range. No Builder claim of restored FPS is made before this test.
+4. Verify the original accepted Phase 4 body behavior, signed-axis orientation, analytic IK, partial-body calibration, and stable calibration behavior are restored without later rich/hand/detail influence.
+5. Speak the configured commands at normal volume and verify Low-confidence recognitions now resolve/dispatch where mapping and cooldown permit, while the default wake prefix remains absent.
+6. Confirm no coarse-hand diagnostic appears and no detailed-hand/rich/post-Phase-4 experimental subsystem is visibly affecting normal production pose behavior.
+
+**Status:** `AWAITING ORCHESTRATOR REVIEW / USER OPTIMIZED-BASELINE RUNTIME QA`
+
+Do not begin another coarse-hand implementation, Batch 4B, detailed-hand optimization, new rich-orientation work, Phase 5A fixes, Phase 6, or general CI cleanup until the Orchestrator/USER explicitly advances the project.
