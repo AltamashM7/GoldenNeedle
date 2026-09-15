@@ -10,9 +10,13 @@ on:
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkMapper.cs'
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource*.cs'
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource*.cs.meta'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProviderTimeline.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProviderTimeline.cs.meta'
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs'
       - 'Assets/GoldenNeedle/Tests/Editor/FoundationDHandTrackingTests.cs'
       - 'Tools/FoundationDHandSmoke/**'
+      - 'Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task'
+      - 'Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task.meta'
       - 'Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task.source.txt'
       - '.github/workflows/foundation-c-rich-motion.yml'
       - '.github/workflows/foundation-d-hand-tracking.yml'
@@ -45,7 +49,17 @@ jobs:
       - name: Run Foundation D hand math and scheduler smoke
         run: dotnet run --configuration Release --project Tools/FoundationDHandSmoke/FoundationDHandSmoke.csproj
 
-      - name: Verify official Hand Landmarker bundle identity
+      - name: Verify checked-in Hand Landmarker bundle identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          model='Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task'
+          test -f "$model"
+          test "$(stat --printf='%s' "$model")" = '7819105'
+          echo 'fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1  Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task' | sha256sum --check --strict
+          echo 'FOUNDATION_D_BUNDLED_MODEL_IDENTITY=PASS'
+
+      - name: Verify official remote model still matches lock
         shell: bash
         run: |
           set -euo pipefail
@@ -55,7 +69,7 @@ jobs:
           echo 'fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1  /tmp/hand_landmarker.task' | sha256sum --check --strict
           echo 'FOUNDATION_D_OFFICIAL_MODEL_IDENTITY=PASS'
 
-      - name: Validate Foundation D architecture and locked scope
+      - name: Validate Foundation D architecture, shared timeline, and locked scope
         shell: bash
         run: |
           set -euo pipefail
@@ -72,13 +86,19 @@ jobs:
           association = (hands_dir / 'HandAssociationSolver.cs').read_text(encoding='utf-8')
           scheduler = (hands_dir / 'BoundedHandInferenceScheduler.cs').read_text(encoding='utf-8')
           interface = (hands_dir / 'ICanonicalHandSource.cs').read_text(encoding='utf-8')
+          body_provider_path = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProvider.cs')
+          body_provider = body_provider_path.read_text(encoding='utf-8')
+          timeline_path = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProviderTimeline.cs')
+          timeline = timeline_path.read_text(encoding='utf-8')
           provider_paths = [
               Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.cs'),
               Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.Capture.cs'),
               Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkerSource.Results.cs'),
           ]
           provider = '\n'.join(path.read_text(encoding='utf-8') for path in provider_paths)
+          hand_main = provider_paths[0].read_text(encoding='utf-8')
           capture = provider_paths[1].read_text(encoding='utf-8')
+          results = provider_paths[2].read_text(encoding='utf-8')
           mapper = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeHandLandmarkMapper.cs').read_text(encoding='utf-8')
           source = Path('Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs').read_text(encoding='utf-8')
           editor_tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationDHandTrackingTests.cs').read_text(encoding='utf-8')
@@ -119,6 +139,19 @@ jobs:
           if any(token in scheduler for token in ['Queue<', 'ConcurrentQueue<', 'List<long>', 'List<Hand']):
               raise SystemExit('hand scheduler contains a historical FIFO/backlog structure')
 
+          require(body_provider, [
+              'private readonly Stopwatch _clock = Stopwatch.StartNew();',
+              'var timestampMillisec = _clock.ElapsedMilliseconds;',
+              'var receivedAtSeconds = NowSeconds();',
+          ], 'body provider Stopwatch authority')
+          require(timeline, [
+              'typeof(MediaPipePoseProvider).GetField(', '"_clock"',
+              'BindingFlags.Instance | BindingFlags.NonPublic',
+              'TryGetTimelineClock(', 'CurrentTimelineMilliseconds(', 'CurrentTimelineSeconds(',
+          ], 'read-only provider timeline surface')
+          if any(token in timeline for token in ['Time.', 'Update(', 'DetectAsync', 'OpenVinoLatestFrameMailbox']):
+              raise SystemExit('provider timeline surface contains scheduling/runtime behavior')
+
           require(provider, [
               'HandLandmarkerOptions(', 'RunningMode.LIVE_STREAM', 'BaseOptions.Delegate.CPU',
               'numHands: 2', 'targetHandInferenceFps = 12f',
@@ -128,10 +161,34 @@ jobs:
               'private NativeArray<byte> _slotA;', 'private NativeArray<byte> _slotB;',
               'BoundedHandInferenceScheduler',
               'OfficialModelVersion = "float16/1"',
+              'OfficialModelSizeBytes = 7819105L',
               'OfficialModelSha256 = "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"',
               'VerifyBytesSha256', 'VerifyFileSha256',
               'RestartForCoordinateConvention()', 'ClearSessionState()',
           ], 'MediaPipe Hand Landmarker provider')
+
+          require(capture, [
+              '_bodyTimelineClock.ElapsedMilliseconds',
+              '_lastSubmittedTimestampMillisec + 1L',
+              '_callbackSnapshot.receivedAtSeconds = receivedAtSeconds;',
+              '_bodyTimelineClock.ElapsedTicks / (double)Stopwatch.Frequency',
+          ], 'shared hand timestamp/receive timeline')
+          if 'Time.unscaledTimeAsDouble' in capture or 'Time.unscaledTimeAsDouble' in results:
+              raise SystemExit('Unity unscaled time leaked into semantic hand capture/result timing')
+          if 'Time.unscaledTimeAsDouble' not in hand_main:
+              raise SystemExit('expected cadence-only Unity timing surface is missing')
+          require(source, [
+              'private Stopwatch _providerTimelineClock;',
+              '_providerTimelineClock.ElapsedTicks / (double)Stopwatch.Frequency',
+              'MediaPipePoseProviderTimeline.TryGetTimelineClock(provider, out _providerTimelineClock);',
+          ], 'canonical evaluation shared timeline')
+          if 'return Time.unscaledTimeAsDouble' in source or 'EvaluationTimeSeconds' in source and 'Time.unscaledTimeAsDouble' in source:
+              raise SystemExit('canonical evaluation fell back to a different Unity-time epoch')
+          require(results, [
+              '_lastResultReceivedAtSeconds = _mainSnapshot.receivedAtSeconds;',
+              'var semanticNowSeconds = BodyTimelineSeconds();',
+          ], 'hand receive/age shared timeline')
+
           callback = capture[capture.index('private void OnHandResult'):capture.index('private static void CopyTaskResult')]
           forbidden_callback = ['Transform', 'GameObject', 'GetComponent', 'Time.', 'GUI.', 'Debug.', 'UnityWebRequest']
           found = [token for token in forbidden_callback if token in callback]
@@ -209,6 +266,8 @@ jobs:
               raise SystemExit(f'Foundation D workflow is not read-only: {found}')
 
           print('FOUNDATION_D_STATIC_AUDIT=PASS')
+          print('HAND_SHARED_PROVIDER_TIMELINE=PASS')
+          print('HAND_MONOTONIC_TASK_TIMESTAMPS=PASS')
           print('HAND_21_SEMANTIC_CONTRACT=PASS')
           print('HAND_PROVIDER_ISOLATION=PASS')
           print('HAND_LOCAL_COORDINATE_OWNERSHIP=PASS')
