@@ -13,6 +13,9 @@ on:
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProviderTimeline.cs'
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipePoseProviderTimeline.cs.meta'
       - 'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/MediaPipeCanonicalPoseSource.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRigBinding.cs'
+      - 'Assets/GoldenNeedle/Core/Motion/Retargeting/IHumanoidPostSolveDetailLayer.cs'
       - 'Assets/GoldenNeedle/Tests/Editor/FoundationDHandTrackingTests.cs'
       - 'Tools/FoundationDHandSmoke/**'
       - 'Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task'
@@ -69,7 +72,7 @@ jobs:
           echo 'fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1  /tmp/hand_landmarker.task' | sha256sum --check --strict
           echo 'FOUNDATION_D_OFFICIAL_MODEL_IDENTITY=PASS'
 
-      - name: Validate Foundation D architecture, shared timeline, and locked scope
+      - name: Validate Foundation D architecture, shared timeline, and permanent application boundary
         shell: bash
         run: |
           set -euo pipefail
@@ -104,6 +107,9 @@ jobs:
           editor_tests = Path('Assets/GoldenNeedle/Tests/Editor/FoundationDHandTrackingTests.cs').read_text(encoding='utf-8')
           provenance = Path('Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task.source.txt').read_text(encoding='utf-8')
           workflow = Path('.github/workflows/foundation-d-hand-tracking.yml').read_text(encoding='utf-8')
+          retargeter = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs').read_text(encoding='utf-8')
+          binding = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRigBinding.cs').read_text(encoding='utf-8')
+          post_solve = Path('Assets/GoldenNeedle/Core/Motion/Retargeting/IHumanoidPostSolveDetailLayer.cs').read_text(encoding='utf-8')
 
           def require(text, markers, label):
               missing = [marker for marker in markers if marker not in text]
@@ -232,7 +238,6 @@ jobs:
               'Assets/GoldenNeedle/Core/Motion/Providers/MediaPipe/WebCamCpuFramePreparation.cs',
               'Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs',
               'Assets/GoldenNeedle/Core/Motion/Rotation/CanonicalRotationSolver.cs',
-              'Assets/GoldenNeedle/Core/Motion/Retargeting/HumanoidRetargeter.cs',
               'Assets/GoldenNeedle/Core/Motion/Locomotion/EmbodiedLocomotionController.cs',
               'Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity',
           ]
@@ -242,7 +247,7 @@ jobs:
               if result.returncode != 0:
                   changed_locked.append(path)
           if changed_locked:
-              raise SystemExit(f'locked body/retarget/locomotion/scene paths changed in Foundation D: {changed_locked}')
+              raise SystemExit(f'locked body/provider/locomotion/scene paths changed in Foundation D: {changed_locked}')
 
           canonical = Path('Assets/GoldenNeedle/Core/Motion/Canonical/CanonicalPoseFrame.cs').read_text(encoding='utf-8')
           if 'public const int JointCount = 20;' not in canonical or 'RightToe = 19,' not in canonical:
@@ -256,7 +261,36 @@ jobs:
           for path in production_sources:
               text = path.read_text(encoding='utf-8')
               if any(token in text for token in finger_tokens):
-                  raise SystemExit(f'Foundation E finger driving leaked into production path: {path}')
+                  raise SystemExit(f'finger-specific application leaked into generic body retarget path: {path}')
+
+          require(post_solve, [
+              'public interface IHumanoidPostSolveDetailLayer',
+              'bool IsPostSolveDetailEnabled',
+              'ApplyPostSolveDetail(HumanoidRigBinding binding, float deltaTime)',
+              'ResetPostSolveDetailState(HumanoidRigBinding binding)',
+          ], 'generic post-solve detail boundary')
+          require(retargeter, [
+              'IHumanoidPostSolveDetailLayer[] _postSolveDetailLayers',
+              'ApplyPostSolveDetailLayers(deltaTime);',
+              'public void ApplyMotionFrame(',
+              'runtime.AvatarDriveFrame',
+          ], 'Phase 4 compatibility retargeter boundary')
+          forbidden_retarget_detail = [
+              'RichMotionFrame', 'CanonicalHandFrame', 'HandMotionRuntime',
+              'MediaPipeHandLandmarkerSource', 'HandLandmarkId',
+          ]
+          leaked = [token for token in forbidden_retarget_detail if token in retargeter]
+          if leaked:
+              raise SystemExit(f'provider/hand/rich detail leaked into generic HumanoidRetargeter: {leaked}')
+          require(binding, [
+              'public bool IsBound => _isBound;',
+              'BoundBoneCount = CanonicalRotationFrame.BoneCount;',
+              'public int OptionalDetailBoneCount => _detailCapabilities.AvailableFingerBoneCount;',
+          ], 'body binding validity and optional detail separation')
+          if any(token in binding for token in ['CanonicalHandFrame', 'HandMotionRuntime', 'MediaPipeHandLandmarkerSource']):
+              raise SystemExit('hands became a dependency of body binding')
+          if any(token in provider for token in ['HumanoidRigBinding', 'IHumanoidPostSolveDetailLayer', 'RichHumanoidDetailRetargeter']):
+              raise SystemExit('Foundation D provider began driving avatar application')
 
           if 'contents: read' not in workflow:
               raise SystemExit('Foundation D workflow is not contents: read')
@@ -274,8 +308,8 @@ jobs:
           print('HAND_LATEST_ONLY_SCHEDULER=PASS')
           print('BODY_OPENVINO_DEFAULTS_UNCHANGED=PASS')
           print('CANONICAL_BODY_V1_UNCHANGED=PASS')
-          print('PHASE4_PRODUCTION_RETARGET_UNCHANGED=PASS')
-          print('FOUNDATION_E_NOT_STARTED=PASS')
+          print('PHASE4_COMPATIBILITY_SOLVE_PRESERVED=PASS')
+          print('FOUNDATION_D_PRODUCTION_APPLICATION_BOUNDARY_PRESERVED=PASS')
           PY
 
       - name: Assert verification is read-only
