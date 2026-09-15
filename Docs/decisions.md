@@ -37,20 +37,25 @@ Historical foundation design remains available in `Docs/pre-phase5a-foundations.
 | Foundation D detailed Hand Landmarker | **DEFERRED** | USER testing showed unacceptable low-end impact in roughly the 10–15 FPS class. It is not a current hackathon requirement. |
 | Foundation E post-Phase-4 detail | **RETIRED FROM PRODUCTION** | Production component removed; historical math/research may remain as provenance only. |
 | Coarse hand/fist signal (former Batch 4A) | **DEFERRED / ROLLED BACK** | Builder/static validation did not justify retaining the feature after USER runtime evaluation. No claim is made that coarse arithmetic alone caused the observed slowdown. |
-| Phase 5A hybrid locomotion | **IMPLEMENTED / NOT USER ACCEPTED / ACTIVE DEVELOPMENT TARGET** | Existing horizontal infrastructure is substantial; completion is an audit/fix/tuning task, not a rewrite. |
-| Phase 5A physical tracking authority | **CURRENT IMPLEMENTATION: SUPPORT-FOOT CAMERA-SPACE MODEL** | Ankle/heel/toe support evidence and torso scale corroboration drive physical displacement. |
-| Phase 5A controller root writes | **CURRENT IMPLEMENTATION: X/Z ONLY** | Existing horizontal controller preserves root Y and rotation. This is a current implementation fact, not a prohibition on the new V1 jump/crouch requirements. |
-| Planted-feet lean suppression | **MOSTLY SUCCESSFUL IN CURRENT USER OBSERVATION / FINAL QA DEFERRED** | Preserve/regression-check in Batch 2; do not call it accepted before final integrated QA. |
-| Raised/swing-leg false translation | **OPEN / BATCH 2 BLOCKER** | One moving leg can shift the current two-foot support midpoint and trigger physical locomotion while the other leg remains planted. Batch 2 must distinguish support/planted motion from swing-leg movement. |
-| Cadence acquisition responsiveness | **OPEN / BATCH 2 TUNING TARGET** | Cadence works but takes longer than desired to activate. |
-| Cadence travel distance/speed | **OPEN / BATCH 2 TUNING TARGET** | Existing `virtualStridePerStep` and `maximumVirtualSpeed` settings need a coherent Inspector-tuning path for desired travel. |
-| Existing cadence settings | **PRESERVE / AUDIT IN BATCH 2** | Event threshold, acquisition events, acquire/sustain confidence, step-rate range, timeout, stride and max virtual speed already exist. |
-| Recenter | **IMPLEMENTED / PRESERVE** | Current physical location can become the new tracking origin while preserving virtual position. |
-| Body heading for cadence | **IMPLEMENTED / PRESERVE** | Cadence follows mapped body heading; physical room displacement uses the fixed reference map rather than live heading. |
+| Phase 5A hybrid locomotion | **BATCH 2 IMPLEMENTED / NOT USER ACCEPTED** | Horizontal completion work is implemented; USER/runtime acceptance remains deferred until the final integrated Motion Engine QA. |
+| Phase 5A physical tracking authority | **SUPPORT-AWARE CAMERA-SPACE AUTHORITY** | Trusted ankle/heel/toe measurements feed a stateful Both/Left/Right support authority. Near-equal heights use both feet; a clearly raised swing foot is excluded from physical root authority. |
+| Support authority hysteresis | **BATCH 2 DEFAULT: 0.12 ENTER / 0.06 BOTH** | Foot-height difference is normalized by body/reference scale. Separate enter/return thresholds keep support classification from flapping near equality. |
+| Support transition/reacquisition continuity | **LOCKED BATCH-2 BEHAVIOR** | On support-mode change or tracking reacquisition, the new raw support coordinate is rebased to the last filtered physical displacement so the authority switch itself cannot teleport the root. |
+| Two-foot midpoint is always physical authority | **SUPERSEDED / REJECTED** | USER evidence showed a raised/moving swing leg could shift the midpoint while the support foot stayed planted. Midpoint remains valid for near-equal dual support, not as unconditional authority. |
+| Phase 5A controller root writes | **CURRENT IMPLEMENTATION: X/Z ONLY** | Existing horizontal controller preserves root Y and rotation. Batch 2 did not add vertical gameplay. |
+| Planted-feet lean suppression | **PRESERVED / DETERMINISTIC COVERAGE UPDATED / USER QA DEFERRED** | Torso-only lateral/scale lean remains excluded from physical room translation; final integrated runtime acceptance is still USER-owned. |
+| Raised/swing-leg false translation | **BATCH 2 IMPLEMENTED FIX / USER QA DEFERRED** | Clearly raised foot movement no longer drives physical X/Z while the lower support foot remains authority; deterministic coverage was added but not executed in this Builder environment. |
+| Cadence event threshold | **PRESERVE AT 0.07** | Batch 2 improves acquisition without globally weakening the alternating-event threshold. |
+| Cadence acquisition baseline | **BATCH 2: 2 EVENTS / 0.38 ACQUIRE CONFIDENCE** | Supersedes the 3-event / 0.50 baseline so two clean alternating events can acquire while one isolated event still cannot. |
+| Cadence travel baseline | **BATCH 2: 0.60 DISTANCE PER STEP / 3.0 MAX SPEED** | Supersedes 0.42 / 2.5 to provide a stronger hackathon prototype baseline; remains Inspector-tunable rather than a universal physical measurement. |
+| Cadence Inspector naming | **DISTANCE PER STEP / MAXIMUM CADENCE SPEED** | Serialized field names remain compatible; labels/tooltips expose the user-facing concepts without a custom Inspector. |
+| Recenter | **IMPLEMENTED / PRESERVED** | Current physical location can become the new tracking origin while preserving virtual position. |
+| Body heading for cadence | **IMPLEMENTED / PRESERVED** | Cadence follows mapped body heading; physical room displacement uses the fixed reference map rather than live heading. |
+| Batch-2 automated verification | **AVAILABLE EVIDENCE ONLY / NO UNITY RUN IN BUILDER ENVIRONMENT** | Editor tests were updated and source/diff/serialization were statically audited. No Unity Editor/Test Runner and no attached GitHub Actions/status run were available; do not claim a passing automated Unity run. |
 | Jump | **MOTION ENGINE V1 REQUIREMENT / BATCH 3** | Physical jump must drive vertical game movement using coherent support/body evidence, distinguish single-leg lift, reject noise, have takeoff/airborne/landing lifecycle and useful tuning. |
 | Crouch | **MOTION ENGINE V1 REQUIREMENT / BATCH 3** | Physical crouch must lower the character using normalized body-compression/height evidence, held state, hysteresis and useful tuning. |
 | Final Motion Engine completion sequence | **APPROVED: BATCH 1 DOCS -> BATCH 2 HORIZONTAL -> BATCH 3 VERTICAL/FINAL** | Prevents deferred foundations from re-entering scope and keeps locomotion completion staged. |
-| USER/runtime testing during completion sequence | **DEFER UNTIL ALL THREE BATCHES ARE IMPLEMENTED** | Batch 1 needs no USER runtime test; Batch 2 should not stop awaiting USER QA; Batch 3 prepares one final integrated Motion Engine QA. |
+| USER/runtime testing during completion sequence | **DEFER UNTIL ALL THREE BATCHES ARE IMPLEMENTED** | No Batch-2 USER QA is requested; Batch 3 prepares one final integrated Motion Engine QA. |
 | Builder/static validation | **USEFUL BUT NOT ACCEPTANCE** | Deterministic/compile/static checks can catch implementation defects but cannot create USER runtime acceptance. |
 | Phase 6 | **NOT STARTED** | Graybox/playable vertical-slice integration follows Motion Engine V1 completion; do not start it during the completion batches without new USER direction. |
 | Hub/course implementation | **NOT STARTED BY THIS ENGINE ROADMAP** | Documentation synchronization does not imply Hub/course gameplay has begun. |
@@ -60,14 +65,18 @@ Historical foundation design remains available in `Docs/pre-phase5a-foundations.
 
 ### Batch 1 — documentation synchronization
 
-Documentation only. No runtime/source/workflow/package/project-setting changes.
+**COMPLETE.**
 
 ### Batch 2 — horizontal locomotion completion
 
-Audit existing Phase 5A, fix swing-leg false translation, preserve/regression-check lean suppression, improve cadence acquisition, make cadence distance/speed clearly Inspector-tunable, and verify lateral/depth/heading/recenter/fusion coherence. Do not add jump/crouch yet.
+**IMPLEMENTED / AUTOMATED-VERIFIED AS AVAILABLE / USER QA DEFERRED.**
+
+Starting SHA: `21184fe89d8f4c6f7b9ec387cdab84f884ad0e41`.
+
+Implementation/tests/scene checkpoint before docs: `e40e326e3f9a6fa8c9675dcf60fb1c0b2e2904c9`.
 
 ### Batch 3 — vertical locomotion + final Motion Engine V1 completion
 
-Implement jump and crouch, distinguish jump from single-leg lift, expose appropriate tuning, preserve Phase 4 body-pose authority, and prepare the final integrated USER Motion Engine QA.
+**NOT STARTED.** Implement jump and crouch only after Orchestrator review/authorization, then prepare the final integrated USER Motion Engine QA.
 
 Phase 5A and Motion Engine V1 remain **not USER accepted** until that final QA succeeds.
