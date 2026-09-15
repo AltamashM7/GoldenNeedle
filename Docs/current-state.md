@@ -2,11 +2,11 @@
 
 Authoritative current-state refresh: 2026-09-15.
 
-Latest independently accepted foundation code-audit checkpoint remains:
-`864b39a520c78db1a0572b87a7d42c9da5cedaa4` — Foundation D corrective implementation passed independent Orchestrator re-audit with the bundled official Hand Landmarker preserved, shared body/hand provider timeline verified, protected body/OpenVINO and Phase 4 paths intact, and permanent Foundation C/D verification green.
+Latest independently accepted foundation code-audit checkpoint:
+`087068dd14cd4bae11243a5efbd1bd5ee4cd309e` — Foundation E implementation and the Orchestrator-requested palm-reference correction passed independent Orchestrator re-audit. The exact Phase 4 positional/IK compatibility solve remains protected, the corrected parent-relative absolute palm target and reset behavior are verified, the Foundation D application boundary remains green, and USER manual/runtime QA is still deferred.
 
-Latest Foundation E Builder correction checkpoint:
-`5ed50f876c4e887137f2d44020c65fb5efb4a015` — the Orchestrator-identified cumulative palm-orientation/reset defect was corrected with a stable parent-relative target palm reference and absolute hand target. Deterministic/static Builder verification and the Foundation D compatibility workflow are green; independent Orchestrator re-audit and USER manual/runtime QA are still pending.
+Latest Foundation E correction implementation checkpoint:
+`5ed50f876c4e887137f2d44020c65fb5efb4a015` — the cumulative palm-orientation/reset defect was corrected with a stable parent-relative target palm reference and absolute hand target. That correction is now independently Orchestrator code-audited through the final branch state `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`.
 
 Verification evidence retained for this gate:
 - Foundation C corrective workflow at `9e4c4ac3a9d87eade06a43e2833481cce22b70f9`: run `34919859131`, job `104225315113`: **PASS**.
@@ -15,6 +15,8 @@ Verification evidence retained for this gate:
 - Original Foundation E exact-final-head workflow at `f2e3041ee52e8e13d7b30c692b52c2b956d2664c`: run `34930482322`, job `104257473527`: **PASS**; Foundation D at that same SHA: run `34930482323`, job `104257473801`: **PASS**.
 - Foundation E palm-correction workflow at `5ed50f876c4e887137f2d44020c65fb5efb4a015`: run `34933034414`, job `104265052576`: **PASS**.
 - Foundation D palm-correction compatibility workflow at the same SHA: run `34933034400`, job `104265052498`: **PASS**.
+- Final independently audited Foundation E exact-head workflow at `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`: run `34933354209`, job `104265988449`: **PASS**.
+- Final Foundation D compatibility workflow at that same SHA: run `34933354189`, job `104265988337`: **PASS**.
 
 Working branch: `engine/pose-tracking-spike`.
 
@@ -41,7 +43,7 @@ This document records what is true **now**. Historical experiment details remain
 - Foundation B — Camera View / Focus Preset System: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Foundation C — Rich Canonical Motion / Orientation Architecture: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Foundation D — MediaPipe Hand Landmarker integration: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
-- Foundation E — Orientation-aware + optional hand/finger retarget: **IMPLEMENTED / BUILDER AUTOMATED & CODE VERIFICATION COMPLETE / ORCHESTRATOR AUDIT PENDING / USER MANUAL QA DEFERRED**.
+- Foundation E — Orientation-aware + optional hand/finger retarget: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 - Phase 5A — support-foot locomotion / Lab-Game presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
 - Phase 6: **NOT STARTED**.
 
@@ -62,9 +64,7 @@ C — Rich canonical motion/orientation architecture     IMPLEMENTED / Orchestra
     ↓
 D — MediaPipe hand-landmark integration                IMPLEMENTED / Orchestrator audited / manual QA deferred
     ↓
-E — Orientation-aware + optional hand/finger retarget  IMPLEMENTED / Builder verified / Orchestrator audit pending / manual QA deferred
-    ↓
-Independent Foundation E Orchestrator re-audit
+E — Orientation-aware + optional hand/finger retarget  IMPLEMENTED / Orchestrator audited / manual QA deferred
     ↓
 Comprehensive A–E manual/runtime QA
     ↓
@@ -148,13 +148,13 @@ Current implementation:
 - the official bundled model identity remains locked and unchanged;
 - Foundation D remains a data producer only and does not drive avatar transforms.
 
-The accepted D audit remains `34920144300` / `104226227007` at `864b39a5...`. The E-compatible permanent D boundary remains green, including at the palm-correction code checkpoint `5ed50f876c4e887137f2d44020c65fb5efb4a015`: run `34933034400`, job `104265052498`, **SUCCESS**.
+The accepted D audit remains `34920144300` / `104226227007` at `864b39a5...`. The E-compatible permanent D boundary also remains green at the final Foundation E audit head `087068dd14cd4bae11243a5efbd1bd5ee4cd309e`: run `34933354189`, job `104265988337`, **SUCCESS**.
 
 Unity Editor NUnit source exists, but actual Unity Editor compilation/Test Runner and real webcam hand inference were not performed by this Builder environment. USER runtime QA remains intentionally deferred.
 
 ### Foundation E — optional-bone retargeting
 
-Status: **IMPLEMENTED / BUILDER AUTOMATED & CODE VERIFICATION COMPLETE / ORCHESTRATOR AUDIT PENDING / USER MANUAL QA DEFERRED**.
+Status: **IMPLEMENTED / ORCHESTRATOR CODE-AUDITED / USER MANUAL QA DEFERRED**.
 
 Foundation E remains an additive post-Phase-4 detail/application layer. The accepted Phase 4 `HumanoidRetargeter.ApplyMotionFrame(...)` solve remains byte-for-byte protected by the E workflow and remains the positional/IK authority.
 
@@ -197,7 +197,9 @@ Builder automated correction evidence at `5ed50f876c4e887137f2d44020c65fb5efb4a0
 - endpoint residual remains `0`;
 - exact Phase 4 method comparison, eight-rich-channel guard, optional binding semantics, provider/inference/history isolation, strict scope allowlist, D production boundary and read-only dirty-tree guards: **PASS**.
 
-Unity Editor NUnit source now contains Transform/binding-specific palm accumulation, stale return, master/category disable, parent-motion, reacquisition and left/right-independence cases. **Actual Unity Editor compilation/Test Runner execution was not performed in this Builder environment**, and USER webcam/avatar/manual runtime QA remains deferred. Foundation E remains not USER accepted and not yet Orchestrator audited.
+Independent Orchestrator re-audit at final branch SHA `087068dd14cd4bae11243a5efbd1bd5ee4cd309e` also passed. Exact-final-head Foundation E run `34933354209`, job `104265988449`, and Foundation D compatibility run `34933354189`, job `104265988337`, are both **SUCCESS**. The code audit specifically rechecked the corrected absolute parent-relative palm target, chain-tip baseline caching, stale/category/master reset behavior, and exact Phase 4 compatibility boundary.
+
+Unity Editor NUnit source now contains Transform/binding-specific palm accumulation, stale return, master/category disable, parent-motion, reacquisition and left/right-independence cases. **Actual Unity Editor compilation/Test Runner execution was not performed in this Builder environment**, and USER webcam/avatar/manual runtime QA remains deferred. Foundation E remains not USER accepted; the independent Orchestrator code audit is complete.
 
 ## Current best-tested runtime path
 
@@ -271,7 +273,7 @@ Foundation A                   implemented; Orchestrator audited; manual QA defe
 Foundation B                   implemented; Orchestrator audited; manual QA deferred
 Foundation C                   implemented; Orchestrator audited; manual QA deferred
 Foundation D                   implemented; Orchestrator code-audited; manual QA deferred
-Foundation E                   implemented; corrected Builder automated/code verification complete; Orchestrator re-audit pending; manual QA deferred
+Foundation E                   implemented; Orchestrator code-audited; manual QA deferred
 locomotion                     implemented, not accepted
 ```
 
@@ -291,9 +293,9 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 
 - Do not merge to `main` without explicit USER approval.
 - Do not mark Foundations A, B, C, D, or E USER accepted until the deferred comprehensive USER manual/runtime QA pass succeeds.
-- Foundation E Builder correction/verification is complete; independently re-audit the corrected parent-relative absolute palm target and reset behavior rather than extending E scope.
-- Do not begin comprehensive A–E USER QA until the independent Foundation E re-audit clears the code/automated gate.
-- Do not return to Phase 5A fixes during Foundation E audit and do not start Phase 6.
+- Foundation E implementation and Orchestrator code audit are complete; do not extend E scope before the comprehensive runtime QA establishes actual Unity behavior.
+- The next gate is the comprehensive A–E USER Unity/manual/runtime QA pass. Do not return to Phase 5A fixes until that pass is completed and explicitly assessed.
+- Do not start Phase 6.
 - Preserve stock MediaPipe/TFLite, OpenVINO scheduling/acquisition, CanonicalBodyV1, stable calibration/locomotion inputs and serialized/default backend/acquisition/avatar-drive meanings.
 - Rich orientation must not replace Phase 4 positional/IK authority; optional hand/finger/detail bones must not become mandatory.
 - Do not allow optional detail to introduce queues/backlogs or provider/camera/inference work.
@@ -301,4 +303,4 @@ Task/worker handoffs are execution briefs for their specific task and must not o
 
 ## Immediate next step
 
-Perform the independent **Foundation E Orchestrator re-audit** against the corrected exact branch state. If that audit passes, the next project gate is the previously deferred comprehensive A–E USER Unity/manual/runtime QA pass. Do not return to Phase 5A or start Phase 6 before those gates are explicitly advanced.
+Perform the previously deferred **comprehensive Foundations A–E USER Unity/manual/runtime QA pass** on the current `engine/pose-tracking-spike` branch. Record any compile/runtime blockers separately from behavioral failures, and do not return to Phase 5A or start Phase 6 until this foundation QA gate is explicitly assessed.
