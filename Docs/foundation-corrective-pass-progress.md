@@ -99,7 +99,7 @@ When experimental axial detail is OFF, `HumanoidRetargeter` first rebuilds the a
 
 **Actual remote HEAD at this Builder intake:** `8a555d20fd9c2620fde92e7cb54e7794a674b4e0`
 
-The actual intake HEAD was one fast-forward commit ahead of the expected baseline. That commit, `8a555d20fd9c2620fde92e7cb54e7794a674b4e0` (`fix(speech): expose backend and recognition lifecycle`), is a direct child of `4be712288af09bde99bfc213369659f77b935e6e` and contains the coherent Batch 3 speech implementation. It was independently audited rather than overwritten or duplicated.
+The actual intake HEAD was one fast-forward commit ahead of the expected baseline. That commit, `8a555d20fd9c2620fde92e7cb54e7794a674b4e0` (`fix(speech): expose backend and recognition lifecycle`), is a direct child of `4be712288af09bde826d12e44999215fb2dcda74` and contains the coherent Batch 3 speech implementation. It was independently audited rather than overwritten or duplicated.
 
 **Validated Batch 3 implementation SHA:** `8a555d20fd9c2620fde92e7cb54e7794a674b4e0`
 
