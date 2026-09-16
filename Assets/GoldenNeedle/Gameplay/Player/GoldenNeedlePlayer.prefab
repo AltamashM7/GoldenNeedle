@@ -1,0 +1,367 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &2194655507004021010
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 4209613151720777358}
+  - component: {fileID: 2247315249189701490}
+  - component: {fileID: 1165869582235488744}
+  - component: {fileID: 2355810574917646479}
+  - component: {fileID: 2079731260482824690}
+  - component: {fileID: 3309675688266352370}
+  - component: {fileID: 3602236802825227709}
+  - component: {fileID: 4191056635708056879}
+  - component: {fileID: 5257845932881846978}
+  - component: {fileID: 4577490965382958149}
+  - component: {fileID: 4525455413659312401}
+  m_Layer: 0
+  m_Name: GoldenNeedlePlayer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &4209613151720777358
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 9027058939750793671}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2247315249189701490
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3e996a3ef80a5604d83d4239d8c1770a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Debug.PoseTrackingSpike.MediaPipePoseProvider
+  preferredCameraName: 
+  requestedCameraWidth: 640
+  requestedCameraHeight: 480
+  requestedCameraFps: 30
+  cameraStartupTimeoutSeconds: 8
+  manualRotationOverride: 0
+  mirrorFrontFacingDisplay: 0
+  inferenceBackend: 1
+  targetInferenceFps: 30
+  readbackTimeoutSeconds: 2
+  trustSettings:
+    visibilityThreshold: 0.5
+    presenceThreshold: 0.5
+    normalizedBoundsPadding: 0.08
+    trackingGraceSeconds: 0.12
+    staleResultSeconds: 0.5
+  enableBodyInferenceDownscale: 1
+  bodyInferenceLongEdge: 320
+  enableImmediateInferenceLaunchAfterReadback: 1
+  bodyFrameAcquisitionMode: 1
+  enableDirectBodyCpuReadback: 1
+--- !u!114 &1165869582235488744
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d09, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Retargeting.HumanoidRigBinding
+  animator: {fileID: 3145380145148304317}
+  preferAnimatorHumanoid: 1
+  avatarRoot: {fileID: 9027058939750793671}
+  hips: {fileID: 0}
+  chest: {fileID: 0}
+  leftUpperArm: {fileID: 0}
+  leftLowerArm: {fileID: 0}
+  rightUpperArm: {fileID: 0}
+  rightLowerArm: {fileID: 0}
+  leftUpperLeg: {fileID: 0}
+  leftLowerLeg: {fileID: 0}
+  rightUpperLeg: {fileID: 0}
+  rightLowerLeg: {fileID: 0}
+  leftHand: {fileID: 0}
+  rightHand: {fileID: 0}
+  leftFoot: {fileID: 0}
+  rightFoot: {fileID: 0}
+--- !u!114 &2355810574917646479
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d11, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Retargeting.HumanoidRetargeter
+  runtime: {fileID: 0}
+  binding: {fileID: 1165869582235488744}
+  unavailableReturnSeconds: 0.2
+  driveRig: 0
+  enablePresentationSmoothing: 1
+  presentationResponse: 45
+  maxPresentationBlendSeconds: 0.05
+--- !u!114 &2079731260482824690
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7b5f3c9e2d1a4f6b8c0e1234567890a6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Locomotion.EmbodiedLocomotionController
+  runtime: {fileID: 0}
+  binding: {fileID: 1165869582235488744}
+  driveLocomotion: 1
+  rootTracking:
+    minimumJointConfidence: 0.4
+    minimumImageMeasurement: 0.005
+    minimumYawCosine: 0.3
+    supportSingleFootEnter: 0.12
+    supportBothEnter: 0.06
+    depthDifferentialStart: 0.05
+    depthDifferentialFull: 0.2
+    minimumSupportDepthDisplacement: 0.018
+    minimumDepthScaleEvidence: 0.012
+    positionResponse: 10
+    velocityResponse: 8
+    maximumDepthProxy: 1.5
+  vertical:
+    minimumJointConfidence: 0.4
+    jumpEnterThreshold: 0.12
+    jumpReleaseThreshold: 0.045
+    jumpWorldScale: 1.6
+    maximumJumpHeight: 0.9
+    maximumJumpFootAsymmetry: 0.08
+    crouchEnterThreshold: 0.18
+    crouchReleaseThreshold: 0.09
+    crouchWorldScale: 1.2
+    maximumCrouchDepth: 0.65
+    verticalResponse: 18
+    trackingGraceSeconds: 0.16
+    maximumApparentScaleChange: 0.12
+    maximumJumpCoherenceSpread: 0.1
+    groundedSupportTolerance: 0.06
+  crouchGrounding:
+    depthMultiplier: 1.2
+    maximumDepthFraction: 0.65
+  fusion:
+    lateralScale: 0.9
+    depthScale: 1.5
+    lateralDeadzone: 0.012
+    depthDeadzone: 0.012
+    physicalVelocityStart: 0.08
+    physicalVelocityFull: 0.32
+    minimumRootConfidence: 0.3
+  cadence:
+    minimumJointConfidence: 0.4
+    signalResponse: 14
+    eventThreshold: 0.07
+    minimumStepRate: 0.8
+    maximumStepRate: 4.5
+    acquisitionEvents: 2
+    acquireConfidence: 0.38
+    sustainConfidence: 0.25
+    stopTimeoutSeconds: 0.5
+    virtualStridePerStep: 0.6
+    maximumVirtualSpeed: 3
+  headingResponse: 8
+--- !u!114 &3309675688266352370
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d12, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Providers.MediaPipe.MediaPipeCanonicalPoseSource
+  provider: {fileID: 0}
+--- !u!114 &3602236802825227709
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d03, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Runtime.MotionEngineRuntime
+  canonicalSourceBehaviour: {fileID: 0}
+  stabilizerSettings:
+    acquireConfidence: 0.6
+    sustainConfidence: 0.4
+    acquireSamples: 2
+    lossGraceSeconds: 0.1
+    resetAfterLossSeconds: 0.25
+    minCutoff: 1
+    beta: 0.05
+    derivativeCutoff: 1
+    defaultDeltaTimeSeconds: 0.05
+    maximumDeltaTimeSeconds: 0.25
+  calibrationSettings:
+    bodyReferenceHoldSeconds: 0.75
+    bodyReferenceStabilityTolerance: 0.06
+    minimumMeasurementConfidence: 0.4
+    geometrySamplesRequired: 8
+    minimumSegmentLength: 0.01
+  avatarDrivePoseSource: 0
+--- !u!114 &4191056635708056879
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c3fa5eb1709d4428c1372f405e6d7c83, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Player.PlayerHealth
+  maximumHealth: 100
+  currentHealth: 100
+--- !u!114 &5257845932881846978
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d40b6fc281ae4539d24830516f7e8d94, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Player.GoldenNeedleBodyAnchors
+  rigBinding: {fileID: 0}
+--- !u!114 &4577490965382958149
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f62d81e4a3c0475bf46a52738190afb6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Player.GoldenNeedlePlayerFacade
+  poseProvider: {fileID: 0}
+  canonicalPoseSource: {fileID: 0}
+  motionRuntime: {fileID: 0}
+  rigBinding: {fileID: 0}
+  humanoidRetargeter: {fileID: 0}
+  locomotionController: {fileID: 0}
+  playerHealth: {fileID: 0}
+  bodyAnchors: {fileID: 0}
+--- !u!114 &4525455413659312401
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e51c70d392bf464ae3594162708f9ea5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Player.GoldenNeedlePlayerSession
+--- !u!1001 &8848508091212310060
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 4209613151720777358}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_Name
+      value: android01
+      objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+      propertyPath: m_ApplyRootMotion
+      value: 0
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+--- !u!95 &3145380145148304317 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+  m_PrefabInstance: {fileID: 8848508091212310060}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &9027058939750793671 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+  m_PrefabInstance: {fileID: 8848508091212310060}
+  m_PrefabAsset: {fileID: 0}
