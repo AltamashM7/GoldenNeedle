@@ -5,9 +5,10 @@ using UnityEngine;
 namespace GoldenNeedle.Core.Motion.Locomotion
 {
     /// <summary>
-    /// Phase-5 root-translation owner. Phase 4 continues to own pose/IK. Physical X/Z comes from
-    /// one authoritative CameraSpaceRootTracker, fusion only maps/blends it with cadence, and
-    /// VerticalLocomotionInterpreter supplies measured jump/grounded-compression root Y.
+    /// Phase-5 root-translation owner. Phase 4 continues to own normal pose/IK. Physical X/Z comes
+    /// from one authoritative CameraSpaceRootTracker, VerticalLocomotionInterpreter owns tracked
+    /// root Y, and GroundedFootConstraint performs only the post-root residual leg re-solve needed
+    /// to keep trustworthy planted feet on their captured standing plane during grounded bends.
     /// </summary>
     [DefaultExecutionOrder(150)]
     public sealed class EmbodiedLocomotionController : MonoBehaviour
@@ -40,6 +41,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
         private CameraSpaceRootTracker _rootTracker;
         private VerticalLocomotionInterpreter _verticalInterpreter;
+        private GroundedFootConstraint _groundedFootConstraint;
         private CadenceDetector _cadenceDetector;
         private LocomotionFusion _fusion;
         private Transform _playerRoot;
@@ -63,6 +65,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
         public CameraSpaceRootSample RootSample { get; private set; }
         public VerticalLocomotionSample VerticalSample { get; private set; }
+        public GroundedFootConstraintSample GroundedFootSample { get; private set; }
         public CadenceSample CadenceSample { get; private set; }
         public BodyHeadingSample HeadingSample { get; private set; }
         public LocomotionFusionResult FusionResult { get; private set; }
@@ -112,6 +115,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 {
                     _rootTracker.Reset();
                     _verticalInterpreter.Reset();
+                    _groundedFootConstraint.Reset();
                     _cadenceDetector.Reset();
                     _fusion.ResetPhysicalContribution();
                     RestoreVerticalOrigin();
@@ -130,6 +134,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             {
                 _rootTracker.Reset();
                 _verticalInterpreter.Reset();
+                _groundedFootConstraint.Reset();
                 _cadenceDetector.Reset();
                 _fusion.ResetPhysicalContribution();
                 _virtualOriginXZ = CurrentPlayerXZ();
@@ -233,16 +238,26 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
             if (driveLocomotion)
             {
+                // Phase 4 has already produced the visible/smoothed pose at execution order 100.
+                // Move the Phase-5 root first, then apply only the residual grounded leg solve.
                 _playerRoot.position = new Vector3(
                     desiredXZ.x,
                     desiredY,
                     desiredXZ.y);
             }
+
+            GroundedFootSample = _groundedFootConstraint.Update(
+                binding,
+                calibrationValid,
+                VerticalSample,
+                vertical,
+                driveLocomotion);
         }
 
         /// <summary>
         /// Makes the current physical X/Z tracking position the new origin without moving the
-        /// virtual character. Vertical standing reference/root origin remain independent.
+        /// virtual character. Vertical standing reference/root origin and grounded-foot plane remain
+        /// independent.
         /// </summary>
         public void Recenter()
         {
@@ -300,6 +315,11 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 vertical.Sanitize();
                 _verticalInterpreter = new VerticalLocomotionInterpreter(vertical);
             }
+
+            if (_groundedFootConstraint == null)
+            {
+                _groundedFootConstraint = new GroundedFootConstraint();
+            }
         }
 
         private bool ResolvePlayerRoot()
@@ -310,6 +330,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 _playerRoot = null;
                 _initializedPlayerRoot = false;
                 _hasVerticalOrigin = false;
+                _groundedFootConstraint?.Reset();
                 return false;
             }
 
@@ -321,6 +342,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 _hasVerticalOrigin = false;
                 _rootTracker?.Reset();
                 _verticalInterpreter?.Reset();
+                _groundedFootConstraint?.Reset();
                 _cadenceDetector?.Reset();
                 _fusion?.ResetPhysicalContribution();
                 _holdingJumpDepth = false;
@@ -359,6 +381,9 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             VerticalSample = _verticalInterpreter == null
                 ? default
                 : _verticalInterpreter.LatestSample;
+            GroundedFootSample = _groundedFootConstraint == null
+                ? default
+                : _groundedFootConstraint.LatestSample;
             CadenceSample = default;
             HeadingSample = default;
             FusionResult = default;
