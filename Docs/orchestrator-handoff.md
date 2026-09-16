@@ -21,13 +21,13 @@ Do not merge to `main` without explicit USER approval. Do not force-push, rebase
 
 ## Reconstruction checkpoint
 
-Authority-reconstruction handoff/baseline:
+Authority-reconstruction baseline/handoff:
 
 `08d7ea5785dd5935ed7240f004313b2a769d7a52`
 
-Implementation + deterministic-test checkpoint:
+Published reconstruction implementation/tests/diagnostics/docs checkpoint:
 
-`753ef564c253c48d6d2c71e9095d1e6e7878e2fe`
+`dc48e9d2f18c65b1631fbdb390e60578087a1303`
 
 Status:
 
@@ -37,20 +37,16 @@ Motion Engine V1 is **not USER accepted**. Phase 6 is **not started**.
 
 ## Why reconstruction was required
 
-The immediate pre-reconstruction runtime had accumulated multiple root-position owners. USER runtime still showed constant locomotion-caused idle movement and visually weak body descent during crouch.
+The immediate pre-reconstruction runtime had multiple root-position owners and USER runtime still showed locomotion-caused idle movement plus insufficient body descent during crouch. The Builder was required to inspect historical checkpoints before editing:
 
-The Builder was required to inspect history instead of adding more thresholds. Important historical checkpoints:
+- `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe` — early torso/body-root prototype;
+- `33698719a2907d30bb3396f66e5b79e59ccbfe9e` — support-base corrective commit;
+- `e26b33ee62305cb7d3ba9e8d929dfe7662487ea0` — last known good pre-Foundation Phase-5 reference;
+- `466d65826ab747493c211e1a3250aafa305167c8` — immediate pre-reconstruction runtime.
 
-- `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe`: early continuous torso/body-root prototype;
-- `33698719a2907d30bb3396f66e5b79e59ccbfe9e`: support-base corrective commit that fixed torso-lean false translation;
-- `e26b33ee62305cb7d3ba9e8d929dfe7662487ea0`: last known good pre-Foundation Phase-5 reference;
-- `466d65826ab747493c211e1a3250aafa305167c8`: current pre-reconstruction Batch-3/stability architecture.
-
-The reconstruction combines the useful properties rather than reverting to any one checkpoint wholesale.
+The resulting architecture combines the useful lessons rather than reverting wholesale.
 
 ## Preserved production invariants
-
-The accepted low-end body pipeline remains untouched:
 
 ```text
 WebCamTexture
@@ -65,118 +61,81 @@ WebCamTexture
 -> Phase 5 root translation
 ```
 
-Preserve:
+Preserve stock MediaPipe/TFLite and ExistingReadback as fallback/reference, latest-useful-frame-wins scheduling, Phase 3 stable canonical data authority, Phase 4 signed mapping/IK authority, and Phase 5 root-only translation. Do not reopen performance without new reproducible evidence.
 
-- stock MediaPipe/TFLite and ExistingReadback as fallback/reference;
-- latest useful frame wins; no backlog/catch-up architecture;
-- Phase 3 stable canonical frame as locomotion/calibration authority;
-- Phase 4 signed mapping and analytic two-bone IK as USER-accepted pose authority;
-- Phase 5 as root translation only;
-- no fabricated axial twist;
-- no new inference for locomotion;
-- no performance reopening without new evidence.
-
-Foundations remain: A commands/speech retained, B cameras retained, C dormant, D hands deferred, E retired, coarse hands deferred/rolled back.
+Foundation A speech/commands and Foundation B cameras remain retained. Foundation C is dormant, D hands deferred, E retired, coarse hands deferred/rolled back.
 
 ## Reconstructed horizontal authority
 
-### Single owner
+`CameraSpaceRootTracker` is the only stateful physical-position owner. It owns accepted displacement, filtering/velocity, recenter and reacquisition continuity.
 
-`CameraSpaceRootTracker` is the only stateful physical-position authority. It owns accepted displacement, filtering, recenter and reacquisition continuity.
+Torso center + yaw-compensated apparent scale provide a continuous body/root candidate. Weighted ankle/heel/toe support evidence validates whether that candidate is real room relocation.
 
-`LocomotionFusion` is deliberately reduced to mapping/blending. It does **not** own another committed-position/stationary gate or measurement-rebase offset.
+Support mode remains `Both/Left/Right` with `0.12` single-enter / `0.06` dual-return hysteresis, but it is validation rather than independent positional authority.
 
-### Candidate vs validation
-
-Torso center + yaw-compensated apparent scale produce a continuous body/root candidate. Bilateral ankle/heel/toe measurements validate whether that candidate represents actual room relocation.
-
-Support mode remains `Both/Left/Right` with `0.12` single-enter / `0.06` dual-return hysteresis, but support mode is validation rather than an independent positional authority.
-
-New commits require coherent dual support and matching body/support direction:
+Expected behavior:
 
 - torso lean without support relocation -> reject;
 - scale-only apparent depth -> reject;
 - raised/swinging single foot -> reject;
 - coherent body + bilateral support relocation -> accept;
-- slow coherent motion accumulates relative to last accepted state until it can commit;
-- small idle fluctuations do not rewrite accepted position.
+- slow coherent motion accumulates relative last accepted state until commit;
+- idle noise does not continuously retarget accepted root;
+- tracking loss holds position and reacquisition rebases before further motion.
 
-Tracking loss holds accepted physical displacement. Reacquisition rebases the incoming body/support observations onto that accepted displacement before new movement can commit.
+`LocomotionFusion` is mapping/blending only. The later downstream lateral/depth enter/continue commit gate and its measurement-rebase state are removed.
 
-### Cadence/recenter retained
+Cadence code and active values remain unchanged: `0.07` event threshold, 2-event acquisition, `0.38` acquire, `0.25` sustain, `0.50 s` stop, `0.60` distance per step, `3.0` max speed.
 
-Cadence code and active values are unchanged: `0.07` event threshold, 2-event acquisition, `0.38` acquire confidence, `0.60` distance per step, `3.0` max cadence speed, existing sustain/timeout/step-rate values.
-
-Horizontal recenter remains X/Z-only and preserves virtual world position.
+Horizontal recenter remains X/Z-only and preserves avatar world position.
 
 ## Reconstructed vertical authority
 
 `VerticalLocomotionInterpreter` remains the sole semantic Jump/Crouch state machine.
 
-Negative root Y is now continuously driven from trustworthy normalized pelvis-to-support compression, independent of whether semantic `Crouch` has crossed its gameplay threshold.
+Negative root Y is primarily driven from trustworthy normalized pelvis-to-support compression. A shallow planted bend can remain semantically `Standing` while lowering root Y; deeper bend follows the same continuous path and may cross semantic Crouch at the retained `0.18` enter threshold. Release remains `0.09`.
 
-Thus:
+The post-Phase-4 solved-foot `GroundedCrouchFootAnchor` is removed as root-Y authority. Feet remain evidence/constraint.
 
-- shallow planted bend may remain `Standing` but lowers root Y;
-- deeper bend follows the same continuous path and may acquire semantic `Crouch` at existing threshold;
-- upright recovery returns smoothly toward zero;
-- feet remain evidence/constraint rather than another root-Y position owner.
+Jump lifecycle/thresholds remain intact. Jump stays coherent whole-body rise and exclusively owns positive Y while active. Existing pre-jump depth hold at the controller/fusion boundary remains to prevent jump image-Y from becoming world Z.
 
-The post-Phase-4 `GroundedCrouchFootAnchor` solved-foot correction is removed from runtime root-Y authority.
-
-Jump state/lifecycle is retained. Jump remains coherent whole-body rise and owns positive Y exclusively while active. The existing pre-jump depth hold at the controller/fusion boundary remains to prevent takeoff from leaking into world Z.
-
-## Runtime controller
-
-`EmbodiedLocomotionController` remains execution order 150 after Phase 4.
-
-Runtime root target is now straightforward again:
+The controller again applies:
 
 ```text
-X/Z = virtual origin + fusion(mapped authoritative root + cadence)
-Y   = calibration-session vertical origin + verticalSample.worldOffsetY
+X/Z = virtual origin + fusion(mapped authoritative physical root + cadence)
+Y   = vertical origin + verticalSample.worldOffsetY
 ```
-
-There is no second crouch-foot Y owner in the controller.
 
 ## Tests
 
-`Phase5LocomotionTests.cs` was rewritten to test behavior rather than superseded implementation details. It covers idle stability, lean/scale/swing rejection, coherent room movement, alternating steps, transition continuity, slow movement, loss/reacquisition, recenter, physical/cadence blending, depth, axis semantics and jogging-in-place.
+`Phase5LocomotionTests.cs` now verifies neutral/nonzero idle stability, lean/scale/swing rejection, coherent room movement, alternating-step completion, transition continuity, slow movement, loss/reacquisition, recenter, physical/cadence blending, depth, axis semantics and jogging-in-place.
 
-`VerticalLocomotionTests.cs` covers continuous shallow/deep compression, semantic crouch separation, planted crouch X/Z isolation, recovery, jump ownership, rejection cases, reset behavior and in-place jump isolation.
+`VerticalLocomotionTests.cs` verifies continuous shallow/deep body compression, semantic Crouch separation, planted crouch X/Z isolation, recovery, jump ownership/landing, rejection cases, reset behavior and in-place jump isolation.
 
-`LocomotionGroundingStabilityTests.cs` is removed because its primary assertions encoded the now-removed downstream fusion gate and solved-foot Y owner.
+`LocomotionGroundingStabilityTests.cs` is removed because it encoded the superseded downstream fusion gate and solved-foot Y authority.
 
-No Unity Editor/Test Runner was available to the Builder. Do not report a Unity pass unless actual runner evidence exists.
+No Unity Editor/Test Runner was available to the Builder. Do not report a Unity pass without actual runner evidence.
 
 ## Diagnostics
 
-The compact F9 locomotion overlay identifies:
-
-- body candidate;
-- support mode/validation and support evidence;
-- authoritative accepted physical displacement/velocity and commit state;
-- vertical semantic state/jump phase;
-- grounded compression activity and Y output.
-
-No per-frame Console logging is added.
+The compact F9 locomotion overlay now identifies body candidate, support mode/validation, support evidence, accepted physical displacement/velocity and per-frame commit state, plus vertical semantic state, grounded-compression activity and Y output. No per-frame Console logging is added.
 
 ## Immediate next action
 
-After verifying the final remote HEAD and diff, the Orchestrator should prepare **one genuine USER Unity webcam QA** focused on the reconstructed Motion Engine:
+After verifying the final remote HEAD and diff, run **one genuine USER Unity webcam QA** focused on:
 
-- standing still at origin and after physical relocation;
+- standing still at origin and after relocation;
 - deliberate left/right and forward/back walking;
 - planted torso lean/sway;
-- single swing leg and jogging in place;
+- swing leg and jogging in place;
 - cadence acquire/stop/coexistence;
 - tracking loss/reacquisition;
 - recenter;
-- shallow bend before semantic crouch;
+- shallow bend before semantic Crouch;
 - deep crouch/body descent/recovery;
 - jump, landing and repeat jump;
 - Phase-4 pose coexistence and performance sanity.
 
-If USER QA exposes a reproducible defect, fix only that defect and preserve the single-authority architecture. If QA passes, Motion Engine V1 may then be marked USER accepted and Phase 6 can be planned separately.
+If QA exposes a reproducible defect, fix only that defect while preserving the single-authority architecture. If QA passes, Motion Engine V1 may then be marked USER accepted and Phase 6 planned separately.
 
 Do not start Phase 6, logging/performance investigation, hands/foundations work, or a `main` merge as part of this handoff.
