@@ -7,8 +7,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
     /// <summary>
     /// Minimal fixed-camera Phase-5 locomotion viewport plus compact authority/vertical diagnostics.
     /// The display makes the reconstructed split explicit: body candidate, support validation and
-    /// accepted physical displacement are separate observations; grounded-foot status reports only
-    /// the post-root residual leg constraint and never acts as another root-position authority.
+    /// accepted physical displacement are separate observations; crouch diagnostics report the
+    /// avatar-relative root mapping while Phase 4 remains the only leg-pose authority.
     /// </summary>
     [DefaultExecutionOrder(170)]
     public sealed class LocomotionPrototypeView : MonoBehaviour
@@ -84,7 +84,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             var root = locomotion.RootSample;
             var vertical = locomotion.VerticalSample;
-            var grounded = locomotion.GroundedFootSample;
+            var crouch = locomotion.CrouchGroundingSample;
             var availability = vertical.isAvailable
                 ? "Live"
                 : vertical.referenceReady ? "Grace / unavailable" : "Unavailable";
@@ -95,19 +95,22 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var accepted = root.movementAccepted ? "ACCEPT" : "hold";
             var support = root.supportValidated ? "valid" : "reject";
             var bend = vertical.groundedBendActive ? "grounded bend" : "neutral";
-            var groundReference = grounded.hasStandingReference ? "ready" : "waiting";
-            var groundLock = grounded.active ? "ACTIVE" : "idle";
-            var clamp = grounded.leftReachClamped || grounded.rightReachClamped
-                ? "reach-clamped"
-                : "reachable";
+            var avatarScale = crouch.hasAvatarLegScale
+                ? crouch.avatarStandingLegScale.ToString("0.000")
+                : "waiting";
+            var crouchMap = crouch.active ? "ACTIVE" : "idle";
+            var clamp = crouch.depthClamped ? "depth-clamped" : "within-cap";
+            var appliedOffset = locomotion.HasVerticalOrigin
+                ? locomotion.FinalWorldPositionY - locomotion.VerticalOriginY
+                : 0f;
 
             var text =
                 $"PHYSICAL AUTHORITY: body={Format(root.bodyCandidateXZ)}   support={root.supportMode}/{support}   frame={accepted}\n" +
                 $"Support evidence={Format(root.supportEvidenceXZ)}   accepted X/Z={Format(root.displacementXZ)}   v={Format(root.velocityXZ)}\n" +
                 $"VERTICAL: {vertical.state}/{vertical.jumpPhase}   {availability}   {bend}\n" +
                 $"Compression={vertical.crouchCompression:0.000}   support rise={vertical.supportRise:0.000}   asym={vertical.footAsymmetry:0.000}\n" +
-                $"Jump={vertical.jumpSignal:0.000}   scale d={vertical.apparentScaleChange:0.000}   Y={vertical.worldOffsetY:+0.00;-0.00;0.00}   final={locomotion.FinalWorldPositionY:0.00}\n" +
-                $"GROUND FEET: ref={groundReference}   lock={groundLock}   residual L/R={grounded.leftResidualY:+0.000;-0.000;0.000}/{grounded.rightResidualY:+0.000;-0.000;0.000}   {clamp}\n" +
+                $"Jump={vertical.jumpSignal:0.000}   interpreter Y={vertical.worldOffsetY:+0.00;-0.00;0.00}   applied Y={appliedOffset:+0.00;-0.00;0.00}\n" +
+                $"AVATAR CROUCH: leg scale={avatarScale}   map={crouchMap}   primary={crouch.primaryRootOffsetY:+0.000;-0.000;0.000}   final={crouch.finalRootOffsetY:+0.000;-0.000;0.000}   residual=off   {clamp}\n" +
                 $"Reference={reference}   root-Y origin={origin}";
 
             GUI.Label(

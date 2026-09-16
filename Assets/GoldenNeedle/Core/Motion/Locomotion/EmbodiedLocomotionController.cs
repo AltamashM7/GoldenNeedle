@@ -6,9 +6,9 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 {
     /// <summary>
     /// Phase-5 root-translation owner. Phase 4 continues to own normal pose/IK. Physical X/Z comes
-    /// from one authoritative CameraSpaceRootTracker, VerticalLocomotionInterpreter owns tracked
-    /// root Y, and GroundedFootConstraint performs only the post-root residual leg re-solve needed
-    /// to keep trustworthy planted feet on their captured standing plane during grounded bends.
+    /// from one authoritative CameraSpaceRootTracker. VerticalLocomotionInterpreter owns semantic
+    /// Jump/Crouch and normalized body-compression evidence; AvatarRelativeCrouchGrounding maps
+    /// grounded compression onto stable avatar reference leg geometry without re-solving the legs.
     /// </summary>
     [DefaultExecutionOrder(150)]
     public sealed class EmbodiedLocomotionController : MonoBehaviour
@@ -27,6 +27,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [Tooltip("Standing reference, jump/crouch semantics, continuous grounded compression, response and grace settings.")]
         [SerializeField] private VerticalLocomotionSettings vertical = new VerticalLocomotionSettings();
 
+        [Header("Avatar-relative Crouch")]
+        [Tooltip("Maps normalized grounded body compression onto stable avatar standing-leg geometry. This does not rotate/re-solve the legs.")]
+        [SerializeField] private AvatarRelativeCrouchGroundingSettings crouchGrounding = new AvatarRelativeCrouchGroundingSettings();
+
         [Header("Physical Locomotion / Fusion")]
         [Tooltip("Physical mapping scale/deadzones and physical-vs-cadence suppression settings.")]
         [SerializeField] private LocomotionFusionSettings fusion = new LocomotionFusionSettings();
@@ -41,7 +45,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
         private CameraSpaceRootTracker _rootTracker;
         private VerticalLocomotionInterpreter _verticalInterpreter;
-        private GroundedFootConstraint _groundedFootConstraint;
+        private AvatarRelativeCrouchGrounding _avatarCrouchGrounding;
         private CadenceDetector _cadenceDetector;
         private LocomotionFusion _fusion;
         private Transform _playerRoot;
@@ -65,7 +69,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
         public CameraSpaceRootSample RootSample { get; private set; }
         public VerticalLocomotionSample VerticalSample { get; private set; }
-        public GroundedFootConstraintSample GroundedFootSample { get; private set; }
+        public AvatarRelativeCrouchGroundingSample CrouchGroundingSample { get; private set; }
         public CadenceSample CadenceSample { get; private set; }
         public BodyHeadingSample HeadingSample { get; private set; }
         public LocomotionFusionResult FusionResult { get; private set; }
@@ -115,7 +119,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 {
                     _rootTracker.Reset();
                     _verticalInterpreter.Reset();
-                    _groundedFootConstraint.Reset();
+                    _avatarCrouchGrounding.Reset();
                     _cadenceDetector.Reset();
                     _fusion.ResetPhysicalContribution();
                     RestoreVerticalOrigin();
@@ -134,7 +138,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             {
                 _rootTracker.Reset();
                 _verticalInterpreter.Reset();
-                _groundedFootConstraint.Reset();
+                _avatarCrouchGrounding.Reset();
                 _cadenceDetector.Reset();
                 _fusion.ResetPhysicalContribution();
                 _virtualOriginXZ = CurrentPlayerXZ();
@@ -158,6 +162,12 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             VerticalSample = _verticalInterpreter.Update(
                 runtime.StabilizedFrame,
                 profile,
+                dt);
+            CrouchGroundingSample = _avatarCrouchGrounding.Update(
+                binding,
+                calibrationValid,
+                VerticalSample,
+                vertical,
                 dt);
 
             CadenceSample = _cadenceDetector.Update(
@@ -225,8 +235,13 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
             _virtualOriginXZ += FusionResult.cadenceVelocity * dt;
             var desiredXZ = _virtualOriginXZ + FusionResult.physicalContribution;
+            var verticalOffsetY = VerticalSample.IsJumpActive
+                ? Mathf.Max(0f, VerticalSample.worldOffsetY)
+                : CrouchGroundingSample.hasAvatarLegScale
+                    ? CrouchGroundingSample.finalRootOffsetY
+                    : 0f;
             var desiredY = _hasVerticalOrigin
-                ? _verticalOriginY + VerticalSample.worldOffsetY
+                ? _verticalOriginY + verticalOffsetY
                 : _playerRoot.position.y;
             var currentPosition = _playerRoot.position;
             var currentXZ = new Vector2(currentPosition.x, currentPosition.z);
@@ -238,26 +253,19 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
             if (driveLocomotion)
             {
-                // Phase 4 has already produced the visible/smoothed pose at execution order 100.
-                // Move the Phase-5 root first, then apply only the residual grounded leg solve.
+                // Phase 4 has already produced the visible/smoothed leg pose at execution order
+                // 100. Phase 5 now translates the avatar root only; no crouch-specific leg IK runs
+                // afterward, so Phase 4 remains the knee/leg pose authority.
                 _playerRoot.position = new Vector3(
                     desiredXZ.x,
                     desiredY,
                     desiredXZ.y);
             }
-
-            GroundedFootSample = _groundedFootConstraint.Update(
-                binding,
-                calibrationValid,
-                VerticalSample,
-                vertical,
-                driveLocomotion);
         }
 
         /// <summary>
         /// Makes the current physical X/Z tracking position the new origin without moving the
-        /// virtual character. Vertical standing reference/root origin and grounded-foot plane remain
-        /// independent.
+        /// virtual character. Vertical standing reference/root origin remain independent.
         /// </summary>
         public void Recenter()
         {
@@ -316,9 +324,11 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 _verticalInterpreter = new VerticalLocomotionInterpreter(vertical);
             }
 
-            if (_groundedFootConstraint == null)
+            if (_avatarCrouchGrounding == null)
             {
-                _groundedFootConstraint = new GroundedFootConstraint();
+                crouchGrounding = crouchGrounding ?? new AvatarRelativeCrouchGroundingSettings();
+                crouchGrounding.Sanitize();
+                _avatarCrouchGrounding = new AvatarRelativeCrouchGrounding(crouchGrounding);
             }
         }
 
@@ -330,7 +340,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 _playerRoot = null;
                 _initializedPlayerRoot = false;
                 _hasVerticalOrigin = false;
-                _groundedFootConstraint?.Reset();
+                _avatarCrouchGrounding?.Reset();
                 return false;
             }
 
@@ -342,7 +352,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 _hasVerticalOrigin = false;
                 _rootTracker?.Reset();
                 _verticalInterpreter?.Reset();
-                _groundedFootConstraint?.Reset();
+                _avatarCrouchGrounding?.Reset();
                 _cadenceDetector?.Reset();
                 _fusion?.ResetPhysicalContribution();
                 _holdingJumpDepth = false;
@@ -381,9 +391,9 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             VerticalSample = _verticalInterpreter == null
                 ? default
                 : _verticalInterpreter.LatestSample;
-            GroundedFootSample = _groundedFootConstraint == null
+            CrouchGroundingSample = _avatarCrouchGrounding == null
                 ? default
-                : _groundedFootConstraint.LatestSample;
+                : _avatarCrouchGrounding.LatestSample;
             CadenceSample = default;
             HeadingSample = default;
             FusionResult = default;
