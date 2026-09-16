@@ -6,10 +6,7 @@ using GoldenNeedle.Core.Motion.Retargeting;
 using GoldenNeedle.Core.Motion.Runtime;
 using GoldenNeedle.Gameplay.Player;
 using UnityEditor;
-using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.SceneManagement;
-using Debug = UnityEngine.Debug;
 
 namespace GoldenNeedle.Editor.Gameplay
 {
@@ -56,6 +53,7 @@ namespace GoldenNeedle.Editor.Gameplay
         public const string MenuPath = "Golden Needle/Gameplay/Build GoldenNeedlePlayer Prefab From Selected Accepted Root";
         public const string PrefabPath = "Assets/GoldenNeedle/Gameplay/Player/GoldenNeedlePlayer.prefab";
 
+        private const string TemporaryPrefabPath = "Assets/GoldenNeedle/Gameplay/Player/GoldenNeedlePlayer.__buildtmp.prefab";
         private const string PoseTrackingSpikeDebugNamespacePrefix = "GoldenNeedle.Debug.PoseTrackingSpike.";
 
         private static readonly HashSet<string> KnownDebugComponentTypes = new HashSet<string>(StringComparer.Ordinal)
@@ -82,7 +80,7 @@ namespace GoldenNeedle.Editor.Gameplay
             var existingPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
             if (existingPrefab != null && !EditorUtility.DisplayDialog(
                     "Overwrite GoldenNeedlePlayer prefab?",
-                    $"A prefab already exists at:\n\n{PrefabPath}\n\nThe selected accepted root will be duplicated and serialized over it. The source scene will not be saved or modified.",
+                    $"A prefab already exists at:\n\n{PrefabPath}\n\nThe selected accepted root will be serialized through an isolated temporary prefab and saved over it. The source scene will not be modified or saved.",
                     "Overwrite",
                     "Cancel"))
             {
@@ -91,49 +89,48 @@ namespace GoldenNeedle.Editor.Gameplay
 
             var sourceScene = source.scene;
             var sourceSceneWasDirty = sourceScene.IsValid() && sourceScene.isDirty;
-            var previousActiveScene = SceneManager.GetActiveScene();
-            var stagingScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
-            GameObject duplicate = null;
+            GameObject prefabContentsRoot = null;
 
             try
             {
-                if (!SceneManager.SetActiveScene(stagingScene))
+                DeleteStaleTemporaryPrefabOrThrow();
+
+                var temporaryPrefab = PrefabUtility.SaveAsPrefabAsset(source, TemporaryPrefabPath, out var temporarySaveSucceeded);
+                if (!temporarySaveSucceeded || temporaryPrefab == null)
                 {
-                    throw new InvalidOperationException("Could not activate the temporary staging scene used for safe prefab assembly.");
+                    throw new InvalidOperationException("Unity could not serialize the accepted source root into the isolated temporary prefab asset.");
                 }
 
-                duplicate = UnityEngine.Object.Instantiate(source);
-                if (duplicate.scene != stagingScene)
+                prefabContentsRoot = PrefabUtility.LoadPrefabContents(TemporaryPrefabPath);
+                if (prefabContentsRoot == null)
                 {
-                    throw new InvalidOperationException("The temporary player duplicate was not created inside the isolated staging scene.");
+                    throw new InvalidOperationException("Unity could not load the temporary prefab contents for isolated production-player assembly.");
                 }
 
-                duplicate.name = "GoldenNeedlePlayer";
-                duplicate.hideFlags = HideFlags.HideAndDontSave;
+                prefabContentsRoot.name = "GoldenNeedlePlayer";
 
-                StripKnownDebugComponents(duplicate);
+                StripKnownDebugComponents(prefabContentsRoot);
 
-                if (!EnsureRequiredProductionAndGameplayComponents(duplicate, out var ensureError))
+                if (!EnsureRequiredProductionAndGameplayComponents(prefabContentsRoot, out var ensureError))
                 {
                     throw new InvalidOperationException(ensureError);
                 }
 
-                if (!ValidateConstructedPlayer(duplicate, out var constructedError))
+                if (!ValidateConstructedPlayer(prefabContentsRoot, out var constructedError))
                 {
                     throw new InvalidOperationException(constructedError);
                 }
 
-                duplicate.hideFlags = HideFlags.None;
-                var savedPrefab = PrefabUtility.SaveAsPrefabAsset(duplicate, PrefabPath, out var saveSucceeded);
+                var savedPrefab = PrefabUtility.SaveAsPrefabAsset(prefabContentsRoot, PrefabPath, out var saveSucceeded);
                 if (!saveSucceeded || savedPrefab == null)
                 {
-                    throw new InvalidOperationException("Unity PrefabUtility did not successfully save the production player prefab.");
+                    throw new InvalidOperationException("Unity PrefabUtility did not successfully save the validated production player prefab.");
                 }
 
                 AssetDatabase.SaveAssets();
                 Selection.activeObject = savedPrefab;
                 EditorGUIUtility.PingObject(savedPrefab);
-                UnityEngine.Debug.Log($"Golden Needle: built production player prefab at '{PrefabPath}' from accepted source root '{source.name}'.");
+                UnityEngine.Debug.Log($"Golden Needle: built production player prefab at '{PrefabPath}' from accepted source root '{source.name}' using isolated prefab contents.");
             }
             catch (Exception exception)
             {
@@ -141,24 +138,22 @@ namespace GoldenNeedle.Editor.Gameplay
             }
             finally
             {
-                if (previousActiveScene.IsValid())
+                if (prefabContentsRoot != null)
                 {
-                    SceneManager.SetActiveScene(previousActiveScene);
+                    PrefabUtility.UnloadPrefabContents(prefabContentsRoot);
                 }
 
-                if (duplicate != null)
+                if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(TemporaryPrefabPath) != null &&
+                    !AssetDatabase.DeleteAsset(TemporaryPrefabPath))
                 {
-                    UnityEngine.Object.DestroyImmediate(duplicate);
+                    UnityEngine.Debug.LogError($"Golden Needle: could not remove temporary prefab asset '{TemporaryPrefabPath}'. Remove it manually before running the builder again.");
                 }
 
-                if (stagingScene.IsValid())
-                {
-                    EditorSceneManager.CloseScene(stagingScene, true);
-                }
+                AssetDatabase.SaveAssets();
 
-                if (sourceScene.IsValid() && !sourceSceneWasDirty && sourceScene.isDirty)
+                if (sourceScene.IsValid() && sourceScene.isDirty != sourceSceneWasDirty)
                 {
-                    UnityEngine.Debug.LogError("Golden Needle: the source scene became dirty during prefab assembly. The utility did not save it; review the scene before saving anything.");
+                    UnityEngine.Debug.LogError("Golden Needle: the source scene dirty state changed during prefab assembly. The utility did not save the source scene; review it before saving anything.");
                 }
             }
         }
@@ -182,6 +177,11 @@ namespace GoldenNeedle.Editor.Gameplay
             {
                 error = "The selected object must be a scene instance of the accepted PoseTrackingSpike root, not a prefab asset or project asset.";
                 return false;
+            }
+
+            if (source.transform.parent != null)
+            {
+                errors.Add("The selected accepted player object must be a root GameObject in its scene.");
             }
 
             ValidateExactlyOneRootAndHierarchy<MediaPipePoseProvider>(source, "MediaPipePoseProvider", errors);
@@ -300,6 +300,19 @@ namespace GoldenNeedle.Editor.Gameplay
         {
             return !string.IsNullOrEmpty(fullName) &&
                 fullName.StartsWith(PoseTrackingSpikeDebugNamespacePrefix, StringComparison.Ordinal);
+        }
+
+        private static void DeleteStaleTemporaryPrefabOrThrow()
+        {
+            if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(TemporaryPrefabPath) == null)
+            {
+                return;
+            }
+
+            if (!AssetDatabase.DeleteAsset(TemporaryPrefabPath))
+            {
+                throw new InvalidOperationException($"A stale temporary prefab exists at '{TemporaryPrefabPath}' and Unity could not remove it.");
+            }
         }
 
         private static bool EnsureRequiredProductionAndGameplayComponents(GameObject root, out string error)
