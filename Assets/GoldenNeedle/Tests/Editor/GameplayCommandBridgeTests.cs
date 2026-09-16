@@ -25,7 +25,7 @@ namespace GoldenNeedle.Tests
                     "stabilized mode",
                 },
                 resolver.EffectivePhrases);
-            Assert.That(resolver.EffectivePhrases, Has.Count.EqualTo(7));
+            Assert.That(resolver.EffectivePhrases.Count, Is.EqualTo(7));
             CollectionAssert.DoesNotContain(resolver.EffectivePhrases, "game view");
             CollectionAssert.DoesNotContain(resolver.EffectivePhrases, "raw landmarks");
             CollectionAssert.DoesNotContain(resolver.EffectivePhrases, "hands view");
