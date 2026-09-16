@@ -1,190 +1,125 @@
-# Golden Needle — Hub Integration Plan
+# Golden Needle — Hub Integration Status and Contracts
 
-Approved scope: 2026-09-17
+Status refreshed: 2026-09-17
 
 Repository: `AltamashM7/GoldenNeedle`
 
-Active branch: `gameplay/foundation`
+Branch: `gameplay/foundation`
 
-## Purpose
+## Scope
 
-The Hub is intentionally a lightweight free-roam routing scene, not a separate large gameplay mode.
+The Hub is a lightweight free-roam router. It is not a separate gameplay mode.
 
-The USER-approved scope is limited to:
+Approved responsibilities:
 
-1. free roam becomes available immediately after the Calibration -> Hub transition;
-2. the player can walk into either activity portal;
-3. portal collision triggers the correct course scene through the shared game-flow transition system;
-4. portal interaction is implemented with simple invisible trigger volumes over the existing visual portals.
+- receive the existing persistent calibrated player;
+- place it at an authored Hub spawn;
+- enable pose drive and locomotion immediately;
+- keep a gameplay camera following it;
+- expose authored camera views;
+- route portals through shared GameFlow;
+- preserve one player/session/provider/flow stack.
 
-Anything beyond those requirements is out of scope unless the USER explicitly expands the phase.
+No Hub quests, scoring, tutorials, cutscenes, special navigation, activity gameplay, or Motion Engine tuning are in scope.
 
-## Required Hub entry behavior
+## Implementation checkpoints
 
-When `GoldenNeedle_Hub` becomes active after Calibration:
+- `b8afaae8a8cf20ec5bf17a45c85d5b494e6f6151`: portal trigger behavior, Hub trigger objects, and Obstacle spawn contract.
+- `6c3f4c365a9730baa87aa5e411337e20bbbe8f47`: follow camera/presets, Hub control-authority correction, editable spawn gizmo, complete-calibration gate, persistent Animator correction, and required Calibration presentation assets.
 
-- the same persistent calibrated player/session survives the scene change;
-- avatar pose drive remains enabled;
-- locomotion is enabled immediately;
-- the player is placed at exact spawn id `HubEntry` through the existing GameFlow/spawn system;
-- calibration state remains usable;
-- no second player, provider, command host, or game-flow singleton is created;
-- normal free roam requires no extra confirmation/button/voice command.
+## Hub entry contract
 
-`HubSceneContextController` is the expected scene-local place to apply Hub command context and enable the already-existing player controls. Do not build a second locomotion owner.
+- Destination scene: `GoldenNeedle_Hub`.
+- Spawn id: `HubEntry`.
+- `HubEntry` is a scene-owned `PlayerSpawnPoint`; its transform is the authoring control for spawn placement.
+- `GameFlowManager` resolves exactly one matching id and asks `GoldenNeedlePlayerFacade.TryPlacePlayerAt` to relocate/rebase the persistent player.
+- `HubSceneContextController` retries until the persistent facade exists.
+- Command context is applied when `GameplayCommandHost` exists.
+- Pose/locomotion activation does not depend on command-host discovery.
+- Hub state sets external animation authority OFF, avatar pose drive ON, locomotion ON.
 
-## Portal behavior
+## Camera contract
 
-There are two activity portals in the Hub environment. The intended destinations are:
+Component: `Assets/GoldenNeedle/Gameplay/Presentation/GameplayCameraController.cs`.
 
-- Boxing Course;
-- Obstacle Course.
+Scene owner: Hub Main Camera.
 
-The exact mapping of the existing visual portal objects to those activities is **not to be inferred from portal color**. First inspect scene metadata, names, existing components, or documentation. If no authoritative mapping already exists, ask the USER to define which visual portal maps to which activity before final wiring.
+Rules:
 
-Entering/crossing a portal with the controlled player should:
+- resolve only the persistent production session;
+- use facade/root/body-anchor APIs, never provider internals;
+- use retained locomotion world heading;
+- update in `LateUpdate`;
+- use existing `CameraViewPreset` and `CameraViewPresetMath`;
+- keep distances, heights, focus offsets, FOV, and response values serialized in the scene;
+- register with the shared command runtime only while enabled;
+- do not run this component in Calibration.
 
-1. detect the persistent player;
-2. accept the trigger once;
-3. disable/debounce further portal requests while the transition is pending;
-4. use the common `GameFlowManager` transition path;
-5. fade out;
-6. load the authored destination scene;
-7. resolve that destination's authored `PlayerSpawnPoint` id;
-8. place/rebase the persistent player through the existing facade/GameFlow path;
-9. fade in.
+Presets: `Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, `RightHand`.
 
-Do not call `SceneManager.LoadScene` directly from portal logic if the common GameFlow API already owns transitions.
+Speech phrases are the lower-case view names with `view` suffix, including `full body view`, `hands view`, `left hand view`, and `right hand view`.
 
-## Trigger-volume implementation
+## Portal contract
 
-The USER specifically approved invisible cuboid trigger volumes as the simple/optimized implementation.
+Authoritative mapping:
 
-Preferred implementation:
+- `Portal yellow` -> Boxing;
+- `Portal blue` -> Obstacle Course.
 
-- a scene-local GameObject aligned with each existing portal opening;
-- `BoxCollider` with `isTrigger = true`;
-- no Renderer required;
-- collider sized only large enough to reliably catch a player passing through;
-- trigger can be a child/sibling of the portal but should remain logically separate from the visual mesh;
-- Inspector-authored destination scene name and destination spawn id;
-- optional descriptive portal id/name for debugging;
-- no per-frame polling;
-- no physics-heavy mesh collider required;
-- no modification to portal VFX/materials/geometry for trigger detection.
+The visual portal prefab/mesh is not the trigger. Each portal uses a separate scene-owned GameObject with an invisible `BoxCollider` and `HubPortalTrigger`.
 
-The component should identify the Golden Needle player/session robustly, preferably through `GoldenNeedlePlayerFacade` / persistent player-session ownership rather than tags that may drift.
+### Yellow
 
-## Reliability requirements
+- Object: `PortalYellowTrigger`.
+- `transitionEnabled = false`.
+- Destination values empty.
+- Reason: no real Boxing scene/spawn contract exists remotely.
 
-Portal triggers must not:
+### Blue
 
-- transition twice from one crossing;
-- react to unrelated environment rigidbodies/colliders;
-- create another player/session;
-- reset calibration;
-- alter the accepted locomotion system;
-- alter the Motion Engine provider/OpenVINO settings;
-- move or restyle the visual portals;
-- hardcode portal transform coordinates in source code;
-- hardcode a color -> activity assumption.
+- Object: `PortalBlueTrigger`.
+- `transitionEnabled = true`.
+- Destination scene: `Obstacle Course`.
+- Destination spawn: `ObstacleEntry`.
+- `ObstacleEntry` exists in the destination scene and the scene is enabled in Build Settings.
 
-A simple one-shot/in-flight guard is expected. If a transition fails, the trigger should not leave the whole Hub permanently unusable; recovery behavior should follow existing GameFlow failure semantics.
+### Trigger behavior
 
-## Scene authoring rule
+`HubPortalTrigger`:
 
-Hub presentation is scene-authored.
+- requires a positive enabled BoxCollider volume;
+- recognizes only `GoldenNeedlePlayerSession.Instance` when persistent;
+- resolves `GoldenNeedlePlayerFacade.PlayerRoot`;
+- checks the root point in the oriented/scaled box;
+- consumes only the outside -> inside edge;
+- ignores disabled or incomplete destinations;
+- uses active `GameFlowManager.TryTransitionTo`;
+- blocks repeats while GameFlow is transitioning;
+- after failure/rejection, requires exit and re-entry before retry;
+- does not instantiate anything and does not call `SceneManager.LoadScene` directly.
 
-Code should own only behavior:
+## Presentation protection
 
-- recognizing the player;
-- knowing which authored destination to request;
-- debouncing;
-- calling common GameFlow.
+- Do not move/rebuild portal meshes or VFX to change trigger behavior.
+- Do not restore the old removed duplicate blue portal.
+- Do not hardcode scene coordinates in source.
+- Do not replace the Hub camera system with a second locomotion/player owner.
+- Do not modify accepted Motion Engine tuning.
 
-Unity scene/Inspector data should own:
+## Current evidence
 
-- trigger position;
-- trigger rotation;
-- trigger scale/size;
-- which portal receives which trigger component;
-- destination scene/spawn values once mapping is known.
+USER confirmed Hub camera follow before the latest player-authority correction.
 
-Do not create an authoring tool that rewrites portal transforms on every run. If a narrow authoring helper is used, it must preserve manual scene edits on rerun.
+Static inspection confirms serialized presets, camera registration, Hub control calls, trigger destinations, and spawn ids. No Play Mode, compile, build, or fresh runtime portal test was performed for `6c3f4c3...`, per USER request.
 
-## Existing Hub environment protection
+## Required USER QA
 
-The environment integration already retained the intended visible portal set and removed an older duplicate blue portal. Do not restore deleted portal objects or normalize the scene from an older branch.
+1. Complete Calibration and enter Hub.
+2. Confirm pose following and locomotion.
+3. Confirm spawn at `HubEntry`.
+4. Confirm camera follow and all presets.
+5. Cross blue trigger and confirm exactly one transition to `ObstacleEntry`.
+6. Confirm yellow remains inert.
+7. Confirm no duplicate persistent objects.
 
-The current visual portal locations/rotations/scales should be preserved unless the USER asks for presentation changes.
-
-## Boxing availability caveat
-
-The Boxing environment is still pending/local at this point. Therefore Hub infrastructure can be implemented now, but final Boxing destination scene wiring may have to remain unwired/disabled or use only an Inspector placeholder until the actual scene asset is integrated.
-
-Do not create a fake production Boxing scene to satisfy the portal.
-
-The Obstacle Course scene already exists remotely as:
-
-`Assets/Scenes/Obstacle Course.unity`
-
-Do not assume the final build-scene name for Boxing until the real environment has been integrated and verified.
-
-## Minimal testing / QA
-
-Use targeted checks only.
-
-Static/editor checks should establish:
-
-- Hub context enables pose drive + locomotion;
-- portal trigger ignores non-player colliders;
-- portal trigger emits only one request while in flight;
-- portal destinations are Inspector-authored;
-- GameFlow is used instead of direct scene loading;
-- no protected Motion Engine/config files are changed.
-
-USER runtime QA should establish:
-
-1. complete Calibration and enter Hub;
-2. movement is active immediately after fade-in;
-3. roam around normally;
-4. cross Portal A and confirm one correct scene transition;
-5. return to Hub when the target mode supports it;
-6. cross Portal B and confirm one correct scene transition;
-7. verify calibration/player state persists;
-8. verify no duplicate player/provider/session objects appear;
-9. verify walking near but not through a portal does not trigger it unexpectedly.
-
-If Boxing is not yet integrated, QA only the available destination and trigger behavior that can be legitimately tested; do not fabricate a pass for unavailable content.
-
-## Out of scope
-
-Do not add any of the following unless explicitly requested:
-
-- Hub quests;
-- Hub scoring;
-- tutorial overlays;
-- portal interaction buttons;
-- hold-to-enter prompts;
-- new speech commands solely for portals;
-- cutscenes;
-- complex portal VFX;
-- custom navigation/pathfinding;
-- Hub-specific locomotion tuning;
-- Boxing gameplay;
-- Obstacle gameplay;
-- Motion Engine changes.
-
-## Orchestrator next step
-
-Before sending work to Luna, independently inspect the current remote branch and actual Hub scene/code. Confirm:
-
-- current remote HEAD;
-- `HubSceneContextController` behavior;
-- existing GameFlow transition API;
-- exact Hub portal objects;
-- whether any trigger/collider logic already exists;
-- whether portal activity mapping already exists;
-- Build Settings / exact available destination scene names and spawn ids.
-
-Then prepare a **narrow Hub-only Luna handoff**. The USER has approved this Hub scope, but repository facts and portal mapping must still be verified before implementation.
+Stop and diagnose evidence if this fails; do not broaden into activity implementation.

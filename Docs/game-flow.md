@@ -1,37 +1,91 @@
-# Planned game flow
+# Golden Needle — Game Flow
 
-Status: **PLANNED; NOT YET IMPLEMENTED.**
+Status refreshed: 2026-09-17
 
-Roadmap clarification (2026-09-16): Motion Engine V1 is being completed first through the approved locomotion completion sequence. Phase 6 remains the later graybox/playable vertical-slice integration step. Synchronizing the Motion Engine roadmap does **not** mean Hub/course implementation has begun.
+This document separates implemented production flow from future product direction.
 
-The intended player experience is:
-
-```text
-Application launch
-    -> initial screen with one primary Begin action
-    -> camera / Cinemachine-style menu reveal
-    -> Start Fitness or Exit
-```
-
-- **Exit** closes the application.
-- **Start Fitness** begins a character-led introduction.
-- The character breaks the fourth wall and explains that the user is about to control them.
-- The webcam is activated.
-- Calibration occurs, preferably disguised as character interaction rather than presented as an engineering/debug screen.
-
-An example calibration interaction is for the character to ask the user to stand naturally, then raise or spread their arms. The system would derive the neutral orientation, scale, and rest-offset information needed for the avatar.
-
-After calibration:
+## Implemented now
 
 ```text
-control transfers to user
-    -> player/avatar exists in Hub
-    -> user physically controls avatar
-    -> Hub offers fitness-course choices
-    -> player chooses a course
-    -> course runs
-    -> course completes
-    -> player returns to Hub
+Caliberation scene
+    -> persistent GoldenNeedlePlayerSession is available
+    -> user begins calibration by speech or click
+    -> complete calibration samples are collected
+    -> success preview
+    -> GameFlowManager fade/load
+    -> GoldenNeedle_Hub
+    -> persistent player placed at HubEntry
+    -> pose drive and locomotion enabled
+    -> gameplay camera follows persistent player
 ```
 
-The exact Hub interaction, course-selection interaction, locomotion mechanics, and presentation details remain **OPEN / MAY CHANGE** until prototypes provide evidence. This document does not imply that any of these runtime states currently exist.
+From Hub:
+
+```text
+blue portal
+    -> one-shot/debounced GameFlow request
+    -> Obstacle Course
+    -> persistent player placed at ObstacleEntry
+```
+
+Yellow portal -> Boxing is authoritative, but the yellow trigger is disabled because the real Boxing scene and spawn contract are unavailable.
+
+## Persistence rules
+
+- Calibration, provider state, player facade, command host, and game flow belong to one persistent session.
+- Scene transitions must not instantiate duplicate runtime owners.
+- Scene-local context controllers request control state through the player facade.
+- Spawn placement uses exact `PlayerSpawnPoint` ids.
+- Player relocation preserves calibration and rebases movement state through the existing facade/runtime path.
+
+## Control state by scene
+
+### Calibration intro and sampling
+
+- persistent gameplay player hidden/staged away;
+- separate scene-local presentation character plays idle;
+- persistent pose drive OFF;
+- locomotion OFF;
+- full calibration completion gates success.
+
+### Calibration success/transition
+
+- external Animator authority released from the persistent player;
+- pose drive ON;
+- locomotion remains OFF until Hub.
+
+### Hub
+
+- external Animator authority OFF;
+- pose drive ON;
+- locomotion ON immediately;
+- camera follow ON with `Back` initial preset;
+- `HubEntry` controls placement.
+
+### Activities
+
+Activity controllers may gate movement when required, but they must use `GoldenNeedlePlayerFacade` rather than mutate provider, retargeter, or locomotion internals.
+
+## Hub routing contracts
+
+- Yellow -> Boxing: trigger exists but disabled; destination pending.
+- Blue -> `Obstacle Course` / `ObstacleEntry`: implemented.
+- Portal behavior uses `GameFlowManager.TryTransitionTo`; no portal-owned direct scene load.
+
+## Hub camera interaction
+
+The camera follows the persistent player's root and retained world heading. Speech-selectable views are `Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, and `RightHand`.
+
+Calibration intentionally does not use this gameplay camera.
+
+## Planned but not implemented
+
+- initial title/menu reveal and Start Fitness/Exit flow;
+- character-led narrative introduction;
+- Boxing scene integration and gameplay;
+- Obstacle gameplay;
+- result/statistics screens;
+- activity -> Hub return flow;
+- full cross-scene polish.
+
+These remain future work and must not be represented as complete.
