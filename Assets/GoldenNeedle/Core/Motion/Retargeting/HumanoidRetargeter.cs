@@ -184,6 +184,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         [Tooltip("Centralized return-to-reference time after a chain becomes unavailable.")]
         [SerializeField, Range(0.15f, 0.25f)] private float unavailableReturnSeconds = 0.20f;
         [SerializeField] private bool driveRig;
+        private bool externalAnimationAuthority;
 
         [Header("Presentation Smoothing")]
         [Tooltip("Smooth only the visible humanoid rotations at Unity render rate. Tracking, calibration, IK targets, cadence and locomotion continue to use genuine stabilized data.")]
@@ -235,6 +236,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
         public bool PresentationSmoothingEnabled => enablePresentationSmoothing;
         public float PresentationResponse => presentationResponse;
         public float MaxPresentationBlendSeconds => maxPresentationBlendSeconds;
+        public bool ExternalAnimationAuthority => externalAnimationAuthority;
 
         public bool DriveRig
         {
@@ -249,11 +251,21 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 driveRig = value;
                 if (!driveRig)
                 {
-                    ClearDiagnostics();
-                    ResetPresentationSmoothingState();
-                    binding?.ResetToReferencePose();
+                    ResetNonDrivingPresentationState();
                 }
             }
+        }
+
+        public void SetExternalAnimationAuthority(bool enabled)
+        {
+            if (externalAnimationAuthority == enabled)
+            {
+                return;
+            }
+
+            externalAnimationAuthority = enabled;
+            ClearDiagnostics();
+            ResetPresentationSmoothingState();
         }
 
         private void Awake()
@@ -280,11 +292,9 @@ namespace GoldenNeedle.Core.Motion.Retargeting
 
         private void LateUpdate()
         {
-            if (!driveRig || runtime == null || binding == null || !binding.IsBound)
+            if (externalAnimationAuthority || !driveRig || runtime == null || binding == null || !binding.IsBound)
             {
-                ClearDiagnostics();
-                ResetPresentationSmoothingState();
-                binding?.ResetToReferencePose();
+                ResetNonDrivingPresentationState();
                 return;
             }
 
@@ -295,9 +305,7 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             if (sourceFrame == null || frame == null || targets == null || profile == null ||
                 !frame.calibrationValid || !targets.calibrationValid || !profile.bodyReferenceValid)
             {
-                ClearDiagnostics();
-                ResetPresentationSmoothingState();
-                binding.ResetToReferencePose();
+                ResetNonDrivingPresentationState();
                 return;
             }
 
@@ -491,6 +499,12 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             MotionCalibrationProfile profile,
             float deltaTime)
         {
+            if (externalAnimationAuthority)
+            {
+                ResetNonDrivingPresentationState();
+                return;
+            }
+
             runtime = runtime == null ? GetComponent<MotionEngineRuntime>() : runtime;
             binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
             if (binding == null || !binding.IsBound || sourceFrame == null || frame == null ||
@@ -498,15 +512,13 @@ namespace GoldenNeedle.Core.Motion.Retargeting
                 !targets.calibrationValid || !profile.bodyReferenceValid ||
                 !HumanoidRetargetingMath.TryCreateCanonicalToAvatarMap(profile, binding, out var axisMap))
             {
-                ClearDiagnostics();
-                binding?.ResetToReferencePose();
+                ResetNonDrivingPresentationState();
                 return;
             }
 
             if (!driveRig)
             {
-                ClearDiagnostics();
-                binding.ResetToReferencePose();
+                ResetNonDrivingPresentationState();
                 return;
             }
 
@@ -593,19 +605,23 @@ namespace GoldenNeedle.Core.Motion.Retargeting
             float deltaTime,
             bool useLegacyWorldMapping)
         {
+            if (externalAnimationAuthority)
+            {
+                ResetNonDrivingPresentationState();
+                return;
+            }
+
             runtime = runtime == null ? GetComponent<MotionEngineRuntime>() : runtime;
             binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
             if (binding == null || !binding.IsBound || frame == null || !frame.calibrationValid)
             {
-                ClearDiagnostics();
-                binding?.ResetToReferencePose();
+                ResetNonDrivingPresentationState();
                 return;
             }
 
             if (!driveRig)
             {
-                ClearDiagnostics();
-                binding.ResetToReferencePose();
+                ResetNonDrivingPresentationState();
                 return;
             }
 
@@ -1208,9 +1224,17 @@ namespace GoldenNeedle.Core.Motion.Retargeting
 
         private void OnDisable()
         {
+            ResetNonDrivingPresentationState();
+        }
+
+        private void ResetNonDrivingPresentationState()
+        {
             ClearDiagnostics();
             ResetPresentationSmoothingState();
-            binding?.ResetToReferencePose();
+            if (!externalAnimationAuthority)
+            {
+                binding?.ResetToReferencePose();
+            }
         }
 
         private static bool TryNormalize(Vector3 value, out Vector3 normalized)

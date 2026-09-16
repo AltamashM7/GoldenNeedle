@@ -207,19 +207,19 @@ namespace GoldenNeedle.Gameplay.Calibration
                 case CalibrationSceneState.Initializing:
                 case CalibrationSceneState.WaitingForTracking:
                 case CalibrationSceneState.Ready:
-                    if (suppressAvatarPoseDriveOnIntro)
-                    {
-                        playerFacade.SetAvatarPoseDriveEnabled(false);
-                    }
+                    playerFacade.SetAvatarAnimationAuthorityEnabled(true);
+                    playerFacade.SetAvatarPoseDriveEnabled(false);
                     playerFacade.SetLocomotionEnabled(false);
                     break;
                 case CalibrationSceneState.Calibrating:
+                    playerFacade.SetAvatarAnimationAuthorityEnabled(true);
                     playerFacade.SetAvatarPoseDriveEnabled(false);
                     playerFacade.SetLocomotionEnabled(false);
                     break;
                 case CalibrationSceneState.CalibrationUsable:
                 case CalibrationSceneState.Transitioning:
                 case CalibrationSceneState.TransitionFailed:
+                    playerFacade.SetAvatarAnimationAuthorityEnabled(false);
                     playerFacade.SetAvatarPoseDriveEnabled(true);
                     playerFacade.SetLocomotionEnabled(false);
                     break;

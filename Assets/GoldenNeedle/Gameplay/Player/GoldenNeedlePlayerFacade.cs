@@ -44,6 +44,7 @@ namespace GoldenNeedle.Gameplay.Player
             : rigBinding != null && rigBinding.IsBound ? rigBinding.AvatarRoot : null;
         public GoldenNeedlePlayerVerticalState VerticalState => MapVerticalState(locomotionController == null ? default : locomotionController.VerticalSample);
         public bool IsAvatarPoseDriveEnabled => humanoidRetargeter != null && humanoidRetargeter.DriveRig;
+        public bool IsAvatarAnimationAuthorityEnabled => humanoidRetargeter != null && humanoidRetargeter.ExternalAnimationAuthority;
         public bool IsLocomotionEnabled => locomotionController != null && locomotionController.DriveLocomotion;
         public bool IsMotionControlEnabled => IsAvatarPoseDriveEnabled && IsLocomotionEnabled;
         public PlayerHealth Health => playerHealth;
@@ -114,6 +115,14 @@ namespace GoldenNeedle.Gameplay.Player
             if (humanoidRetargeter != null)
             {
                 humanoidRetargeter.DriveRig = enabled;
+            }
+        }
+
+        public void SetAvatarAnimationAuthorityEnabled(bool enabled)
+        {
+            if (humanoidRetargeter != null)
+            {
+                humanoidRetargeter.SetExternalAnimationAuthority(enabled);
             }
         }
 

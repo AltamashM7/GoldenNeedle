@@ -87,6 +87,9 @@ namespace GoldenNeedle.Tests.Editor
                 SetPrivateField(facade, "humanoidRetargeter", retargeter);
                 SetPrivateField(facade, "locomotionController", locomotion);
 
+                facade.SetAvatarAnimationAuthorityEnabled(true);
+                Assert.IsTrue(facade.IsAvatarAnimationAuthorityEnabled);
+
                 facade.SetAvatarPoseDriveEnabled(true);
                 Assert.IsTrue(facade.IsAvatarPoseDriveEnabled);
                 Assert.IsFalse(facade.IsLocomotionEnabled);
@@ -98,6 +101,10 @@ namespace GoldenNeedle.Tests.Editor
                 facade.SetMotionControlEnabled(false);
                 Assert.IsFalse(facade.IsAvatarPoseDriveEnabled);
                 Assert.IsFalse(facade.IsLocomotionEnabled);
+                Assert.IsTrue(facade.IsAvatarAnimationAuthorityEnabled);
+
+                facade.SetAvatarAnimationAuthorityEnabled(false);
+                Assert.IsFalse(facade.IsAvatarAnimationAuthorityEnabled);
             }
             finally
             {

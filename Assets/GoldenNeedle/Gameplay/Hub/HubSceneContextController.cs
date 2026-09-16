@@ -30,6 +30,7 @@ namespace GoldenNeedle.Gameplay.Hub
                 if (host != null && facade != null)
                 {
                     host.SetContext(GameplayCommandContext.Hub);
+                    facade.SetAvatarAnimationAuthorityEnabled(false);
                     facade.SetAvatarPoseDriveEnabled(true);
                     facade.SetLocomotionEnabled(true);
                     _applied = true;
