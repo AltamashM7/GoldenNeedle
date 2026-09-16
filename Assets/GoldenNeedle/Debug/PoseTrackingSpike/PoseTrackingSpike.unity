@@ -394,6 +394,22 @@ MonoBehaviour:
     positionResponse: 10
     velocityResponse: 8
     maximumDepthProxy: 1.5
+  vertical:
+    minimumJointConfidence: 0.4
+    jumpEnterThreshold: 0.12
+    jumpReleaseThreshold: 0.045
+    jumpWorldScale: 1.6
+    maximumJumpHeight: 0.9
+    maximumJumpFootAsymmetry: 0.08
+    crouchEnterThreshold: 0.18
+    crouchReleaseThreshold: 0.09
+    crouchWorldScale: 1.2
+    maximumCrouchDepth: 0.65
+    verticalResponse: 18
+    trackingGraceSeconds: 0.16
+    maximumApparentScaleChange: 0.12
+    maximumJumpCoherenceSpread: 0.1
+    groundedSupportTolerance: 0.06
   fusion:
     lateralScale: 0.9
     depthScale: 1.5

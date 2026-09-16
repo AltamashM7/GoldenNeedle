@@ -6,7 +6,8 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 {
     /// <summary>
     /// Minimal fixed-camera Phase 5A locomotion viewport. It creates only a floor/grid and distance
-    /// references around the starting player position so translation can be judged visually.
+    /// references around the starting player position so translation can be judged visually. It
+    /// also extends the existing Lab locomotion diagnostics with a compact Batch-3 vertical readout.
     /// </summary>
     [DefaultExecutionOrder(170)]
     public sealed class LocomotionPrototypeView : MonoBehaviour
@@ -25,6 +26,9 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         private Material _majorGridMaterial;
         private bool _initialized;
         private Vector3 _worldOrigin;
+        private PoseTrackingSpikePresenter _presenter;
+        private ThirdPersonLabCamera _gameViewCamera;
+        private GUIStyle _verticalDiagnosticStyle;
 
         public bool IsReady => _initialized && _camera != null && _renderTexture != null;
         public RenderTexture Texture => _renderTexture;
@@ -33,16 +37,73 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         {
             binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
             locomotion = locomotion == null ? GetComponent<EmbodiedLocomotionController>() : locomotion;
+            _presenter = GetComponent<PoseTrackingSpikePresenter>();
+            _gameViewCamera = Object.FindAnyObjectByType<ThirdPersonLabCamera>();
         }
 
         private void LateUpdate()
         {
             binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
             locomotion = locomotion == null ? GetComponent<EmbodiedLocomotionController>() : locomotion;
+            _presenter = _presenter == null ? GetComponent<PoseTrackingSpikePresenter>() : _presenter;
+            _gameViewCamera = _gameViewCamera == null
+                ? Object.FindAnyObjectByType<ThirdPersonLabCamera>()
+                : _gameViewCamera;
             if (!_initialized)
             {
                 TryInitialize();
             }
+        }
+
+        private void OnGUI()
+        {
+            if (locomotion == null ||
+                _presenter == null ||
+                !_presenter.LocomotionDiagnosticsVisible ||
+                _presenter.AllDebugPresentationHidden ||
+                _presenter.CoordinateDiagnosticVisible ||
+                _presenter.Canonical3DVisible ||
+                (_gameViewCamera != null && _gameViewCamera.IsGameViewActive))
+            {
+                return;
+            }
+
+            EnsureVerticalDiagnosticStyle();
+            var panel = GetLocomotionPanelRect(Screen.width, Screen.height);
+            var height = Mathf.Min(116f, Mathf.Max(88f, panel.height * 0.32f));
+            var rect = new Rect(
+                panel.x + 10f,
+                panel.yMax - height - 8f,
+                panel.width - 20f,
+                height);
+
+            GUI.color = new Color(0.015f, 0.025f, 0.04f, 0.94f);
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = Color.white;
+
+            var vertical = locomotion.VerticalSample;
+            var availability = vertical.isAvailable
+                ? "Live"
+                : vertical.referenceReady ? "Grace / unavailable" : "Unavailable";
+            var reference = vertical.referenceReady ? "Ready" : "Waiting";
+            var origin = locomotion.HasVerticalOrigin
+                ? locomotion.VerticalOriginY.ToString("0.00")
+                : "waiting";
+            var text =
+                $"VERTICAL: {vertical.state} / {vertical.jumpPhase}   {availability}\n" +
+                $"Jump signal: {vertical.jumpSignal:0.000}   foot asym={vertical.footAsymmetry:0.000}   scale d={vertical.apparentScaleChange:0.000}\n" +
+                $"Crouch compression: {vertical.crouchCompression:0.000}   support rise={vertical.supportRise:0.000}\n" +
+                $"Y offset: {vertical.worldOffsetY:+0.00;-0.00;0.00}   final Y={locomotion.FinalWorldPositionY:0.00}\n" +
+                $"Reference: {reference}   root-Y origin={origin}";
+
+            GUI.Label(
+                new Rect(
+                    rect.x + 8f,
+                    rect.y + 5f,
+                    rect.width - 16f,
+                    rect.height - 10f),
+                text,
+                _verticalDiagnosticStyle);
         }
 
         private void TryInitialize()
@@ -171,6 +232,42 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             };
             _renderTexture.Create();
             _camera.targetTexture = _renderTexture;
+        }
+
+        private void EnsureVerticalDiagnosticStyle()
+        {
+            if (_verticalDiagnosticStyle != null)
+            {
+                return;
+            }
+
+            _verticalDiagnosticStyle = new GUIStyle(GUI.skin.label)
+            {
+                fontSize = 11,
+                wordWrap = true,
+                normal = { textColor = Color.white },
+            };
+        }
+
+        private static Rect GetLocomotionPanelRect(float screenWidth, float screenHeight)
+        {
+            var margin = Mathf.Clamp(
+                Mathf.Min(screenWidth, screenHeight) * 0.015f,
+                10f,
+                16f);
+            var gap = Mathf.Clamp(screenWidth * 0.009f, 10f, 14f);
+            var helpHeight = Mathf.Clamp(screenHeight * 0.085f, 56f, 72f);
+            var helpY = Mathf.Max(margin, screenHeight - margin - helpHeight);
+            var contentBottom = Mathf.Max(margin + 240f, helpY - gap);
+            var contentHeight = Mathf.Max(240f, contentBottom - margin);
+            var availableWidth = Mathf.Max(580f, screenWidth - margin * 2f - gap);
+            var columnWidth = availableWidth * 0.5f;
+            var rightX = margin + columnWidth + gap;
+            var topHeight = Mathf.Clamp(contentHeight * 0.61f, 340f, 430f);
+            topHeight = Mathf.Min(
+                topHeight,
+                Mathf.Max(180f, contentHeight - gap - 140f));
+            return new Rect(rightX, margin, columnWidth, topHeight);
         }
 
         private static Material CreateMaterial(string materialName, Color color)

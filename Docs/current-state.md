@@ -12,36 +12,20 @@ Active branch: `engine/pose-tracking-spike`
 - Do not force-push, rebase, amend, reset, or otherwise rewrite shared branch history.
 - GitHub is the shared authoritative project state; independently inspect the live branch before implementation work.
 - The USER is the decisive Unity/manual/runtime acceptance authority.
-- Motion Engine Completion uses the approved staged sequence recorded below. USER/runtime testing is deliberately deferred until the implementation batches are complete; Builder/static checks do not create USER acceptance.
+- Builder/static checks do not create USER acceptance.
 - Phase 6 remains **NOT STARTED**.
 
-## Current checkpoint and post-restoration result
+## Current checkpoint
 
-The corrective restoration checkpoint remains:
+Batch 3 started from the independently verified remote HEAD:
 
-`f1819fda36547343bb32a972d39405d0a6be6f72`
+`e6044b45d94dbe4ee9da3702828c1ee73409d475`
 
-Batch 2 started from the independently verified remote HEAD:
+Batch-3 implementation + deterministic-test checkpoint:
 
-`21184fe89d8f4c6f7b9ec387cdab84f884ad0e41`
+`220a4b958c8a3d280799ea3c0836fa6536a486a0`
 
-Batch 2 completed at:
-
-`19e697695802459f97d488b64e7b62683c89512d`
-
-Batch 2R started from that exact accepted Batch-2 HEAD. The Batch-2R source/test checkpoint before this documentation refresh is:
-
-`a96cbf06437004f3f44d53383601ec1be556d767`
-
-Batch 2R changes only the Phase-5 root tracker and Phase-5 deterministic tests, plus this minimal current documentation/handoff refresh. Cadence, the accepted optimized body path, Phase 3 authority and Phase 4 production pose code remain untouched.
-
-After the corrective restoration and compile-closure work, the USER reopened Unity with zero red errors and reports that low-end performance appears restored. The USER explicitly closed further performance work for the present hackathon milestone.
-
-Current optimization status:
-
-`USER SATISFIED FOR CURRENT HACKATHON MILESTONE / FURTHER PERFORMANCE WORK DEFERRED`
-
-This is not a claim that performance can never be improved. Golden Needle remains modular and optimization may resume later if new evidence makes it useful.
+The Batch-3 work extends only Phase-5 locomotion/root-translation behavior, Phase-5 tests, Lab diagnostics/serialization, and current documentation. The accepted optimized body provider, Phase 3 authority, and Phase 4 production retarget/IK code remain untouched.
 
 ## Phase status
 
@@ -52,14 +36,18 @@ This is not a claim that performance can never be improved. Golden Needle remain
 | Phase 3 — stabilization/confidence/calibration foundation | **PASS** |
 | Phase 4 — humanoid retargeting | **USER ACCEPTED — PASS** |
 | Low-end optimization milestone | **USER SATISFIED / FROZEN FOR CURRENT MILESTONE** |
-| Phase 5A — locomotion | **BATCH 2R COMPLETE / USER QA DEFERRED / NOT YET USER ACCEPTED** |
-| Phase 6 — graybox vertical-slice integration | **NOT STARTED** |
+| Motion Engine Batch 1 | **COMPLETE** |
+| Motion Engine Batch 2 | **COMPLETE / USER QA DEFERRED INTO FINAL PASS** |
+| Motion Engine Batch 2R | **COMPLETE / USER QA DEFERRED INTO FINAL PASS** |
+| Motion Engine Batch 3 | **IMPLEMENTED / USER QA PENDING** |
+| Motion Engine V1 | **NOT YET USER ACCEPTED** |
+| Phase 6 — graybox vertical slice | **NOT STARTED** |
 
-Do not describe Phase 5A or Motion Engine V1 as USER accepted yet.
+Do not describe Motion Engine V1 as accepted until the final integrated USER Unity QA succeeds.
 
-## Current production body/pose pipeline
+## Preserved production body pipeline
 
-The normal low-end production path is:
+The accepted normal low-end path remains:
 
 ```text
 Unity WebCamTexture
@@ -72,181 +60,204 @@ Unity WebCamTexture
 -> CanonicalBodyV1
 -> Phase 3 stabilization/calibration authority
 -> Phase 4 positional/IK avatar control
+-> Phase 5 root translation
 -> presentation
 ```
 
-Stock MediaPipe/TFLite and ExistingReadback remain fallback/reference paths.
+Stock MediaPipe/TFLite and ExistingReadback remain fallback/reference paths. The normal scheduling rule remains one active inference plus at most one replaceable newest pending frame; no FIFO/history/replay/catch-up backlog is introduced.
 
-The production pose authority is deliberately **Phase 3 + Phase 4**:
+Stable Phase 3 canonical data remains calibration and locomotion authority. Phase 4 signed canonical-to-avatar mapping, positional targets, project-owned analytic two-bone IK, and modular calibration remain accepted pose authority. Phase 5 does not replace or modify those responsibilities.
 
-- Stable Phase 3 canonical filtering remains calibration and locomotion authority.
-- Phase 4 signed canonical-to-avatar mapping remains accepted.
-- Phase 4 positional targets and project-owned analytic two-bone IK remain production limb authority.
-- Phase 4 modular calibration remains accepted.
-- Monocularly unobservable free axial/twist DOFs are not fabricated in normal production operation.
-- Normal execution is `Phase 4 solve -> presentation`; there is no active Foundation-E post-solve layer.
+## Foundation disposition
 
-The current `MotionEngineRuntime` has no production `RichMotionFrame`, `MediaPipeCanonicalPoseSource` is body-only, `HumanoidRetargeter` is Phase-4-only, and the live presenter does not compose `RichHumanoidDetailRetargeter`.
+- Foundation A commands/speech: **RETAINED / WORKING**.
+- Foundation B camera presets: **RETAINED**.
+- Foundation C rich anatomical orientation: **DEFERRED / DORMANT RESEARCH**.
+- Foundation D detailed hands: **DEFERRED** after unacceptable low-end cost in USER testing.
+- Foundation E post-Phase-4 detail: **RETIRED FROM PRODUCTION**.
+- Coarse-hand/fist experiment: **DEFERRED / ROLLED BACK**.
 
-## Foundation status
+None of those deferred systems were reopened in Batch 3.
 
-### Foundation A — commands and speech
+## Phase 5 horizontal locomotion — Batch 2 + 2R retained
 
-**RETAINED / WORKING OPERATIONAL FEATURE.**
+`CameraSpaceRootTracker` remains support-aware:
 
-The shared command/action architecture remains. Keyboard and speech resolve into the same project command router. Real USER microphone QA succeeded. Product policy uses `SpeechRecognitionConfidence.Low` for all 14 mappings created by `SpeechCommandConfiguration.CreateDefault()`. The generic/custom `SpeechCommandMapping` default remains Medium. The wake prefix remains configurable and empty by default.
-
-### Foundation B — camera presets
-
-**RETAINED.**
-
-The unified data-driven camera preset set remains:
-
-`Back`, `Front`, `Left`, `Right`, `FullBody`, `Hands`, `LeftHand`, `RightHand`.
-
-Preset selection remains integrated with the shared command layer and remains orthogonal to F12 Lab/Game presentation mode.
-
-### Foundation C — rich anatomical orientation
-
-`DEFERRED / DORMANT RESEARCH — NOT PRODUCTION POSE AUTHORITY`
-
-The research contracts/solver may remain in the repository for history and future study, but the corrective restoration removed C from normal production composition.
-
-### Foundation D — detailed hands
-
-`DEFERRED`
-
-The independent MediaPipe Hand Landmarker experiment imposed unacceptable low-end cost in USER testing. Existing research/lifecycle code may remain, but detailed hand inference is not normal production operation or a current hackathon requirement.
-
-### Foundation E — rich post-Phase-4 detail
-
-`RETIRED FROM PRODUCTION / RESEARCH HISTORY ONLY`
-
-The production `RichHumanoidDetailRetargeter` was removed. Foundation-E historical research remains useful provenance, but production execution is not `Phase 4 -> E -> presentation`.
-
-### Coarse hands / former Batch 4A
-
-`DEFERRED`
-
-The zero-extra-inference coarse `Unknown/Open/Closed` experiment passed Builder/static checks but was rejected after USER runtime evaluation and rolled back. Coarse hand/fist control is not required for Motion Engine V1 completion.
-
-## Phase 5A — Batch 2 + Batch 2R implemented state
-
-Phase 5A horizontal infrastructure remains separate from pose reproduction. `EmbodiedLocomotionController` still consumes the stabilized Phase 3 frame, writes avatar-root **X/Z only**, and preserves current root Y and rotation.
-
-### Support-aware physical translation
-
-`CameraSpaceRootTracker` forms trusted left/right support-foot measurements from ankle/heel/toe observations and uses stateful physical authority:
-
-- near-equal normalized foot heights -> `Both` authority using the midpoint;
+- near-equal foot heights -> `Both` midpoint authority;
 - left foot clearly lower -> `Left` support authority;
 - right foot clearly lower -> `Right` support authority;
-- the hysteresis band retains the previous support authority instead of flapping.
+- hysteresis retains the previous single-foot authority through the ambiguous band.
 
-Batch-2 thresholds remain `supportSingleFootEnter = 0.12` and `supportBothEnter = 0.06`, normalized by apparent/reference body scale. Moving a clearly raised swing foot therefore does not itself move the physical root while the lower planted foot remains the authority.
+Current thresholds remain `supportSingleFootEnter = 0.12` and `supportBothEnter = 0.06`, normalized by body/reference scale.
 
-Support-authority changes and support reacquisition still continuity-rebase the newly selected raw support coordinate to the last filtered displacement. Temporary support loss still holds the last trusted displacement and marks the next valid sample for rebase. `Recenter()` still captures the current measurement as the new zero origin.
+Batch 2R remains intact: landing transitions continuity-rebase so they cannot teleport, but coherent dual-support relocation can subsequently release the temporary landing offset so a genuine alternating physical step eventually produces net room displacement. Tracking-loss reacquisition rebases remain non-releasable for safety.
 
-### Batch 2R — alternating physical-step continuity correction
-
-Batch 2R fixes one remaining continuity problem in the accepted Batch-2 authority model.
-
-Before 2R, every authority transition permanently replaced `_supportAuthorityOffset` with `currentFiltered - newRawAuthority`. That correctly prevented transition snaps, but an ordinary alternating step could perform:
-
-`Both -> single support -> Both -> opposite single support -> Both`
-
-and finish with both feet genuinely relocated while the last Both-mode rebase still cancelled the new common displacement indefinitely.
-
-The 2R rule is:
-
-- keep the transition-frame rebase exactly as before so landing cannot teleport the root;
-- when entering `Both` from a single-support mode, check whether normalized left/right displacement agrees in both X and Y within the existing `supportBothEnter` tolerance;
-- only a coherent dual-support landing becomes eligible to release the temporary landing offset;
-- release occurs on a subsequent coherent `Both` sample, allowing the normal position filter to converge toward the genuinely relocated common support base rather than snapping on the transition frame;
-- asymmetric/one-foot relocation does not qualify;
-- a tracking-loss/reacquisition rebase is explicitly marked non-releasable, preserving the existing safe reacquisition behavior.
-
-Because the authority offset is a `Vector2`, the same coherent-release mechanism applies to the support displacement used by depth. Existing depth differential attenuation and torso-scale corroboration remain the gate for whether depth displacement is actually accepted; Batch 2R did not weaken or bypass those semantics.
-
-### Batch-2 cadence baseline
-
-Cadence is unchanged by Batch 2R. The active Batch-2 defaults remain:
+Cadence remains the accepted Batch-2 baseline:
 
 - `eventThreshold = 0.07`;
 - `acquisitionEvents = 2`;
 - `acquireConfidence = 0.38`;
 - `sustainConfidence = 0.25`;
 - `stopTimeoutSeconds = 0.50`;
-- `minimumStepRate = 0.8` / `maximumStepRate = 4.5`;
-- `virtualStridePerStep = 0.60`;
-- `maximumVirtualSpeed = 3.0`.
+- `minimumStepRate = 0.8`;
+- `maximumStepRate = 4.5`;
+- `virtualStridePerStep = 0.60` (**Distance Per Step**);
+- `maximumVirtualSpeed = 3.0` (**Maximum Cadence Speed**).
 
-Inspector labels remain **Distance Per Step** and **Maximum Cadence Speed** for the existing serialized fields.
+Batch 3 does not change cadence, heading, horizontal recenter, horizontal fusion defaults, or the Batch-2/2R root-tracker implementation.
 
-### Deterministic coverage and verification status
+## Phase 5 vertical locomotion — Batch 3
 
-Existing Batch-2 tests remain in place for planted-feet lateral/scale lean suppression, raised swing-foot isolation across multiple samples, genuine bilateral relocation, support transition/landing continuity, support loss/reacquisition, cadence acquisition/stop/travel tuning, physical/cadence fusion, accepted front-camera mapping/heading, and recenter.
+### Dedicated interpreter
 
-Batch 2R adds `AlternatingPhysicalStepEventuallyCommitsCoherentSupportBaseRelocation()`. Its sequence is:
+Batch 3 adds `VerticalLocomotionInterpreter` and `VerticalLocomotionSettings` under `Assets/GoldenNeedle/Core/Motion/Locomotion/`.
 
-1. both feet at baseline;
-2. left foot swings +X while raised -> no root movement;
-3. left foot lands -> no landing jump;
-4. right foot swings +X while raised -> no swing-induced movement;
-5. right foot lands at the corresponding relocated position -> no landing jump;
-6. the next coherent dual-support sample must commit net +X physical displacement.
+The interpreter consumes only the existing stabilized canonical pose plus the accepted calibration profile. It performs no additional inference and does not write bones.
 
-Against the pre-2R `19e6976...` logic, step 6 remains at the old origin because the final Both-mode offset is never retired. The 2R tracker releases only the coherent landing rebase, so the same deterministic sequence can converge to the relocated support base while preserving all transition-frame continuity assertions.
+It exposes deterministic state/data through `VerticalLocomotionSample`:
 
-Verification status for this Builder environment remains:
+- availability/reference-ready state;
+- `Standing`, `Jump`, `Crouch`, or `Unavailable`;
+- jump phase (`Grounded`, `Takeoff`, `Airborne`, `Landing`);
+- normalized jump signal;
+- normalized crouch compression;
+- support rise;
+- left/right foot asymmetry;
+- apparent-scale change;
+- tracked world root-Y offset;
+- jump/depth-suppression flag.
 
-`IMPLEMENTED / STATICALLY VERIFIED / USER QA DEFERRED`
+### Standing reference
 
-No Unity Editor/Test Runner is available in the current execution environment. Therefore the C# Editor tests were **not executed here**. The old/new authority sequence was independently traced, source/test diffs were audited, and final GitHub scope/status is verified. This must not be reported as a passing Unity test run or USER acceptance.
+A runtime standing reference is captured only after body calibration is valid and the required stabilized lower-body/torso image joints are trustworthy.
 
-## Motion Engine V1 vertical requirements
+Required evidence includes both ankle/heel/toe support-foot groups, pelvis, chest, hips and knees. The capture check also rejects badly asymmetric support and obviously unusable body geometry. Once captured, the reference is not continuously rewritten while crouching or jumping.
 
-Jump and crouch remain explicit **Motion Engine V1 requirements**, but **Batch 3 has not started**.
+Calibration/body-reference loss resets the vertical interpreter. A new valid calibration session establishes a new vertical root origin and standing reference. Ordinary horizontal `Recenter()` remains independent and does **not** redefine the vertical standing reference or root-Y origin.
 
 ### Jump
 
-A real physical jump must produce corresponding vertical game movement. The implementation must use coherent body/support evidence, distinguish a true jump from lifting only one leg, reject ordinary tracking noise, have a clear takeoff/airborne/landing lifecycle, and expose useful tuning controls where appropriate.
+Jump acquisition requires coherent upward evidence rather than a single raised foot:
+
+- left and right weighted support feet rise together;
+- normalized foot asymmetry remains below the configured maximum;
+- pelvis and chest rise in the same direction;
+- the spread among left-foot, right-foot, pelvis and chest rise remains bounded;
+- apparent-scale change remains small enough that camera-depth change is not the better explanation.
+
+The jump lifecycle is stateful: `Grounded -> Takeoff -> Airborne -> Landing -> Grounded`. A short tracking grace may hold an already acquired jump through temporary lower-body loss; after grace expires the state becomes unavailable and the root-Y offset returns toward neutral rather than remaining stuck airborne.
+
+Single-leg lift therefore does not acquire jump.
 
 ### Crouch
 
-A real physical crouch must correspondingly lower/crouch the game character. The implementation must use normalized body-compression/height evidence rather than fragile raw-pixel-only thresholds, support holding a crouched state, use acquisition/release hysteresis, and expose useful tuning controls where appropriate.
+Crouch uses normalized reduction in pelvis-to-support height relative to the standing reference. Acquisition additionally requires the support base to remain approximately grounded, left/right support to remain coherent, pelvis/chest to move downward, and apparent scale to remain stable.
 
-## Final Motion Engine completion sequence
+Crouch has separate enter/release thresholds so it can be held without flicker. Rising from crouch first returns to `Standing`; it does not immediately reinterpret the upward recovery as a jump.
 
-### Batch 1 — documentation synchronization
+Single-leg lift and planted torso lean do not acquire crouch.
 
-**COMPLETE.**
+### Mutual exclusion
 
-### Batch 2 — horizontal locomotion completion
+Jump and crouch are not independent booleans. They share one explicit vertical state machine. Only one vertical action can own the root offset at a time.
 
-**ACCEPTED AS BASIS FOR 2R.** Completed at `19e697695802459f97d488b64e7b62683c89512d`.
+### Root-Y application
 
-### Batch 2R — alternating physical-step continuity correction
+`EmbodiedLocomotionController` remains the Phase-5 root-translation owner and still executes after Phase 4. It now captures a stable player-root Y origin for each valid calibration session and applies:
 
-**COMPLETE / USER QA DEFERRED / AWAITING ORCHESTRATOR REVIEW.**
+```text
+desiredY = verticalOriginY + verticalSample.worldOffsetY
+```
 
-Source/test checkpoint before docs: `a96cbf06437004f3f44d53383601ec1be556d767`.
+alongside the existing X/Z result. The vertical offset is measured/proportional, response-filtered, world-scaled, and clamped; it is not a fixed animation or ballistic jump.
 
-### Batch 3 — vertical locomotion + final Motion Engine V1 completion
+No `CharacterController`, Rigidbody gravity, ground probing, collision system, animation state machine, or Phase-6 gameplay physics was introduced.
 
-**NOT STARTED.** This is the next implementation batch only after Orchestrator review/authorization. It will add jump/crouch and prepare one final comprehensive USER Motion Engine QA.
+### Jump/depth cross-talk isolation
 
-## Testing policy for the completion sequence
+Support image-Y rises during a real jump can resemble camera-depth support movement. Batch 3 therefore adds the smallest boundary suppression at `EmbodiedLocomotionController`: while an acquired jump/landing owns vertical motion, the copy of `CameraSpaceRootSample` passed to `LocomotionFusion` holds the pre-jump depth displacement and zeroes depth velocity. Lateral physical displacement is left untouched.
 
-The USER explicitly chose to defer USER/runtime testing until after Batch 3 implementation.
+`CameraSpaceRootTracker` itself is not redesigned or modified. Once vertical jump state releases, normal root-depth behavior resumes.
 
-- No Batch-2R USER runtime QA is requested.
-- Builder-side compile/static/deterministic validation is useful but never substitutes for USER acceptance.
-- Untested runtime behavior must not be marked USER accepted.
-- Batch 3 prepares the final integrated QA.
+### Partial-body/unavailable behavior
 
-## Phase 6 and game development
+Vertical actions require both lower-body support sides plus pelvis/torso evidence. Missing evidence does not fabricate a jump/crouch and does not invalidate Phase 3/4 pose or horizontal systems. An acquired vertical action can hold briefly through the configured grace period, then returns safely toward neutral and publishes `Unavailable`.
 
-Phase 6 remains **NOT STARTED**. Hub/course implementation has not begun merely because the Motion Engine roadmap is progressing.
+## Batch-3 Inspector defaults
 
-**Current completion-sequence status:** `BATCH 2R COMPLETE / USER QA DEFERRED / AWAITING ORCHESTRATOR REVIEW`
+The active defaults serialized in the Lab are:
+
+- Minimum vertical joint confidence: `0.40`;
+- Jump Detection Threshold: `0.12` normalized rise;
+- Jump Release Threshold: `0.045`;
+- Jump Height / World Scale: `1.60`;
+- Maximum Jump Height: `0.90` world units;
+- Maximum Jump Foot Asymmetry: `0.08`;
+- Crouch Enter Threshold: `0.18` normalized compression;
+- Crouch Release Threshold: `0.09`;
+- Crouch Depth / World Scale: `1.20`;
+- Maximum Crouch Depth: `0.65` world units;
+- Vertical Response: `18/s`;
+- Vertical Tracking Grace: `0.16 s`;
+- Maximum apparent-scale change during vertical acquisition: `0.12` log-scale;
+- Maximum jump coherence spread: `0.10`;
+- Grounded support tolerance: `0.06`.
+
+The first ten action-facing concepts use direct Inspector labels/tooltips; the final three are supporting normalized safeguards rather than raw camera-pixel thresholds.
+
+## Lab diagnostics
+
+The existing Phase-5 locomotion Lab display is extended by `LocomotionPrototypeView` with a compact vertical readout that follows the existing locomotion/UI visibility controls. It shows:
+
+- vertical state and jump phase;
+- availability/grace state;
+- jump signal, foot asymmetry and apparent-scale delta;
+- crouch compression and support rise;
+- current root-Y offset/final Y;
+- standing-reference and root-Y-origin readiness.
+
+No per-frame Console logging was added.
+
+## Deterministic coverage
+
+Existing `Phase5LocomotionTests.cs` remains unchanged in Batch 3, preserving Batch-2/2R coverage for swing-foot isolation, alternating-step relocation, lean suppression, support loss/reacquisition, depth, cadence, fusion, heading and recenter.
+
+New `VerticalLocomotionTests.cs` adds synthetic stabilized-canonical coverage for:
+
+1. neutral standing captures reference and produces approximately zero Y offset;
+2. one leg lifted -> no jump;
+3. one leg moved laterally/vertically -> no jump/crouch;
+4. coherent both-feet + pelvis/chest rise -> jump acquisition;
+5. jump -> positive Y offset;
+6. landing -> zero/standing without sticking;
+7. second jump after landing;
+8. apparent-scale/depth change alone -> no vertical action;
+9. planted torso lean -> no jump/crouch;
+10. grounded pelvis/support compression -> crouch acquisition;
+11. held crouch -> stable negative offset;
+12. crouch release hysteresis -> standing/zero;
+13. jump/crouch mutual exclusion;
+14. tracking loss/grace expiry -> no permanently stuck action;
+15. in-place jump -> no meaningful accepted root-tracker X/Z displacement;
+16. in-place crouch -> no meaningful accepted root-tracker X/Z displacement.
+
+## Verification status
+
+Builder status:
+
+`BATCH 3 IMPLEMENTED / USER QA PENDING`
+
+This execution environment does not provide a Unity Editor/Test Runner. The deterministic Editor tests were authored and source/diff semantics were statically audited, but they were **not executed here**. GitHub CI/status evidence must be checked at the final Batch-3 HEAD and reported accurately; absent a real run, do not claim an automated Unity pass.
+
+Final comprehensive USER Unity QA is now the next acceptance step after Orchestrator review. Motion Engine V1 remains **NOT YET USER ACCEPTED** until that QA succeeds.
+
+## Completion sequence
+
+- Batch 1 — **COMPLETE**.
+- Batch 2 — **COMPLETE**.
+- Batch 2R — **COMPLETE**.
+- Batch 3 — **IMPLEMENTED / USER QA PENDING**.
+- Motion Engine V1 — **NOT YET USER ACCEPTED**.
+- Phase 6 — **NOT STARTED**.
+
+**Current status:** `BATCH 3 IMPLEMENTED / USER QA PENDING / AWAITING ORCHESTRATOR REVIEW`
