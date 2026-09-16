@@ -1,5 +1,6 @@
 using System.Collections;
 using GoldenNeedle.Gameplay.Commands;
+using GoldenNeedle.Gameplay.Player;
 using UnityEngine;
 
 namespace GoldenNeedle.Gameplay.Hub
@@ -22,9 +23,15 @@ namespace GoldenNeedle.Gameplay.Hub
             while (isActiveAndEnabled && !_applied)
             {
                 var host = FindAnyObjectByType<GameplayCommandHost>();
-                if (host != null)
+                var session = GoldenNeedlePlayerSession.Instance;
+                var facade = session == null
+                    ? null
+                    : session.GetComponent<GoldenNeedlePlayerFacade>();
+                if (host != null && facade != null)
                 {
                     host.SetContext(GameplayCommandContext.Hub);
+                    facade.SetAvatarPoseDriveEnabled(true);
+                    facade.SetLocomotionEnabled(true);
                     _applied = true;
                     yield break;
                 }

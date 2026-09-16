@@ -1,10 +1,9 @@
-using System.Collections;
+using System;
 using GoldenNeedle.Core.Commands;
 using GoldenNeedle.Gameplay.Commands;
 using GoldenNeedle.Gameplay.Flow;
 using GoldenNeedle.Gameplay.Player;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace GoldenNeedle.Gameplay.Calibration
 {
@@ -20,8 +19,8 @@ namespace GoldenNeedle.Gameplay.Calibration
     }
 
     /// <summary>
-    /// Scene-local coordination for the production calibration entry flow. Motion and command
-    /// ownership remain with the persistent player and GameplayCommandHost.
+    /// Scene-local flow authority for the production calibration entry path. Presentation is
+    /// notified of state changes but owns no calibration polling or scene-transition timing.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class CalibrationSceneController : MonoBehaviour
@@ -29,20 +28,9 @@ namespace GoldenNeedle.Gameplay.Calibration
         public const string HubSceneName = "GoldenNeedle_Hub";
         public const string HubSpawnId = "HubEntry";
 
-        [Header("Calibration UI")]
-        [SerializeField] private Text instructionText;
-        [SerializeField] private Text statusText;
-        [SerializeField] private Button beginCalibrationButton;
-        [SerializeField] private Button retryTransitionButton;
-        [SerializeField] private CalibrationCameraPreview cameraPreview;
-
-        [Header("Timing")]
-        [Min(0.75f), SerializeField] private float successHoldSeconds = 1f;
-
         private GoldenNeedlePlayerFacade _playerFacade;
         private GameplayCommandHost _gameplayCommandHost;
         private GameFlowManager _gameFlowManager;
-        private Coroutine _successHoldCoroutine;
         private bool _calibrationRequested;
         private bool _transitionIssued;
         private CalibrationSceneState _state = CalibrationSceneState.Initializing;
@@ -50,13 +38,7 @@ namespace GoldenNeedle.Gameplay.Calibration
         public CalibrationSceneState State => _state;
         public bool CalibrationRequested => _calibrationRequested;
         public GoldenNeedlePlayerFacade PlayerFacade => _playerFacade;
-
-        private void Awake()
-        {
-            successHoldSeconds = Mathf.Clamp(successHoldSeconds, 0.75f, 1.25f);
-            SetInstruction("Stand comfortably where your upper body is visible, then begin calibration.");
-            SetState(CalibrationSceneState.Initializing);
-        }
+        public event Action<CalibrationSceneState> StateChanged;
 
         private void OnDestroy()
         {
@@ -92,12 +74,10 @@ namespace GoldenNeedle.Gameplay.Calibration
                 case CalibrationSceneState.Calibrating:
                     if (_playerFacade.IsCalibrationUsable)
                     {
-                        EnterCalibrationUsable();
+                        SetState(CalibrationSceneState.CalibrationUsable);
                     }
                     break;
             }
-
-            UpdateButtonState();
         }
 
         public void OnBeginCalibrationPressed()
@@ -111,28 +91,54 @@ namespace GoldenNeedle.Gameplay.Calibration
                 return;
             }
 
-            var result = _gameplayCommandHost.Execute(GoldenNeedleCommand.BeginCalibration);
-            if (!result.Succeeded)
-            {
-                SetStatus(result.Message);
-            }
+            _gameplayCommandHost.Execute(GoldenNeedleCommand.BeginCalibration);
         }
 
         public void OnRetryTrackingPressed()
         {
             TryResolveServices();
-            if (_gameplayCommandHost != null)
+            _gameplayCommandHost?.Execute(GoldenNeedleCommand.RetryTracking);
+        }
+
+        /// <summary>
+        /// Requests the accepted Hub transition after the scene presentation has finished its
+        /// Inspector-authored success preview. This is the only public transition entry point
+        /// used by CalibrationPresentationController.
+        /// </summary>
+        public bool RequestHubTransitionAfterPresentation()
+        {
+            TryResolveServices();
+            if (_state != CalibrationSceneState.CalibrationUsable ||
+                _transitionIssued ||
+                _gameFlowManager == null ||
+                !_calibrationRequested ||
+                _playerFacade == null ||
+                !_playerFacade.IsCalibrationUsable)
             {
-                var result = _gameplayCommandHost.Execute(GoldenNeedleCommand.RetryTracking);
-                if (!result.Succeeded)
-                {
-                    SetStatus(result.Message);
-                }
+                return false;
             }
+
+            _transitionIssued = true;
+            SetState(CalibrationSceneState.Transitioning);
+            if (_gameFlowManager.TryTransitionTo(HubSceneName, HubSpawnId))
+            {
+                return true;
+            }
+
+            // GameFlowManager normally notifies OnTransitionFailed synchronously for rejected
+            // requests. Keep this fallback for a manager implementation that only returns false.
+            if (_state == CalibrationSceneState.Transitioning)
+            {
+                _transitionIssued = false;
+                SetState(CalibrationSceneState.TransitionFailed);
+            }
+
+            return false;
         }
 
         public void RetryHubTransition()
         {
+            TryResolveServices();
             if (_state != CalibrationSceneState.TransitionFailed ||
                 _transitionIssued ||
                 _gameFlowManager == null ||
@@ -143,9 +149,10 @@ namespace GoldenNeedle.Gameplay.Calibration
                 return;
             }
 
-            _transitionIssued = true;
+            // A retry does not replay calibration or the success hold. It only re-enters the
+            // usable state and makes one guarded transition request.
             SetState(CalibrationSceneState.CalibrationUsable);
-            _successHoldCoroutine = StartCoroutine(HoldThenTransition());
+            RequestHubTransitionAfterPresentation();
         }
 
         private void TryResolveServices()
@@ -156,10 +163,6 @@ namespace GoldenNeedle.Gameplay.Calibration
                 _playerFacade = session == null
                     ? null
                     : session.GetComponent<GoldenNeedlePlayerFacade>();
-                if (_playerFacade != null)
-                {
-                    cameraPreview?.SetPlayerFacade(_playerFacade);
-                }
             }
 
             if (_gameplayCommandHost == null)
@@ -205,43 +208,7 @@ namespace GoldenNeedle.Gameplay.Calibration
             SetState(CalibrationSceneState.Calibrating);
         }
 
-        private void EnterCalibrationUsable()
-        {
-            if (_transitionIssued || _state != CalibrationSceneState.Calibrating)
-            {
-                return;
-            }
-
-            _transitionIssued = true;
-            SetState(CalibrationSceneState.CalibrationUsable);
-            _successHoldCoroutine = StartCoroutine(HoldThenTransition());
-        }
-
-        private IEnumerator HoldThenTransition()
-        {
-            var elapsed = 0f;
-            while (elapsed < successHoldSeconds)
-            {
-                elapsed += Time.unscaledDeltaTime;
-                yield return null;
-            }
-
-            _successHoldCoroutine = null;
-            if (_state != CalibrationSceneState.CalibrationUsable || !_transitionIssued)
-            {
-                yield break;
-            }
-
-            SetState(CalibrationSceneState.Transitioning);
-            if (!_gameFlowManager.TryTransitionTo(HubSceneName, HubSpawnId))
-            {
-                _transitionIssued = false;
-                SetState(CalibrationSceneState.TransitionFailed);
-                SetStatus(_gameFlowManager.LastFailureMessage);
-            }
-        }
-
-        private void OnTransitionFailed(GameFlowFailureCode _, string message)
+        private void OnTransitionFailed(GameFlowFailureCode _, string __)
         {
             if (_state != CalibrationSceneState.Transitioning)
             {
@@ -250,73 +217,17 @@ namespace GoldenNeedle.Gameplay.Calibration
 
             _transitionIssued = false;
             SetState(CalibrationSceneState.TransitionFailed);
-            SetStatus(message);
         }
 
         private void SetState(CalibrationSceneState state)
         {
+            if (_state == state)
+            {
+                return;
+            }
+
             _state = state;
-            switch (state)
-            {
-                case CalibrationSceneState.Initializing:
-                    SetStatus("Starting motion tracking…");
-                    break;
-                case CalibrationSceneState.WaitingForTracking:
-                    SetStatus("Waiting for body tracking. Stay visible to the camera.");
-                    break;
-                case CalibrationSceneState.Ready:
-                    SetStatus("Tracking ready. Begin calibration when comfortable.");
-                    break;
-                case CalibrationSceneState.Calibrating:
-                    SetStatus("Calibrating… remain visible.");
-                    break;
-                case CalibrationSceneState.CalibrationUsable:
-                    SetStatus("Calibration ready.");
-                    break;
-                case CalibrationSceneState.Transitioning:
-                    SetStatus("Entering Hub…");
-                    break;
-                case CalibrationSceneState.TransitionFailed:
-                    SetStatus(_gameFlowManager == null
-                        ? "Unable to enter Hub. Try again."
-                        : _gameFlowManager.LastFailureMessage);
-                    break;
-            }
-
-            UpdateButtonState();
-        }
-
-        private void UpdateButtonState()
-        {
-            if (beginCalibrationButton != null)
-            {
-                beginCalibrationButton.interactable =
-                    _state == CalibrationSceneState.Ready &&
-                    _playerFacade != null &&
-                    _playerFacade.IsBodyTrackingAvailable &&
-                    !_calibrationRequested;
-            }
-
-            if (retryTransitionButton != null)
-            {
-                retryTransitionButton.gameObject.SetActive(_state == CalibrationSceneState.TransitionFailed);
-            }
-        }
-
-        private void SetInstruction(string value)
-        {
-            if (instructionText != null)
-            {
-                instructionText.text = value;
-            }
-        }
-
-        private void SetStatus(string value)
-        {
-            if (statusText != null)
-            {
-                statusText.text = string.IsNullOrEmpty(value) ? "" : value;
-            }
+            StateChanged?.Invoke(state);
         }
 
         private void UnsubscribeFromServices()
@@ -329,12 +240,6 @@ namespace GoldenNeedle.Gameplay.Calibration
             if (_gameFlowManager != null)
             {
                 _gameFlowManager.TransitionFailed -= OnTransitionFailed;
-            }
-
-            if (_successHoldCoroutine != null)
-            {
-                StopCoroutine(_successHoldCoroutine);
-                _successHoldCoroutine = null;
             }
         }
     }

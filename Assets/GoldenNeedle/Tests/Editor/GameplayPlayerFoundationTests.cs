@@ -1,3 +1,6 @@
+using System.Reflection;
+using GoldenNeedle.Core.Motion.Locomotion;
+using GoldenNeedle.Core.Motion.Retargeting;
 using GoldenNeedle.Core.Motion.Runtime;
 using GoldenNeedle.Gameplay.Player;
 using NUnit.Framework;
@@ -67,6 +70,48 @@ namespace GoldenNeedle.Tests.Editor
             {
                 Object.DestroyImmediate(gameObject);
             }
+        }
+
+        [Test]
+        public void PlayerFacade_SplitsAvatarPoseDriveAndLocomotionControls()
+        {
+            var gameObject = new GameObject("PlayerFacadeControlSplitTest");
+            try
+            {
+                gameObject.SetActive(false);
+                var retargeter = gameObject.AddComponent<HumanoidRetargeter>();
+                var locomotion = gameObject.AddComponent<EmbodiedLocomotionController>();
+                var facade = gameObject.AddComponent<GoldenNeedlePlayerFacade>();
+                retargeter.DriveRig = false;
+                locomotion.DriveLocomotion = false;
+                SetPrivateField(facade, "humanoidRetargeter", retargeter);
+                SetPrivateField(facade, "locomotionController", locomotion);
+
+                facade.SetAvatarPoseDriveEnabled(true);
+                Assert.IsTrue(facade.IsAvatarPoseDriveEnabled);
+                Assert.IsFalse(facade.IsLocomotionEnabled);
+
+                facade.SetLocomotionEnabled(true);
+                Assert.IsTrue(facade.IsAvatarPoseDriveEnabled);
+                Assert.IsTrue(facade.IsLocomotionEnabled);
+
+                facade.SetMotionControlEnabled(false);
+                Assert.IsFalse(facade.IsAvatarPoseDriveEnabled);
+                Assert.IsFalse(facade.IsLocomotionEnabled);
+            }
+            finally
+            {
+                Object.DestroyImmediate(gameObject);
+            }
+        }
+
+        private static void SetPrivateField(object target, string fieldName, object value)
+        {
+            var field = target.GetType().GetField(
+                fieldName,
+                BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(field, $"Missing private field '{fieldName}'.");
+            field.SetValue(target, value);
         }
     }
 }
