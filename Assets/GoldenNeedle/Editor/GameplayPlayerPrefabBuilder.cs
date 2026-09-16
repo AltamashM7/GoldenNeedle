@@ -128,7 +128,7 @@ namespace GoldenNeedle.Editor.Gameplay
                 AssetDatabase.SaveAssets();
                 Selection.activeObject = savedPrefab;
                 EditorGUIUtility.PingObject(savedPrefab);
-                Debug.Log($"Golden Needle: built production player prefab at '{PrefabPath}' from accepted source root '{source.name}'.");
+                UnityEngine.Debug.Log($"Golden Needle: built production player prefab at '{PrefabPath}' from accepted source root '{source.name}'.");
             }
             catch (Exception exception)
             {
@@ -153,7 +153,7 @@ namespace GoldenNeedle.Editor.Gameplay
 
                 if (sourceScene.IsValid() && !sourceSceneWasDirty && sourceScene.isDirty)
                 {
-                    Debug.LogError("Golden Needle: the source scene became dirty during prefab assembly. The utility did not save it; review the scene before saving anything.");
+                    UnityEngine.Debug.LogError("Golden Needle: the source scene became dirty during prefab assembly. The utility did not save it; review the scene before saving anything.");
                 }
             }
         }
@@ -537,7 +537,7 @@ namespace GoldenNeedle.Editor.Gameplay
 
         private static void ReportFailure(string title, string message)
         {
-            Debug.LogError($"Golden Needle: {title}.\n{message}");
+            UnityEngine.Debug.LogError($"Golden Needle: {title}.\n{message}");
             EditorUtility.DisplayDialog(title, message, "OK");
         }
     }
