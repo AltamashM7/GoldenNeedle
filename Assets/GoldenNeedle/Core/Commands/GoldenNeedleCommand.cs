@@ -265,7 +265,7 @@ namespace GoldenNeedle.Core.Commands
                         request,
                         presetSelector,
                         request.parameter.Trim(),
-                        "ThirdPersonLabCamera.SelectViewPreset",
+                        "CameraViewPresetSelector",
                         "Camera view preset selection was rejected");
                 case GoldenNeedleCommand.SetRawAvatarPresentation:
                     return InvokeBool(

@@ -72,7 +72,7 @@ namespace GoldenNeedle.Gameplay.Calibration
                     }
                     break;
                 case CalibrationSceneState.Calibrating:
-                    if (_playerFacade.IsCalibrationUsable)
+                    if (_playerFacade.IsCalibrationComplete)
                     {
                         SetState(CalibrationSceneState.CalibrationUsable);
                     }
@@ -113,7 +113,7 @@ namespace GoldenNeedle.Gameplay.Calibration
                 _gameFlowManager == null ||
                 !_calibrationRequested ||
                 _playerFacade == null ||
-                !_playerFacade.IsCalibrationUsable)
+                !_playerFacade.IsCalibrationComplete)
             {
                 return false;
             }
@@ -144,7 +144,7 @@ namespace GoldenNeedle.Gameplay.Calibration
                 _gameFlowManager == null ||
                 !_calibrationRequested ||
                 _playerFacade == null ||
-                !_playerFacade.IsCalibrationUsable)
+                !_playerFacade.IsCalibrationComplete)
             {
                 return;
             }

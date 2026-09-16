@@ -131,6 +131,7 @@ GameObject:
   - component: {fileID: 248718910}
   - component: {fileID: 248718909}
   - component: {fileID: 248718912}
+  - component: {fileID: 248718913}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -256,6 +257,112 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!114 &248718913
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 248718908}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7c23ae976ec64fd4f95dcc04a5699ac0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Presentation.GameplayCameraController
+  controlledCamera: {fileID: 248718910}
+  initialViewPreset: Back
+  viewPresets:
+  - presetName: Back
+    focusSemantic: 0
+    placementDirection: {x: 0, y: -1}
+    distance: 4
+    height: 2.2
+    placementOffset: {x: 0, y: 0, z: 0}
+    focusOffset: {x: 0, y: 1.15, z: 0}
+    fieldOfView: 55
+    positionResponse: 7
+    orientationResponse: 7
+    fieldOfViewResponse: 7
+  - presetName: Front
+    focusSemantic: 0
+    placementDirection: {x: 0, y: 1}
+    distance: 4
+    height: 2.2
+    placementOffset: {x: 0, y: 0, z: 0}
+    focusOffset: {x: 0, y: 1.15, z: 0}
+    fieldOfView: 55
+    positionResponse: 7
+    orientationResponse: 7
+    fieldOfViewResponse: 7
+  - presetName: Left
+    focusSemantic: 0
+    placementDirection: {x: -1, y: 0}
+    distance: 4
+    height: 2.2
+    placementOffset: {x: 0, y: 0, z: 0}
+    focusOffset: {x: 0, y: 1.15, z: 0}
+    fieldOfView: 55
+    positionResponse: 7
+    orientationResponse: 7
+    fieldOfViewResponse: 7
+  - presetName: Right
+    focusSemantic: 0
+    placementDirection: {x: 1, y: 0}
+    distance: 4
+    height: 2.2
+    placementOffset: {x: 0, y: 0, z: 0}
+    focusOffset: {x: 0, y: 1.15, z: 0}
+    fieldOfView: 55
+    positionResponse: 7
+    orientationResponse: 7
+    fieldOfViewResponse: 7
+  - presetName: FullBody
+    focusSemantic: 0
+    placementDirection: {x: 0, y: -1}
+    distance: 5.2
+    height: 2.4
+    placementOffset: {x: 0, y: 0, z: 0}
+    focusOffset: {x: 0, y: 1.05, z: 0}
+    fieldOfView: 60
+    positionResponse: 6
+    orientationResponse: 6
+    fieldOfViewResponse: 6
+  - presetName: Hands
+    focusSemantic: 1
+    placementDirection: {x: 0, y: -1}
+    distance: 2.4
+    height: 0.35
+    placementOffset: {x: 0, y: 0, z: 0}
+    focusOffset: {x: 0, y: 0, z: 0}
+    fieldOfView: 45
+    positionResponse: 8
+    orientationResponse: 8
+    fieldOfViewResponse: 8
+  - presetName: LeftHand
+    focusSemantic: 2
+    placementDirection: {x: 0, y: -1}
+    distance: 1.7
+    height: 0.25
+    placementOffset: {x: 0, y: 0, z: 0}
+    focusOffset: {x: 0, y: 0, z: 0}
+    fieldOfView: 40
+    positionResponse: 9
+    orientationResponse: 9
+    fieldOfViewResponse: 9
+  - presetName: RightHand
+    focusSemantic: 3
+    placementDirection: {x: 0, y: -1}
+    distance: 1.7
+    height: 0.25
+    placementOffset: {x: 0, y: 0, z: 0}
+    focusOffset: {x: 0, y: 0, z: 0}
+    fieldOfView: 40
+    positionResponse: 9
+    orientationResponse: 9
+    fieldOfViewResponse: 9
+  selectedPresetDiagnostic: Back
+  focusTargetDiagnostic: Waiting for persistent player
+  presetSelectionDiagnostic: Ready
 --- !u!1 &362263510
 GameObject:
   m_ObjectHideFlags: 0
@@ -352,7 +459,7 @@ Transform:
   m_GameObject: {fileID: 426839261}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -130.46, y: 3.252, z: -9.052}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1510,7 +1617,7 @@ Transform:
   m_GameObject: {fileID: 2073892602}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalPosition: {x: -186.96573, y: -77.48959, z: -18.455463}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:

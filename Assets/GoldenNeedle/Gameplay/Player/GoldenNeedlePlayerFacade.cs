@@ -47,6 +47,10 @@ namespace GoldenNeedle.Gameplay.Player
         public bool IsAvatarAnimationAuthorityEnabled => humanoidRetargeter != null && humanoidRetargeter.ExternalAnimationAuthority;
         public bool IsLocomotionEnabled => locomotionController != null && locomotionController.DriveLocomotion;
         public bool IsMotionControlEnabled => IsAvatarPoseDriveEnabled && IsLocomotionEnabled;
+        public bool HasWorldHeading => locomotionController != null && locomotionController.HasWorldHeading;
+        public Vector2 WorldHeadingXZ => locomotionController == null
+            ? Vector2.zero
+            : locomotionController.WorldHeadingXZ;
         public PlayerHealth Health => playerHealth;
         public Transform LeftWristAnchor => bodyAnchors == null ? null : bodyAnchors.LeftWrist;
         public Transform RightWristAnchor => bodyAnchors == null ? null : bodyAnchors.RightWrist;

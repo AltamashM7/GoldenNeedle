@@ -16,6 +16,14 @@ namespace GoldenNeedle.Gameplay.Flow
         {
             spawnId = spawnId == null ? string.Empty : spawnId.Trim();
         }
+
+        private void OnDrawGizmos()
+        {
+            var previousColor = Gizmos.color;
+            Gizmos.color = new Color(0.15f, 0.85f, 1f, 0.8f);
+            Gizmos.DrawWireSphere(transform.position, 0.35f);
+            Gizmos.color = previousColor;
+        }
     }
 
     public static class PlayerSpawnPointResolver

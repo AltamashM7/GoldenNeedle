@@ -20,16 +20,24 @@ namespace GoldenNeedle.Tests
                     "begin calibration",
                     "recenter",
                     "retry tracking",
+                    "back view",
+                    "front view",
+                    "left view",
+                    "right view",
+                    "full body view",
+                    "hands view",
+                    "left hand view",
+                    "right hand view",
                     "reduce latency",
                     "low latency mode",
                     "smooth motion",
                     "stabilized mode",
                 },
                 resolver.EffectivePhrases);
-            Assert.That(resolver.EffectivePhrases.Count, Is.EqualTo(7));
+            Assert.That(resolver.EffectivePhrases.Count, Is.EqualTo(15));
             CollectionAssert.DoesNotContain(resolver.EffectivePhrases, "game view");
             CollectionAssert.DoesNotContain(resolver.EffectivePhrases, "raw landmarks");
-            CollectionAssert.DoesNotContain(resolver.EffectivePhrases, "hands view");
+            CollectionAssert.Contains(resolver.EffectivePhrases, "hands view");
         }
 
         [TestCase("reduce latency")]
@@ -92,6 +100,21 @@ namespace GoldenNeedle.Tests
                     GameplayCommandContext.Hub,
                     GoldenNeedleCommand.Recenter),
                 Is.True);
+            Assert.That(
+                GameplayCommandContextPolicy.IsAllowed(
+                    GameplayCommandContext.Calibration,
+                    GoldenNeedleCommand.SelectCameraViewPreset),
+                Is.False);
+            Assert.That(
+                GameplayCommandContextPolicy.IsAllowed(
+                    GameplayCommandContext.Hub,
+                    GoldenNeedleCommand.SelectCameraViewPreset),
+                Is.True);
+            Assert.That(
+                GameplayCommandContextPolicy.IsAllowed(
+                    GameplayCommandContext.Activity,
+                    GoldenNeedleCommand.SelectCameraViewPreset),
+                Is.False);
 
             Assert.That(
                 GameplayCommandContextPolicy.IsAllowed(

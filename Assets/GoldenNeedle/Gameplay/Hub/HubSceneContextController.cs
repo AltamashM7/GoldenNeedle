@@ -27,9 +27,9 @@ namespace GoldenNeedle.Gameplay.Hub
                 var facade = session == null
                     ? null
                     : session.GetComponent<GoldenNeedlePlayerFacade>();
-                if (host != null && facade != null)
+                if (facade != null)
                 {
-                    host.SetContext(GameplayCommandContext.Hub);
+                    host?.SetContext(GameplayCommandContext.Hub);
                     facade.SetAvatarAnimationAuthorityEnabled(false);
                     facade.SetAvatarPoseDriveEnabled(true);
                     facade.SetLocomotionEnabled(true);

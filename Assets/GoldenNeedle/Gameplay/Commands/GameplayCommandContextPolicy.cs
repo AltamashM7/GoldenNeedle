@@ -18,6 +18,7 @@ namespace GoldenNeedle.Gameplay.Commands
                 case GoldenNeedleCommand.BeginCalibration:
                 case GoldenNeedleCommand.Recenter:
                 case GoldenNeedleCommand.RetryTracking:
+                case GoldenNeedleCommand.SelectCameraViewPreset:
                 case GoldenNeedleCommand.SetRawAvatarPresentation:
                 case GoldenNeedleCommand.SetStabilizedAvatarPresentation:
                     return true;
@@ -42,6 +43,10 @@ namespace GoldenNeedle.Gameplay.Commands
                            command == GoldenNeedleCommand.RetryTracking ||
                            IsPresentationCommand(command);
                 case GameplayCommandContext.Hub:
+                    return command == GoldenNeedleCommand.Recenter ||
+                           command == GoldenNeedleCommand.RetryTracking ||
+                           command == GoldenNeedleCommand.SelectCameraViewPreset ||
+                           IsPresentationCommand(command);
                 case GameplayCommandContext.Activity:
                     return command == GoldenNeedleCommand.Recenter ||
                            command == GoldenNeedleCommand.RetryTracking ||

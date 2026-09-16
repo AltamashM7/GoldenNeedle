@@ -30,6 +30,46 @@ namespace GoldenNeedle.Gameplay.Commands
                         GoldenNeedleCommand.RetryTracking,
                         minimumConfidence: SpeechRecognitionConfidence.Low),
                     new SpeechCommandMapping(
+                        "back view",
+                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "Back",
+                        SpeechRecognitionConfidence.Low),
+                    new SpeechCommandMapping(
+                        "front view",
+                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "Front",
+                        SpeechRecognitionConfidence.Low),
+                    new SpeechCommandMapping(
+                        "left view",
+                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "Left",
+                        SpeechRecognitionConfidence.Low),
+                    new SpeechCommandMapping(
+                        "right view",
+                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "Right",
+                        SpeechRecognitionConfidence.Low),
+                    new SpeechCommandMapping(
+                        "full body view",
+                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "FullBody",
+                        SpeechRecognitionConfidence.Low),
+                    new SpeechCommandMapping(
+                        "hands view",
+                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "Hands",
+                        SpeechRecognitionConfidence.Low),
+                    new SpeechCommandMapping(
+                        "left hand view",
+                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "LeftHand",
+                        SpeechRecognitionConfidence.Low),
+                    new SpeechCommandMapping(
+                        "right hand view",
+                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "RightHand",
+                        SpeechRecognitionConfidence.Low),
+                    new SpeechCommandMapping(
                         "reduce latency",
                         GoldenNeedleCommand.SetRawAvatarPresentation,
                         minimumConfidence: SpeechRecognitionConfidence.Low),
