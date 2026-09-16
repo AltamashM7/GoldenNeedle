@@ -1,3 +1,4 @@
+using System;
 using GoldenNeedle.Core.Commands;
 using GoldenNeedle.Core.Commands.Providers;
 using GoldenNeedle.Gameplay.Player;
@@ -24,6 +25,7 @@ namespace GoldenNeedle.Gameplay.Commands
         public bool SpeechEnabled => speechEnabled;
         public SpeechCommandInput SpeechInput => _speechInput;
         public GoldenNeedleCommandResult LastResult { get; private set; }
+        public event Action<GoldenNeedleCommandResult> CommandProcessed;
 
         private void Awake()
         {
@@ -108,6 +110,7 @@ namespace GoldenNeedle.Gameplay.Commands
         private GoldenNeedleCommandResult Remember(GoldenNeedleCommandResult result)
         {
             LastResult = result;
+            CommandProcessed?.Invoke(result);
             return result;
         }
 

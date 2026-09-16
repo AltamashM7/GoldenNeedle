@@ -50,6 +50,13 @@ namespace GoldenNeedle.Gameplay.Player
         public Transform LeftFootAnchor => bodyAnchors == null ? null : bodyAnchors.LeftFoot;
         public Transform RightFootAnchor => bodyAnchors == null ? null : bodyAnchors.RightFoot;
 
+        public Texture CameraPreviewTexture => poseProvider == null ? null : poseProvider.CameraTexture;
+        public int CameraPreviewSourceWidth => poseProvider == null ? 0 : poseProvider.ActualCameraWidth;
+        public int CameraPreviewSourceHeight => poseProvider == null ? 0 : poseProvider.ActualCameraHeight;
+        public int CameraPreviewRotationDegrees => poseProvider == null ? 0 : poseProvider.Orientation.DisplayRotationDegrees;
+        public bool CameraPreviewPresentationHorizontalMirror => poseProvider != null && poseProvider.Orientation.PresentationHorizontalMirror;
+        public bool CameraPreviewDisplayVerticalCorrection => poseProvider != null && poseProvider.Orientation.DisplayVerticalCorrection;
+
         public GoldenNeedleAvatarDriveMode AvatarDriveMode
         {
             get

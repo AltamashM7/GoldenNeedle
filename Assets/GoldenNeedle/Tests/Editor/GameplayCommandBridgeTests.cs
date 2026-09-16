@@ -1,6 +1,7 @@
 using GoldenNeedle.Core.Commands;
 using GoldenNeedle.Gameplay.Commands;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace GoldenNeedle.Tests
 {
@@ -170,6 +171,35 @@ namespace GoldenNeedle.Tests
 
             Assert.That(raw.Status, Is.EqualTo(GoldenNeedleCommandResultStatus.MissingTarget));
             Assert.That(stabilized.Status, Is.EqualTo(GoldenNeedleCommandResultStatus.MissingTarget));
+        }
+
+        [Test]
+        public void GameplayCommandHostRaisesCommandProcessedOnceAfterRememberingResult()
+        {
+            var hostObject = new GameObject("GameplayCommandHostTest");
+            hostObject.SetActive(false);
+            var host = hostObject.AddComponent<GameplayCommandHost>();
+            host.SetSpeechEnabled(false);
+
+            var eventCount = 0;
+            GoldenNeedleCommandResult observed = default;
+            host.CommandProcessed += result =>
+            {
+                eventCount++;
+                observed = result;
+                Assert.That(host.LastResult.Request.command, Is.EqualTo(result.Request.command));
+                Assert.That(host.LastResult.Status, Is.EqualTo(result.Status));
+            };
+
+            hostObject.SetActive(true);
+            var result = host.Execute(GoldenNeedleCommand.BeginCalibration);
+
+            Assert.That(result.Status, Is.EqualTo(GoldenNeedleCommandResultStatus.MissingTarget));
+            Assert.That(eventCount, Is.EqualTo(1));
+            Assert.That(observed.Request.command, Is.EqualTo(GoldenNeedleCommand.BeginCalibration));
+            Assert.That(host.LastResult.Message, Is.EqualTo(observed.Message));
+
+            Object.DestroyImmediate(hostObject);
         }
 
         [Test]
