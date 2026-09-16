@@ -20,7 +20,7 @@ namespace GoldenNeedle.Tests.Editor
                 var scene = _createdScenes[index];
                 if (scene.IsValid() && scene.isLoaded)
                 {
-                    EditorSceneManager.CloseScene(scene, true);
+                    EditorSceneManager.ClosePreviewScene(scene);
                 }
             }
             _createdScenes.Clear();
@@ -98,7 +98,7 @@ namespace GoldenNeedle.Tests.Editor
 
         private Scene CreateScene()
         {
-            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+            var scene = EditorSceneManager.NewPreviewScene();
             _createdScenes.Add(scene);
             return scene;
         }
