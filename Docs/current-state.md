@@ -1,233 +1,209 @@
 # Golden Needle — Current State
 
-Authoritative refresh: 2026-09-16
+Authoritative refresh: 2026-09-17
 
 Repository: `AltamashM7/GoldenNeedle`
 
-Current integration branch: `main`
+Active development branch: `gameplay/foundation`
 
-Planned active development branch: `gameplay/foundation`
+Integration branch: `main`
 
 ## Governance
 
-- Do **not** merge new work to `main` without explicit USER approval.
+- Do **not** merge gameplay work to `main` without explicit USER approval.
 - Do not force-push, rebase, amend, reset, or rewrite shared history.
-- Independently verify live remote refs before editing or integrating.
-- USER Unity/manual/runtime evidence is the acceptance authority.
-- Keep game-specific mechanics separate from the reusable player/motion foundation.
+- Independently verify live remote refs before making decisions or preparing Builder/Luna work.
+- USER Unity/manual/runtime evidence is the decisive runtime acceptance authority.
+- Keep Motion Engine internals separate from scene/gameplay logic.
+- Prefer Luna for Unity scene/code execution when a task is approved, but the Orchestrator must inspect the actual repository and independently audit claims.
+- Do not generate an implementation handoff until the USER has finished defining the phase and explicitly approves the plan/handoff.
 
-## Motion Engine V1 — USER ACCEPTED FOR CURRENT PROJECT SCOPE
+## Live branch baselines at this refresh
 
-Accepted implementation baseline:
+Before these documentation commits, the verified remote refs were:
+
+- `main`: `82a8475752826a7e07d446adcbe33b0b67e8f0d0`
+- `gameplay/foundation`: `79a543c44788f0318d0e19455e188cb68607e55e`
+
+The gameplay/runtime implementation lineage immediately before this documentation refresh is:
+
+- `96bb5346ed4db52904172f2c4629af9021f34e16` — preserve quarter-turn Calibration webcam geometry;
+- `b081a5514cda1ff7640d840463e509a0357750c5` — Calibration presentation control architecture;
+- `cc9db033b64f6f4d514fd0a8f7933e6f09af022e` — world-space Calibration presentation polish;
+- `544afd099e186b6bfe824c092e168cdc0f6ab7fd` — release Calibration rig to external idle-animation authority;
+- `79a543c44788f0318d0e19455e188cb68607e55e` — Unity 6 warning cleanup.
+
+The new Orchestrator must verify the live branch HEAD instead of assuming it still equals any SHA listed here.
+
+## Motion Engine V1 — USER ACCEPTED / FROZEN FOR CURRENT SCOPE
+
+Accepted Motion Engine implementation baseline:
 
 `140a939160530394ee5c70aa1dbc31c62f3a12e1`
 
-The USER ended the Motion Engine V1 development phase after confirming that the avatar-relative crouch works to a usable degree. Crouch/ground-contact fidelity remains imperfect, but this is an accepted limitation rather than a blocker.
+The accepted body-control stack includes the CPU-first OpenVINO path, canonical body, stabilization/calibration, Humanoid retargeting, physical/cadence locomotion, recenter/reacquisition continuity, and Jump/Crouch semantics.
 
-The accepted Motion Engine branch was merged into `main` with explicit USER approval. The Motion Engine/core architecture is now the authoritative foundation for gameplay work.
+Crouch/ground-contact fidelity is not perfect, but the USER explicitly accepted it as sufficient for this project stage. Do not reopen Motion Engine tuning, OpenVINO/provider architecture, Phase-3/Phase-4 behavior, hands, or general locomotion tuning unless gameplay exposes a concrete blocker or the USER explicitly reopens it.
 
-Do not reopen Motion Engine V1 corrective work unless later gameplay QA exposes a concrete blocking defect or the USER explicitly asks to revisit it.
+Important preserved production invariants:
 
-## Accepted production motion pipeline
+- calibration and locomotion use stabilized canonical data;
+- raw/stabilized user commands affect visible avatar presentation only;
+- `CameraSpaceRootTracker` remains the physical X/Z authority;
+- Phase 4 remains normal limb/leg-pose authority;
+- no post-root crouch-specific full leg IK;
+- accepted OpenVINO/WebCamCPU path remains frozen;
+- no dedicated GPU is required.
 
-```text
-Unity WebCamTexture
--> reusable WebCamCPU/GetPixels32 acquisition
--> reusable 320x240 CPU preparation
--> bounded newest-only two-slot scheduling
--> persistent OpenVINO CPU FP32 worker
--> MediaPipe 0.10.22 pose semantics
--> 33 normalized + world landmarks
--> CanonicalBodyV1
--> Phase 3 stabilization/calibration authority
--> Phase 4 positional/analytic-IK avatar pose
--> Phase 5 physical/cadence/root locomotion
--> presentation/gameplay consumer
-```
+## Gameplay Foundation — IMPLEMENTED
 
-Accepted properties include:
+The reusable gameplay/session foundation now exists on `gameplay/foundation`.
 
-- CPU-first webcam/body inference suitable for the low-end target;
-- latest-useful-frame scheduling with bounded backlog;
-- stabilized canonical body as calibration/locomotion authority;
-- modular calibration and accepted humanoid retargeting;
-- room-relative X/Z physical locomotion with support validation;
-- cadence-based in-place locomotion;
-- recenter and tracking-loss/reacquisition continuity;
-- semantic Jump/Crouch interpretation;
-- avatar-relative crouch root scaling;
-- Phase 4 remains the normal leg/knee pose authority;
-- commands/speech and camera-preset foundations retained;
-- detailed/rich hands remain deferred.
+Key concepts already implemented before the current Hub phase include:
 
-## Final locomotion architecture
+- persistent `GoldenNeedlePlayer` session object/prefab;
+- `GoldenNeedlePlayerFacade` gameplay-facing boundary;
+- reusable health/damage foundation and body anchors;
+- persistent `GameFlowManager` with fade/scene transition handling;
+- exact destination `PlayerSpawnPoint` resolution;
+- player relocation that preserves calibration/session state;
+- contextual gameplay command host/speech routing;
+- visible-avatar Raw/Stabilized presentation commands;
+- Calibration scene flow controller;
+- Hub context controller.
 
-### Horizontal
+The persistent player/session must survive normal scene transitions so normal play does not recalibrate between Hub and activities.
 
-`CameraSpaceRootTracker` is the single stateful physical X/Z authority. Torso/body motion forms the continuous candidate while bilateral support evidence validates real room translation. `LocomotionFusion` maps accepted physical displacement and blends cadence; it does not own a second physical-position state machine.
+## Calibration -> Hub integration — FUNCTIONAL FLOW USER-VERIFIED
 
-The USER reported the previous locomotion-caused idle/root jitter as substantially improved. Freeze this architecture unless a gameplay scene proves a specific regression.
+The USER manually verified the core production flow:
 
-### Vertical
+1. Calibration scene opens;
+2. webcam preview works;
+3. `Begin Calibration` works;
+4. calibration becomes usable;
+5. the scene fades;
+6. `GoldenNeedle_Hub` loads.
 
-`VerticalLocomotionInterpreter` remains the semantic Jump/Crouch authority and produces normalized body-compression evidence.
+That functional Calibration -> Hub gate is accepted. Do not regress it while working on Hub.
 
-For grounded crouch, production root Y is mapped through `AvatarRelativeCrouchGrounding`, using stable reference-pose avatar leg geometry rather than fixed world-meter crouch depth. There is no post-root crouch-specific leg IK pass; Phase 4 remains the normal leg-pose owner.
+### Current Calibration presentation architecture
 
-Known accepted limitation: foot-floor/crouch fidelity is approximate rather than perfect.
+Visible Calibration presentation is scene-local and world-space:
 
-## Environment integration status
+- character composition on the RIGHT;
+- prompt/webcam/success presentation on the LEFT;
+- TextMesh Pro presentation resources are present in the project;
+- `CalibrationPresentationController` owns scene presentation state/timing;
+- `CalibrationSceneController` remains flow/calibration/transition authority;
+- `WorldSpacePresentationGroup` provides reusable group fades;
+- `PresentationCameraRig` provides authored camera staging;
+- the existing `CalibrationCameraPreview` remains the single webcam presentation path;
+- quarter-turn preview geometry from `96bb534...` must remain intact.
 
-Already integrated into `main`:
+Approved state model:
 
-- accepted Motion Engine V1;
-- Calibration environment from `realcourse/arihant`;
-- Obstacle Course environment from `realcourse/arihant`;
-- Hub environment from `course/janhavi`.
+- Intro: pose drive OFF, locomotion OFF, idle presentation allowed;
+- Calibrating: pose drive OFF, locomotion OFF, idle presentation continues;
+- Calibration usable: pose drive ON, locomotion OFF, success/live-pose preview;
+- Hub: pose drive ON, locomotion ON.
 
-Current primary scene assets:
+### Deferred Calibration animation-authority issue / current USER workaround
+
+The branch contains the external animation-authority support introduced by `544afd0...`, but the USER later chose not to spend more time on this issue before Hub work.
+
+Current USER local presentation workaround:
+
+- the persistent Golden Needle Player is hidden visually during Calibration;
+- a fresh/raw character using the same Animator Controller supplies the looping idle presentation;
+- the rest of the Calibration/tracking/GameFlow system is preserved;
+- further player animation-authority refinement is deferred.
+
+Treat this as a USER-local creative/runtime state unless/until it is committed. Do not assume the remote `Caliberation.unity` exactly contains those local creative edits, and do not overwrite them through an authoring rerun without explicit USER approval.
+
+## Environment status
+
+Integrated into `main` and inherited by the gameplay branch:
 
 - Calibration: `Assets/Scenes/Caliberation.unity`;
 - Hub: `Assets/Scenes/GoldenNeedle_Hub.unity`;
 - Obstacle Course: `Assets/Scenes/Obstacle Course.unity`.
 
-Pending environment:
+Boxing Course remains pending/local while its environment/bake work is completed. This is **not a blocker** for Hub trigger infrastructure or for wiring the already-available Obstacle destination.
 
-- Boxing Course — still on a local branch and currently undergoing baking, so it is not yet available in the remote repository.
+When Boxing becomes available, integrate it into `main` with accepted Motion Engine/current project configuration taking priority on conflicts, then normally merge updated `main` into `gameplay/foundation`. Do not rebase shared history.
 
-The boxing environment is **not a blocker** for gameplay-foundation development. When it becomes available, merge it into `main` with Motion Engine/current project configuration taking priority on conflicts, then merge updated `main` normally into the gameplay branch.
+## Current phase — Hub integration
 
-## Approved four-scene game structure
+The USER has deliberately narrowed Hub scope. The Hub is not intended to become another large gameplay phase.
 
-The USER has now defined the actual gameplay direction.
+The required Hub behavior is:
 
-1. **Calibration Scene**
-   - avatar starts idle;
-   - button/speech command `Begin Calibration` starts the shared calibration action;
-   - fade transition;
-   - calibration presentation/T-pose;
-   - on success show confirmation;
-   - transition to Hub.
+1. after Calibration transitions to Hub, the persistent calibrated player immediately has normal free-roam locomotion;
+2. the Hub contains two activity portals;
+3. crossing/colliding with a portal using the player character triggers the appropriate activity scene transition;
+4. portal detection should use simple invisible trigger volumes/cuboids placed over the visual portal geometry;
+5. the common `GameFlowManager` fade/scene-loading path should perform the transition rather than custom direct scene loading;
+6. portal triggers must be reliable, one-shot/debounced, and must not duplicate persistent player/session objects.
 
-2. **Hub**
-   - persistent calibrated player can free roam;
-   - two portals lead to Boxing and Obstacle Course;
-   - activities return to Hub after completion.
+No additional Hub gameplay, tutorial system, complex interaction prompt, cutscene, scoring, or custom navigation system is currently required.
 
-3. **Boxing Course**
-   - player spawns in ring facing enemy;
-   - 10-second countdown;
-   - wrist/foot strike hitboxes for player, hand hitboxes for enemy;
-   - health bars;
-   - post-match statistics/results;
-   - return to Hub.
+### Portal mapping is not yet safe to invent
 
-4. **Obstacle Course**
-   - player remains inside fenced square arena;
-   - randomized incoming hazards such as cars/rocks;
-   - warning/telegraph indicates danger location;
-   - player physically dodges;
-   - survival timer and health/damage;
-   - results on defeat;
-   - return to Hub.
+The Hub contains the retained visual portal objects from the environment integration, including yellow and blue portal geometry. Their exact activity mapping must come from existing scene metadata/code or an explicit USER decision.
 
-See `Docs/gameplay-foundation-plan.md` for the full approved architecture and sequence.
+Do **not** infer that a color means Boxing or Obstacle merely from appearance. The next Orchestrator should inspect the actual Hub scene first. If the repository does not already establish the mapping, ask the USER before wiring destination names.
 
-## Next project stage — Gameplay Foundation
+### Portal trigger implementation direction
 
-The next implementation stage should create a reusable persistent player/session layer **before** scene-specific gameplay mechanics are built.
+Use scene-owned trigger volumes rather than modifying visual portal meshes:
 
-Target concept:
+- invisible `BoxCollider` or similarly simple primitive collider;
+- `isTrigger = true`;
+- positioned/scaled to cover the walk-through area of each existing portal;
+- a small Hub portal trigger component that accepts an authored destination scene name and spawn id;
+- detect only the persistent player/facade/session, not arbitrary environment colliders;
+- route through `GameFlowManager.TryTransitionTo(...)` or the existing equivalent;
+- guard against repeated `OnTriggerEnter` calls while a transition is in progress;
+- keep destination data Inspector-authored;
+- do not change portal visual placement/scale/rotation unless the USER explicitly asks.
 
-`GoldenNeedlePlayer.prefab`
+The invisible cuboid approach is approved as the optimization/simplicity choice.
 
-It should encapsulate the reusable accepted player-control stack and survive normal scene changes so calibration does not need to be repeated for every activity.
+See `Docs/hub-integration-plan.md` for the current Hub-specific scope.
 
-### Reusable player responsibilities
+## Protected Hub environment details
 
-- accepted motion/body-tracking runtime;
-- avatar and humanoid rig binding;
-- Phase-4 retargeting;
-- Phase-5 locomotion;
-- calibration/session state;
-- `GoldenNeedlePlayerFacade` or equivalent stable gameplay-facing API;
-- generic health/damage receiver;
-- body anchors for left/right wrists and feet;
-- optional gameplay capabilities such as boxing strike hitboxes, disabled outside the relevant mode.
+Do not normalize or casually replace the Hub environment. Earlier inspection established that the retained portal presentation includes:
 
-### Separate persistent game-flow responsibilities
+- a yellow portal in the existing environment;
+- one retained blue portal;
+- an older duplicate blue portal had already been removed during environment integration.
 
-Use `GameFlowManager` or equivalent for:
+Portal geometry/location is environment-authored and should be treated as presentation data. Add separate triggers instead of rebuilding the portals.
 
-- fades;
-- scene loading;
-- Hub returns;
-- destination spawn-point placement;
-- avoiding duplicate persistent player/session objects.
+## Development order from here
 
-### Scene-owned responsibilities
+1. Hub integration: immediate free roam + reliable portal triggers + common transitions;
+2. Boxing Mode after Boxing environment is integrated;
+3. Obstacle Mode;
+4. full cross-scene QA/polish.
 
-Scenes/game modes own:
+Each major gameplay phase still has two gates:
 
-- environment geometry;
-- portals and scene-specific controllers;
-- boxing rules/enemy/stats;
-- obstacle spawning/warnings/results;
-- scoring/timers/UI specific to a mode;
-- scene cameras/lighting as required.
+- functional acceptance;
+- presentation/polish acceptance where presentation work is relevant.
 
-## Speech-system expansion
-
-The existing Foundation-A speech/command system should be extended rather than replaced.
-
-Approved initial additions:
-
-- `Reduce latency` / `Low latency mode` -> visible avatar uses `RawCanonical` presentation drive;
-- `Smooth motion` / `Stabilized mode` -> visible avatar uses `StabilizedCanonical` presentation drive.
-
-Important: calibration and locomotion remain stabilized even when the visible avatar uses raw presentation.
-
-Prefer context-aware command availability:
-
-- Calibration: `Begin Calibration`;
-- post-calibration: `Recenter`;
-- recovery: `Retry Tracking`;
-- presentation: `Reduce latency`, `Smooth motion`;
-- possible later: `Pause Tracking`, `Resume Tracking` if useful.
-
-Do not expose debug/lab-only commands in normal gameplay. Do not make `Return to Hub` globally always active without contextual gating/confirmation.
-
-## Development order
-
-1. Gameplay Foundation;
-2. Calibration Scene integration;
-3. Hub integration;
-4. Boxing Mode after boxing environment integration;
-5. Obstacle Mode;
-6. full cross-scene game-flow QA/polish.
-
-## Branch strategy
-
-Create `gameplay/foundation` from the latest documentation-refreshed `main` and begin environment-independent foundation work there now.
-
-While the boxing environment is still baking locally:
-
-- do not block foundation development;
-- avoid boxing-scene-specific placement/wiring;
-- keep `main` available for the later boxing environment merge.
-
-After Boxing is merged into `main`, merge updated `main` into `gameplay/foundation` with a normal merge. Do not rebase shared history.
-
-## Deferred work
-
-The following are not blockers for gameplay foundation work and remain deferred unless explicitly reopened:
-
-- further crouch/grounding refinement;
-- broad performance/logging investigation;
-- detailed/rich hand tracking;
-- provider/OpenVINO redesign;
-- general Phase-3 or Phase-4 retuning.
+For Hub, because the scope is intentionally minimal, the primary functional gate is enough unless the USER asks for additional Hub presentation work.
 
 ## Immediate next boundary
 
-Refresh authoritative handoff/decision docs, create `gameplay/foundation`, and continue development from that branch. The boxing environment can be integrated later without blocking this stage.
+The next Orchestrator should:
+
+1. verify the live branch HEADs;
+2. read the current-state, Hub plan, gameplay plan, and handoff docs;
+3. inspect `GoldenNeedle_Hub.unity`, `HubSceneContextController`, `GameFlowManager`, `PlayerSpawnPoint`, Build Settings, and any existing portal/trigger scripts read-only;
+4. confirm how free-roam is enabled on Hub entry and whether this already works at the current head;
+5. identify the exact two visual portal objects and whether an activity mapping already exists;
+6. only after that inspection, prepare the Luna Hub implementation handoff;
+7. do not start Boxing/Obstacle gameplay in the same task.
