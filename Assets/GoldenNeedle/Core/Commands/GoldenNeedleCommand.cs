@@ -25,6 +25,8 @@ namespace GoldenNeedle.Core.Commands
         ToggleLocomotionWorldView,
         ToggleAllDebugPresentation,
         SelectCameraViewPreset,
+        SetRawAvatarPresentation,
+        SetStabilizedAvatarPresentation,
     }
 
     [Serializable]
@@ -174,6 +176,8 @@ namespace GoldenNeedle.Core.Commands
         public Action ToggleLocomotionWorldView { get; set; }
         public Action ToggleAllDebugPresentation { get; set; }
         public Func<string, bool> SelectCameraViewPreset { get; set; }
+        public Func<bool> SetRawAvatarPresentation { get; set; }
+        public Func<bool> SetStabilizedAvatarPresentation { get; set; }
     }
 
     /// <summary>
@@ -263,6 +267,18 @@ namespace GoldenNeedle.Core.Commands
                         request.parameter.Trim(),
                         "ThirdPersonLabCamera.SelectViewPreset",
                         "Camera view preset selection was rejected");
+                case GoldenNeedleCommand.SetRawAvatarPresentation:
+                    return InvokeBool(
+                        request,
+                        _targets.SetRawAvatarPresentation,
+                        "GoldenNeedlePlayerFacade.SetAvatarDriveMode(RawCanonical)",
+                        "Raw avatar presentation request was rejected");
+                case GoldenNeedleCommand.SetStabilizedAvatarPresentation:
+                    return InvokeBool(
+                        request,
+                        _targets.SetStabilizedAvatarPresentation,
+                        "GoldenNeedlePlayerFacade.SetAvatarDriveMode(StabilizedCanonical)",
+                        "Stabilized avatar presentation request was rejected");
                 default:
                     return GoldenNeedleCommandResult.Unsupported(request, "Unknown Golden Needle command");
             }

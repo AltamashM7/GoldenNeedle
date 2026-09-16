@@ -6,13 +6,13 @@ using UnityEngine;
 using UnityEngine.Windows.Speech;
 #endif
 
-namespace GoldenNeedle.Debug.PoseTrackingSpike
+namespace GoldenNeedle.Core.Commands.Providers
 {
     /// <summary>
     /// Windows-first speech backend. It emits only recognized phrase/confidence samples and has
     /// no knowledge of Golden Needle calibration, locomotion, cameras or presentation actions.
     /// </summary>
-    public sealed class WindowsKeywordSpeechProvider : ISpeechInputProvider, ISpeechInputProviderDiagnostics
+    public class WindowsKeywordSpeechProvider : ISpeechInputProvider, ISpeechInputProviderDiagnostics
     {
         private readonly string[] _keywords;
         private bool _disposed;
