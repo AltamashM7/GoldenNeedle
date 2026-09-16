@@ -4,176 +4,221 @@ Handoff refresh: 2026-09-16
 
 Repository: `AltamashM7/GoldenNeedle`
 
-Active branch: `engine/pose-tracking-spike`
+Primary development branch: `gameplay/foundation`
 
-## First actions
+Integration branch: `main`
 
-Before new work:
+## First actions for the next Orchestrator
 
-1. verify the live remote `engine/pose-tracking-spike` HEAD;
+1. verify live remote HEADs for `main` and `gameplay/foundation`;
 2. read `Docs/current-state.md`;
-3. read `Docs/optimization-orchestrator-handoff.md` for frozen low-end/OpenVINO invariants;
+3. read `Docs/gameplay-foundation-plan.md`;
 4. read `Docs/decisions.md`;
-5. read `Docs/motion-engine.md` when Motion Engine implementation detail is needed.
+5. read `Docs/optimization-orchestrator-handoff.md` only when low-end/OpenVINO details are needed;
+6. read `Docs/motion-engine.md` only when accepted Motion Engine internals are relevant.
 
-Do not merge to `main` without explicit USER approval. Do not force-push, rebase, amend, reset or rewrite shared history.
+Do not force-push, rebase, amend, reset or rewrite shared history. Do not merge gameplay work back to `main` without explicit USER approval.
 
-## Current milestone
-
-Motion Engine V1 accepted implementation baseline:
-
-`140a939160530394ee5c70aa1dbc31c62f3a12e1`
-
-Current status:
+## Project phase transition
 
 **MOTION ENGINE V1 — USER ACCEPTED FOR CURRENT PROJECT SCOPE**
 
-The USER has explicitly decided to stop further Motion Engine refinement and move toward gameplay. Crouch now works to a usable degree but remains imperfect; that limitation is accepted/deferred and is not a blocker for the next stage.
+Accepted implementation baseline:
 
-Do not reopen crouch/grounding, general Phase-3/Phase-4 tuning, provider/OpenVINO work, hands, or broad performance investigation unless later gameplay work exposes a concrete blocking defect or the USER explicitly reopens it.
+`140a939160530394ee5c70aa1dbc31c62f3a12e1`
 
-## Accepted Motion Engine boundaries
+The USER explicitly ended further Motion Engine tuning after confirming the avatar-relative crouch works to a usable degree. Crouch/ground-contact fidelity remains imperfect but is an accepted limitation, not an unfinished blocker.
 
-The accepted runtime remains:
+The accepted Motion Engine was then merged into `main` with explicit USER approval.
+
+Do not reopen crouch/grounding, general Phase-3/Phase-4 tuning, provider/OpenVINO work, hands, or broad performance investigation unless later gameplay work exposes a concrete blocker or the USER explicitly reopens it.
+
+## Mainline environment integration already completed
+
+`main` now includes:
+
+- accepted Motion Engine V1;
+- Calibration environment from `realcourse/arihant`;
+- Obstacle Course environment from `realcourse/arihant`;
+- Hub environment from `course/janhavi`.
+
+Primary current scene assets:
+
+- `Assets/Scenes/Caliberation.unity`;
+- `Assets/Scenes/GoldenNeedle_Hub.unity`;
+- `Assets/Scenes/Obstacle Course.unity`.
+
+Relevant integration lineage before the gameplay documentation refresh:
+
+- Motion Engine merged to `main`: `880b75cf15acd030b5474eed97a7f74126ccf4e3`;
+- Calibration + Obstacle integration: `67d5de51f58d900df5df7f5b7ce91075e01f89c6`;
+- Hub integration: `3fb68ecfe245ff36c16a7752108248c1c433734c`.
+
+## Boxing environment status
+
+The Boxing environment is still on a local branch and is undergoing baking. It is not yet visible in the remote repository.
+
+The USER approved beginning gameplay-foundation development without waiting for it.
+
+When the boxing environment is ready:
+
+1. integrate the local boxing environment branch into `main`;
+2. preserve current `main` Motion Engine/core/package/project configuration on conflicts unless the USER explicitly decides otherwise;
+3. then merge updated `main` normally into `gameplay/foundation`;
+4. do not rebase/rewrite the gameplay branch.
+
+Until then, do not implement boxing-scene-specific placement, camera framing, enemy placement or ring wiring.
+
+## Approved product structure
+
+There are four intended game scenes/modes:
+
+1. **Calibration** — idle avatar, button/speech `Begin Calibration`, fade, calibration/T-pose presentation, success message, transition to Hub.
+2. **Hub** — persistent calibrated player free-roams and enters either Boxing or Obstacle portal.
+3. **Boxing** — 10-second countdown, player wrist/foot strikes, enemy hand strikes, health bars, match results, return to Hub.
+4. **Obstacle Course** — fenced survival arena, random hazards, warning/telegraph, health/damage, survival timer/results, return to Hub.
+
+Full approved behavior is in `Docs/gameplay-foundation-plan.md`.
+
+## Current milestone — Gameplay Foundation
+
+The immediate goal is **not** to finish Boxing or Obstacle gameplay yet. Build the reusable cross-scene foundation first.
+
+### Persistent player
+
+Target concept:
+
+`GoldenNeedlePlayer.prefab`
+
+The player/session should persist across normal scene transitions so calibration is performed once per play session rather than once per activity.
+
+Conceptual responsibilities:
 
 ```text
-WebCamTexture / CPU acquisition
--> bounded low-latency OpenVINO pose pipeline
--> canonical body
--> Phase 3 stabilization/calibration
--> Phase 4 humanoid pose/analytic IK
--> Phase 5 root locomotion
--> presentation/gameplay consumer
-```
-
-Important frozen invariants:
-
-- stabilized canonical body remains calibration/locomotion authority;
-- normal Phase-4 retargeting remains the avatar limb/leg pose authority;
-- `CameraSpaceRootTracker` remains the single stateful physical X/Z position authority;
-- support feet validate physical translation but do not own a second continuous root-position state machine;
-- cadence remains available for in-place travel;
-- Jump/Crouch semantics remain in `VerticalLocomotionInterpreter`;
-- grounded crouch root movement is avatar-relative through `AvatarRelativeCrouchGrounding`;
-- no post-root crouch-specific leg IK is active;
-- recenter and tracking-loss/reacquisition continuity remain preserved;
-- accepted low-end/OpenVINO architecture remains frozen;
-- Foundation A commands/speech and Foundation B camera work remain retained;
-- detailed/rich hands remain deferred.
-
-## Known accepted limitation
-
-Crouch/ground-contact fidelity is not perfect. The latest avatar-relative reconstruction improved the behavior enough for the USER to end Motion Engine V1 work, but it should not be documented as mathematically perfect foot locking.
-
-Treat this as a known limitation, not an unfinished corrective task.
-
-## Next stage — modular gameplay integration foundation
-
-The USER intends to explain the actual fitness gameplay later. Before game-specific mechanics are built, establish a reusable player-control prefab that can be placed into any fitness-field scene and immediately provide the accepted camera-driven character-control stack.
-
-Working concept:
-
-`GoldenNeedleMotionPlayer.prefab`
-
-The goal is **scene portability**, not new movement behavior.
-
-A clean gameplay scene should be able to:
-
-1. add the prefab;
-2. place it at the intended spawn point;
-3. enter Play mode;
-4. calibrate;
-5. control the avatar through the accepted Motion Engine without manually rebuilding or rewiring the tracking stack.
-
-## Recommended prefab architecture
-
-Keep one obvious top-level player prefab with internally owned dependencies. A sensible hierarchy is conceptually:
-
-```text
-GoldenNeedleMotionPlayer
-├── MotionRuntime
-│   ├── body/camera provider
-│   ├── canonical/stabilization/calibration runtime
-│   └── command/recenter support
+GoldenNeedlePlayer
+├── accepted Motion Engine runtime/provider/calibration
 ├── Avatar
-│   ├── current humanoid model
 │   ├── HumanoidRigBinding
 │   ├── HumanoidRetargeter
 │   └── EmbodiedLocomotionController
-└── PlayerFacade
-    └── stable gameplay-facing API/status
+├── GoldenNeedlePlayerFacade
+├── PlayerHealth / damage receiver
+├── body anchors
+│   ├── LeftWrist
+│   ├── RightWrist
+│   ├── LeftFoot
+│   └── RightFoot
+└── optional gameplay capabilities
+    └── boxing strike hitboxes disabled outside Boxing
 ```
 
-Exact hierarchy should follow the existing component dependencies rather than forcing this shape literally.
+Exact hierarchy should follow existing component dependencies rather than forcing this shape literally.
 
-### The prefab should own
+### Player facade rule
 
-- the accepted motion runtime/provider wiring required for one controlled player;
-- the humanoid/avatar instance;
-- rig binding and Phase-4 retargeting;
-- Phase-5 locomotion;
-- calibration/recenter access;
-- a small stable gameplay-facing facade/API;
-- optional diagnostics that can be disabled for normal gameplay.
+Gameplay systems should depend on one stable gameplay-facing facade rather than reaching into Motion Engine internals.
 
-### The prefab should not own
+Useful initial facade surface may include:
 
-- fitness-field level geometry;
-- obstacles or exercise-specific rules;
-- scoring, progression or timers;
-- scene lighting;
-- arbitrary field UI;
-- game-specific camera behavior unless the later gameplay design explicitly needs it;
-- speculative Rigidbody/CharacterController/physics redesign before gameplay requirements are known.
-
-## Gameplay-facing facade
-
-Prefer game systems depending on one stable facade rather than directly reaching into Motion Engine internals.
-
-The first facade can expose only what is already trustworthy and broadly useful, for example:
-
-- whether calibration/body control is ready;
+- calibrated/ready state;
 - tracking availability;
-- controlled player/avatar root transform;
-- current high-level vertical state (`Standing`, `Crouch`, `Jump`);
-- recenter command;
-- enable/disable player motion if needed;
-- optional read-only locomotion/tracking diagnostics for gameplay/debug use.
+- player root transform;
+- high-level vertical state (`Standing`, `Crouch`, `Jump`);
+- recenter;
+- enable/disable motion control;
+- health/damage access;
+- wrist/foot anchors;
+- visible-avatar presentation drive mode where appropriate.
 
-Do not expose every internal filter/provider/retargeter setting through the gameplay API.
+Boxing/Obstacle/portal code must not directly depend on `MediaPipePoseProvider`, OpenVINO internals, `CameraSpaceRootTracker`, `HumanoidRetargeter`, or filter implementation details.
 
-## Scene-dependency rule
+## Persistent game-flow owner
 
-The reusable prefab must not depend on manually assigned objects that only exist in `PoseTrackingSpike` or another specific scene.
+Use `GameFlowManager` or equivalent as a separate persistent session-level system for:
 
-Prefer prefab-internal serialized references or deterministic self-resolution among children/components. If a scene-level dependency is truly unavoidable, expose one clear documented integration slot rather than several hidden `Find...` dependencies.
+- fade out/fade in;
+- scene loading;
+- return to Hub;
+- destination spawn-point resolution;
+- reposition/recenter on scene entry as needed;
+- preventing duplicate persistent session/player objects.
 
-Keep `PoseTrackingSpike` as the development/diagnostic lab. Do not convert that scene itself into the gameplay architecture.
+Use a simple `PlayerSpawnPoint` contract in each scene.
 
-## Validation target for the modular foundation
+Scene-specific controllers own mode logic:
 
-Before actual gameplay mechanics begin, validate the prefab in a minimal clean test scene containing only:
+- `CalibrationSceneController`;
+- Hub/portal controller(s);
+- `BoxingMatchController`;
+- `ObstacleCourseController`.
 
-- basic ground/lighting;
-- the motion-player prefab;
-- only the smallest camera/presentation setup genuinely required.
+## Speech-system expansion
 
-Acceptance should prove:
+Retain and extend Foundation-A command infrastructure.
 
-- prefab instantiates without missing references;
-- Unity compiles without red errors;
-- webcam/body tracking initializes;
-- calibration works;
-- Phase-4 avatar control works;
-- Phase-5 locomotion works;
-- recenter works;
-- no `PoseTrackingSpike`-specific scene object is required;
-- deleting/re-adding the prefab does not require a manual rewiring checklist.
+Approved initial presentation commands:
 
-## Next boundary
+- `Reduce latency` / `Low latency mode` -> visible avatar uses `RawCanonical`;
+- `Smooth motion` / `Stabilized mode` -> visible avatar uses `StabilizedCanonical`.
 
-Do **not** invent fitness gameplay mechanics yet. The USER will provide those requirements later.
+Critical invariant: calibration and locomotion remain stabilized regardless of visible-avatar presentation mode.
 
-The next implementation task should therefore be only the reusable gameplay-player prefab/facade foundation and a minimal portability validation scene. After that passes, actual fitness fields, obstacles, exercise mechanics, scoring and progression can be designed against the stable player interface.
+Prefer context-aware commands:
 
-No merge to `main` has been approved.
+- Calibration: `Begin Calibration`;
+- post-calibration: `Recenter`;
+- recovery: `Retry Tracking`;
+- presentation: `Reduce latency`, `Smooth motion`;
+- possible later: `Pause Tracking`, `Resume Tracking` if useful.
+
+Do not expose lab/debug commands during normal gameplay. Do not make `Return to Hub` an always-on global phrase without context/confirmation.
+
+## Accepted Motion Engine invariants to preserve
+
+- stabilized canonical body remains calibration/locomotion authority;
+- Phase-4 retargeting remains normal limb/leg-pose authority;
+- `CameraSpaceRootTracker` remains the single stateful physical X/Z owner;
+- feet/support validate translation, not a second root-position owner;
+- cadence remains available for in-place travel;
+- Jump/Crouch semantics remain in `VerticalLocomotionInterpreter`;
+- grounded crouch root motion remains avatar-relative through `AvatarRelativeCrouchGrounding`;
+- no post-root crouch-specific full leg IK;
+- accepted low-end/OpenVINO pipeline remains frozen;
+- detailed/rich hands remain deferred.
+
+## Recommended implementation order
+
+1. **Gameplay Foundation**
+   - persistent player prefab/session;
+   - facade;
+   - health/damage;
+   - body anchors;
+   - `GameFlowManager`;
+   - fades/scene loading;
+   - `PlayerSpawnPoint`;
+   - contextual speech + raw/stabilized presentation commands.
+
+2. **Calibration Scene integration**
+   - idle -> Begin Calibration -> fade -> calibration -> success -> Hub.
+
+3. **Hub integration**
+   - free roam;
+   - working portals;
+   - reliable cross-scene persistence.
+
+4. **Boxing Mode** after Boxing environment is integrated.
+
+5. **Obstacle Mode**.
+
+6. **Full flow QA/polish**
+   - Calibration -> Hub -> Boxing -> Hub -> Obstacle -> Hub;
+   - calibration/session persists;
+   - no duplicate player/provider/session objects.
+
+## Immediate next action
+
+Continue from `gameplay/foundation` and inspect the existing Motion Engine component dependencies before creating the prefab or facade.
+
+First implementation should focus only on scene-independent foundation pieces. Do not touch Boxing scene integration until the local Boxing environment has been merged into `main` and brought into the gameplay branch.
+
+The USER has approved starting this work now.
