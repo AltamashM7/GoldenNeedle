@@ -264,6 +264,57 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         }
 
         /// <summary>
+        /// Intentionally places the accepted player root at a gameplay world position and realigns
+        /// only locomotion-origin/state that is relative to the previous world location. Calibration
+        /// and all serialized tracking/locomotion tuning remain untouched.
+        /// </summary>
+        public bool TryPlacePlayerRoot(Vector3 worldPosition)
+        {
+            if (!IsFinite(worldPosition))
+            {
+                return false;
+            }
+
+            InitializeModules();
+            runtime = runtime == null ? GetComponent<MotionEngineRuntime>() : runtime;
+            binding = binding == null ? GetComponent<HumanoidRigBinding>() : binding;
+            if (!ResolvePlayerRoot())
+            {
+                return false;
+            }
+
+            _playerRoot.position = worldPosition;
+            _virtualOriginXZ = new Vector2(worldPosition.x, worldPosition.z);
+            _verticalOriginY = worldPosition.y;
+            _hasVerticalOrigin = true;
+
+            // These are transient world-relative locomotion observations, not calibration/tuning.
+            // Resetting them makes the destination pose the new physical/virtual world origin and
+            // prevents the next LateUpdate from reapplying displacement from the prior scene.
+            _rootTracker.Reset();
+            _verticalInterpreter.Reset();
+            _avatarCrouchGrounding.Reset();
+            _cadenceDetector.Reset();
+            _fusion.ResetPhysicalContribution();
+            _pendingRecenter = false;
+            _holdingJumpDepth = false;
+            _heldJumpDepthDisplacement = 0f;
+            _hasHeading = false;
+
+            RootSample = default;
+            VerticalSample = default;
+            CrouchGroundingSample = default;
+            CadenceSample = default;
+            HeadingSample = default;
+            FusionResult = default;
+            FinalFrameMotionXZ = Vector2.zero;
+            FinalWorldPositionXZ = _virtualOriginXZ;
+            FinalFrameMotionY = 0f;
+            FinalWorldPositionY = _verticalOriginY;
+            return true;
+        }
+
+        /// <summary>
         /// Makes the current physical X/Z tracking position the new origin without moving the
         /// virtual character. Vertical standing reference/root origin remain independent.
         /// </summary>
@@ -383,6 +434,13 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 return Vector2.zero;
             }
             return new Vector2(_playerRoot.position.x, _playerRoot.position.z);
+        }
+
+        private static bool IsFinite(Vector3 value)
+        {
+            return !float.IsNaN(value.x) && !float.IsInfinity(value.x) &&
+                   !float.IsNaN(value.y) && !float.IsInfinity(value.y) &&
+                   !float.IsNaN(value.z) && !float.IsInfinity(value.z);
         }
 
         private void ClearFrameDiagnostics()

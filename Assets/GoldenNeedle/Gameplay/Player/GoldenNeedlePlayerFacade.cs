@@ -78,6 +78,12 @@ namespace GoldenNeedle.Gameplay.Player
             locomotionController?.Recenter();
         }
 
+        public bool TryPlacePlayerAt(Vector3 worldPosition)
+        {
+            ResolveReferences();
+            return locomotionController != null && locomotionController.TryPlacePlayerRoot(worldPosition);
+        }
+
         public void BeginCalibration()
         {
             motionRuntime?.BeginCalibration();
