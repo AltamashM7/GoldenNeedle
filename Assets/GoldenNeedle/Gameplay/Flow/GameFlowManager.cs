@@ -130,16 +130,22 @@ namespace GoldenNeedle.Gameplay.Flow
             }
 
             SetState(GameFlowTransitionState.LoadingScene);
-            AsyncOperation loadOperation;
+            AsyncOperation loadOperation = null;
+            Exception loadException = null;
             try
             {
                 loadOperation = SceneManager.LoadSceneAsync(destinationSceneName, LoadSceneMode.Single);
             }
             catch (Exception exception)
             {
+                loadException = exception;
+            }
+
+            if (loadException != null)
+            {
                 RecordTransitionFailure(
                     GameFlowFailureCode.SceneLoadFailed,
-                    $"Failed to start loading scene '{destinationSceneName}': {exception.Message}");
+                    $"Failed to start loading scene '{destinationSceneName}': {loadException.Message}");
                 yield return RestoreVisibilityAfterFailure();
                 EndFailedTransition();
                 yield break;
