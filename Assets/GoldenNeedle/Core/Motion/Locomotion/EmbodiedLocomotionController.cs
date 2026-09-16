@@ -7,9 +7,9 @@ using UnityEngine;
 namespace GoldenNeedle.Core.Motion.Locomotion
 {
     /// <summary>
-    /// Phase 5A root-translation controller. It leaves Phase 4 pose/orientation untouched and only
-    /// writes the bound avatar root X/Z world position after retargeting. Root Y and root rotation
-    /// are never copied from tracking.
+    /// Phase 5A root-translation controller. It leaves Phase 4 pose/orientation untouched and
+    /// applies locomotion only after retargeting: horizontal X/Z plus the bounded tracked vertical
+    /// offset produced by VerticalLocomotionInterpreter. Root rotation is never copied from tracking.
     /// </summary>
     [DefaultExecutionOrder(150)]
     public sealed class EmbodiedLocomotionController : MonoBehaviour
@@ -17,12 +17,16 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [Header("Runtime Wiring")]
         [SerializeField] private MotionEngineRuntime runtime;
         [SerializeField] private HumanoidRigBinding binding;
-        [Tooltip("Enable Phase 5A avatar-root X/Z translation. Phase 4 pose retargeting is independent.")]
+        [Tooltip("Enable Phase 5A avatar-root translation. Phase 4 pose retargeting is independent.")]
         [SerializeField] private bool driveLocomotion = true;
 
         [Header("Root / Physical Tracking")]
         [Tooltip("Support-foot tracking, filtering, and depth-corroboration settings.")]
         [SerializeField] private CameraSpaceRootTrackerSettings rootTracking = new CameraSpaceRootTrackerSettings();
+
+        [Header("Vertical Locomotion")]
+        [Tooltip("Standing reference, physical jump/crouch detection, root-Y scaling, response and tracking-grace settings.")]
+        [SerializeField] private VerticalLocomotionSettings vertical = new VerticalLocomotionSettings();
 
         [Header("Physical Locomotion / Fusion")]
         [Tooltip("Physical mapping scale/deadzones and physical-vs-cadence suppression settings.")]
@@ -37,6 +41,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [Min(0.1f), SerializeField] private float headingResponse = 8f;
 
         private CameraSpaceRootTracker _rootTracker;
+        private VerticalLocomotionInterpreter _verticalInterpreter;
         private CadenceDetector _cadenceDetector;
         private LocomotionFusion _fusion;
         private Transform _playerRoot;
@@ -47,6 +52,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         private bool _wasCalibrationValid;
         private bool _pendingRecenter;
         private int _recenterCount;
+        private float _verticalOriginY;
+        private bool _hasVerticalOrigin;
+        private bool _holdingJumpDepth;
+        private float _heldJumpDepthDisplacement;
 
         public bool DriveLocomotion
         {
@@ -55,11 +64,16 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         }
 
         public CameraSpaceRootSample RootSample { get; private set; }
+        public VerticalLocomotionSample VerticalSample { get; private set; }
         public CadenceSample CadenceSample { get; private set; }
         public BodyHeadingSample HeadingSample { get; private set; }
         public LocomotionFusionResult FusionResult { get; private set; }
         public Vector2 FinalFrameMotionXZ { get; private set; }
         public Vector2 FinalWorldPositionXZ { get; private set; }
+        public float FinalFrameMotionY { get; private set; }
+        public float FinalWorldPositionY { get; private set; }
+        public float VerticalOriginY => _verticalOriginY;
+        public bool HasVerticalOrigin => _hasVerticalOrigin;
         public bool RecenterPending => _pendingRecenter || (_rootTracker != null && _rootTracker.RecenterPending);
         public int RecenterCount => _recenterCount;
         public Transform PlayerRoot => _playerRoot;
@@ -98,10 +112,14 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 if (_wasCalibrationValid)
                 {
                     _rootTracker.Reset();
+                    _verticalInterpreter.Reset();
                     _cadenceDetector.Reset();
                     _fusion.ResetPhysicalContribution();
+                    RestoreVerticalOrigin();
                     _virtualOriginXZ = CurrentPlayerXZ();
                     _hasHeading = false;
+                    _hasVerticalOrigin = false;
+                    _holdingJumpDepth = false;
                 }
 
                 _wasCalibrationValid = false;
@@ -112,14 +130,19 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             if (!_wasCalibrationValid)
             {
                 _rootTracker.Reset();
+                _verticalInterpreter.Reset();
                 _cadenceDetector.Reset();
                 _fusion.ResetPhysicalContribution();
                 _virtualOriginXZ = CurrentPlayerXZ();
+                _verticalOriginY = _playerRoot.position.y;
+                _hasVerticalOrigin = true;
+                _holdingJumpDepth = false;
                 _hasHeading = false;
                 _wasCalibrationValid = true;
             }
 
             var dt = Mathf.Max(0.0001f, Time.unscaledDeltaTime);
+            var previousRootSample = RootSample;
             RootSample = _rootTracker.Update(runtime.StabilizedFrame, profile, dt);
 
             if (_pendingRecenter && RootSample.isValid)
@@ -127,6 +150,11 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 PerformRecenterNow();
                 RootSample = _rootTracker.LatestSample;
             }
+
+            VerticalSample = _verticalInterpreter.Update(
+                runtime.StabilizedFrame,
+                profile,
+                dt);
 
             CadenceSample = _cadenceDetector.Update(
                 runtime.StabilizedFrame,
@@ -164,31 +192,59 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 binding,
                 out physicalReferenceMap);
 
+            var rootForFusion = RootSample;
+            if (VerticalSample.suppressPhysicalDepth)
+            {
+                if (!_holdingJumpDepth)
+                {
+                    _heldJumpDepthDisplacement = previousRootSample.hasOrigin
+                        ? previousRootSample.displacementXZ.y
+                        : RootSample.displacementXZ.y;
+                    _holdingJumpDepth = true;
+                }
+
+                // Support image-Y rises during a real jump. Hold the pre-jump camera-depth
+                // displacement while jump/landing is active so that vertical motion cannot leak
+                // into horizontal world depth. Lateral physical displacement remains untouched.
+                rootForFusion.displacementXZ.y = _heldJumpDepthDisplacement;
+                rootForFusion.velocityXZ.y = 0f;
+            }
+            else
+            {
+                _holdingJumpDepth = false;
+            }
+
             FusionResult = _fusion.Evaluate(
-                RootSample,
+                rootForFusion,
                 CadenceSample,
                 _hasHeading ? _smoothedHeading : Vector2.zero,
                 physicalReferenceMap);
 
             _virtualOriginXZ += FusionResult.cadenceVelocity * dt;
-            var desired = _virtualOriginXZ + FusionResult.physicalContribution;
-            var current = CurrentPlayerXZ();
-            FinalFrameMotionXZ = desired - current;
-            FinalWorldPositionXZ = desired;
+            var desiredXZ = _virtualOriginXZ + FusionResult.physicalContribution;
+            var desiredY = _hasVerticalOrigin
+                ? _verticalOriginY + VerticalSample.worldOffsetY
+                : _playerRoot.position.y;
+            var currentPosition = _playerRoot.position;
+            var currentXZ = new Vector2(currentPosition.x, currentPosition.z);
+            FinalFrameMotionXZ = desiredXZ - currentXZ;
+            FinalWorldPositionXZ = desiredXZ;
+            FinalFrameMotionY = desiredY - currentPosition.y;
+            FinalWorldPositionY = desiredY;
 
             if (driveLocomotion)
             {
-                var currentPosition = _playerRoot.position;
                 _playerRoot.position = new Vector3(
-                    desired.x,
-                    currentPosition.y,
-                    desired.y);
+                    desiredXZ.x,
+                    desiredY,
+                    desiredXZ.y);
             }
         }
 
         /// <summary>
-        /// Makes the current physical tracking position the new physical origin without moving the
-        /// virtual character. The same public API can later be invoked by a discrete voice command.
+        /// Makes the current physical X/Z tracking position the new physical origin without moving
+        /// the virtual character. Vertical standing reference and vertical root origin are
+        /// intentionally independent and are not redefined by horizontal recenter.
         /// </summary>
         public void Recenter()
         {
@@ -241,6 +297,13 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 _cadenceDetector = new CadenceDetector(cadence);
                 _fusion = new LocomotionFusion(fusion);
             }
+
+            if (_verticalInterpreter == null)
+            {
+                vertical = vertical ?? new VerticalLocomotionSettings();
+                vertical.Sanitize();
+                _verticalInterpreter = new VerticalLocomotionInterpreter(vertical);
+            }
         }
 
         private bool ResolvePlayerRoot()
@@ -250,6 +313,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             {
                 _playerRoot = null;
                 _initializedPlayerRoot = false;
+                _hasVerticalOrigin = false;
                 return false;
             }
 
@@ -257,15 +321,31 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             {
                 _playerRoot = candidate;
                 _virtualOriginXZ = CurrentPlayerXZ();
+                _verticalOriginY = _playerRoot.position.y;
+                _hasVerticalOrigin = false;
                 _rootTracker?.Reset();
+                _verticalInterpreter?.Reset();
                 _cadenceDetector?.Reset();
                 _fusion?.ResetPhysicalContribution();
+                _holdingJumpDepth = false;
                 _hasHeading = false;
                 _wasCalibrationValid = false;
                 _initializedPlayerRoot = true;
             }
 
             return true;
+        }
+
+        private void RestoreVerticalOrigin()
+        {
+            if (_playerRoot == null || !_hasVerticalOrigin || !driveLocomotion)
+            {
+                return;
+            }
+
+            var position = _playerRoot.position;
+            position.y = _verticalOriginY;
+            _playerRoot.position = position;
         }
 
         private Vector2 CurrentPlayerXZ()
@@ -281,11 +361,16 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         private void ClearFrameDiagnostics()
         {
             RootSample = default;
+            VerticalSample = _verticalInterpreter == null
+                ? default
+                : _verticalInterpreter.LatestSample;
             CadenceSample = default;
             HeadingSample = default;
             FusionResult = default;
             FinalFrameMotionXZ = Vector2.zero;
             FinalWorldPositionXZ = _playerRoot == null ? Vector2.zero : CurrentPlayerXZ();
+            FinalFrameMotionY = 0f;
+            FinalWorldPositionY = _playerRoot == null ? 0f : _playerRoot.position.y;
         }
     }
 }
