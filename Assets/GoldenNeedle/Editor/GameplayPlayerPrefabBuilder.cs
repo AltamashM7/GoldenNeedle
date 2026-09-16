@@ -92,17 +92,22 @@ namespace GoldenNeedle.Editor.Gameplay
             var sourceScene = source.scene;
             var sourceSceneWasDirty = sourceScene.IsValid() && sourceScene.isDirty;
             var previousActiveScene = SceneManager.GetActiveScene();
-            var previewScene = EditorSceneManager.NewPreviewScene();
+            var stagingScene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
             GameObject duplicate = null;
 
             try
             {
-                if (!SceneManager.SetActiveScene(previewScene))
+                if (!SceneManager.SetActiveScene(stagingScene))
                 {
-                    throw new InvalidOperationException("Could not activate the temporary preview scene used for safe prefab assembly.");
+                    throw new InvalidOperationException("Could not activate the temporary staging scene used for safe prefab assembly.");
                 }
 
                 duplicate = UnityEngine.Object.Instantiate(source);
+                if (duplicate.scene != stagingScene)
+                {
+                    throw new InvalidOperationException("The temporary player duplicate was not created inside the isolated staging scene.");
+                }
+
                 duplicate.name = "GoldenNeedlePlayer";
                 duplicate.hideFlags = HideFlags.HideAndDontSave;
 
@@ -146,9 +151,9 @@ namespace GoldenNeedle.Editor.Gameplay
                     UnityEngine.Object.DestroyImmediate(duplicate);
                 }
 
-                if (previewScene.IsValid())
+                if (stagingScene.IsValid())
                 {
-                    EditorSceneManager.ClosePreviewScene(previewScene);
+                    EditorSceneManager.CloseScene(stagingScene, true);
                 }
 
                 if (sourceScene.IsValid() && !sourceSceneWasDirty && sourceScene.isDirty)
