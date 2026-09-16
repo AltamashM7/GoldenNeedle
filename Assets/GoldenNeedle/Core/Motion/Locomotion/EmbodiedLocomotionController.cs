@@ -16,15 +16,17 @@ namespace GoldenNeedle.Core.Motion.Locomotion
     }
 
     /// <summary>
-    /// Pure post-solve crouch grounding state. Standing captures each solved foot height relative to
-    /// the avatar root. During crouch, the same root-relative measurement yields the downward root-Y
-    /// correction required to keep the bilateral feet at their standing ground height. Because the
-    /// measurement is root-relative, prior Phase-5 root-Y writes cannot feed back into the result.
+    /// Pure post-solve grounded-bend anchoring state. Standing captures each solved foot height
+    /// relative to the avatar root. While existing vertical evidence still says the support base is
+    /// grounded, the same root-relative measurement yields the downward root-Y correction required
+    /// to keep both feet at their standing ground height. This runs independently from semantic
+    /// Crouch acquisition, while Jump remains the exclusive upward/root-Y action authority.
     /// </summary>
     public sealed class GroundedCrouchFootAnchor
     {
         private const float MinimumLegScale = 0.0001f;
         private const float MaximumBilateralDifferenceNormalized = 0.12f;
+        private const float GroundingDeadbandNormalized = 0.01f;
         private const float OwnershipEpsilon = 0.001f;
 
         private bool _hasReference;
@@ -47,15 +49,12 @@ namespace GoldenNeedle.Core.Motion.Locomotion
 
         public CrouchGroundingSample Update(
             bool calibrationValid,
-            bool verticalReferenceReady,
-            VerticalLocomotionState state,
-            bool verticalMeasurementAvailable,
+            VerticalLocomotionSample verticalSample,
+            VerticalLocomotionSettings settings,
             bool feetAvailable,
             float leftFootRelativeY,
             float rightFootRelativeY,
             float legReferenceScale,
-            float maximumDownwardCorrection,
-            float response,
             float deltaTime)
         {
             if (!calibrationValid)
@@ -64,17 +63,22 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 return LatestSample;
             }
 
+            settings = settings ?? new VerticalLocomotionSettings();
+            settings.Sanitize();
+
             var validFeet = feetAvailable &&
                 IsFinite(leftFootRelativeY) &&
                 IsFinite(rightFootRelativeY) &&
                 IsFinite(legReferenceScale) &&
                 legReferenceScale > MinimumLegScale;
+            var groundingEvidenceSafe = IsGroundingEvidenceSafe(
+                verticalSample,
+                settings);
 
             if (!_hasReference)
             {
-                if (verticalReferenceReady &&
-                    verticalMeasurementAvailable &&
-                    state == VerticalLocomotionState.Standing &&
+                if (groundingEvidenceSafe &&
+                    verticalSample.state == VerticalLocomotionState.Standing &&
                     validFeet)
                 {
                     _referenceLeftRelativeY = leftFootRelativeY;
@@ -93,16 +97,14 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             }
 
             var dt = Mathf.Max(0.0001f, deltaTime);
-            var maxCorrection = Mathf.Max(0f, maximumDownwardCorrection);
-            var bilateralDifferenceNormalized = 0f;
-            var trusted = false;
-
-            if (state == VerticalLocomotionState.Jump)
+            if (verticalSample.state == VerticalLocomotionState.Jump ||
+                !groundingEvidenceSafe)
             {
-                // Jump owns root Y exclusively. Clear the crouch target in the background, but
-                // report no ownership so the controller uses the existing jump offset immediately.
+                // Jump and takeoff-like support motion must never be pinned to the floor. Clear the
+                // target in the background, but relinquish ownership immediately so the existing
+                // vertical interpreter remains the only semantic action/root-Y authority.
                 _targetCorrectionY = 0f;
-                ApplyFilter(0f, response, dt);
+                ApplyFilter(0f, settings.verticalResponse, dt);
                 LatestSample = new CrouchGroundingSample
                 {
                     referenceReady = true,
@@ -114,58 +116,88 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 return LatestSample;
             }
 
-            if (state == VerticalLocomotionState.Crouch)
+            var bilateralDifferenceNormalized = 0f;
+            var trusted = false;
+            if (validFeet)
             {
-                if (verticalMeasurementAvailable && validFeet)
-                {
-                    var leftCorrection =
-                        _referenceLeftRelativeY - leftFootRelativeY;
-                    var rightCorrection =
-                        _referenceRightRelativeY - rightFootRelativeY;
-                    bilateralDifferenceNormalized = Mathf.Abs(
-                        leftCorrection - rightCorrection) /
-                        Mathf.Max(MinimumLegScale, legReferenceScale);
+                var leftCorrection =
+                    _referenceLeftRelativeY - leftFootRelativeY;
+                var rightCorrection =
+                    _referenceRightRelativeY - rightFootRelativeY;
+                bilateralDifferenceNormalized = Mathf.Abs(
+                    leftCorrection - rightCorrection) /
+                    Mathf.Max(MinimumLegScale, legReferenceScale);
 
-                    if (bilateralDifferenceNormalized <=
-                        MaximumBilateralDifferenceNormalized)
+                if (bilateralDifferenceNormalized <=
+                    MaximumBilateralDifferenceNormalized)
+                {
+                    var bilateralCorrection =
+                        (leftCorrection + rightCorrection) * 0.5f;
+                    var normalizedDownwardCorrection =
+                        Mathf.Max(0f, -bilateralCorrection) /
+                        Mathf.Max(MinimumLegScale, legReferenceScale);
+                    var bendEvidence =
+                        verticalSample.crouchCompression > 0f ||
+                        verticalSample.state == VerticalLocomotionState.Crouch;
+
+                    if (!bendEvidence ||
+                        normalizedDownwardCorrection <=
+                        GroundingDeadbandNormalized)
                     {
-                        var bilateralCorrection =
-                            (leftCorrection + rightCorrection) * 0.5f;
-                        // A grounded crouch compensator may lower the root, but it never lifts it.
-                        // Upward root motion belongs to jump, not to crouch-foot anchoring noise.
+                        _targetCorrectionY = 0f;
+                    }
+                    else
+                    {
+                        // Grounded bend anchoring may only lower the root. Upward root movement is
+                        // reserved for the existing jump path. Use the existing crouch safety clamp
+                        // without using crouchWorldScale as the normal grounding authority.
                         _targetCorrectionY = Mathf.Clamp(
                             Mathf.Min(0f, bilateralCorrection),
-                            -maxCorrection,
+                            -Mathf.Max(0f, settings.maximumCrouchDepth),
                             0f);
-                        trusted = true;
                     }
-                }
 
-                // If the bilateral solve is temporarily unusable, hold the last trusted target
-                // instead of reacting to one unreliable foot with a large correction.
-                ApplyFilter(_targetCorrectionY, response, dt);
-                LatestSample = new CrouchGroundingSample
-                {
-                    referenceReady = true,
-                    measurementTrusted = trusted,
-                    ownsRootY = true,
-                    correctionY = _filteredCorrectionY,
-                    bilateralDifferenceNormalized = bilateralDifferenceNormalized,
-                };
-                return LatestSample;
+                    trusted = true;
+                }
             }
 
-            _targetCorrectionY = 0f;
-            ApplyFilter(0f, response, dt);
+            // Preserve the previous bilateral-disagreement protection: an unusable one-sided solve
+            // never invents a new correction. It holds the last trusted target until reliable
+            // bilateral geometry returns or vertical evidence says grounding is no longer safe.
+            ApplyFilter(
+                _targetCorrectionY,
+                settings.verticalResponse,
+                dt);
+
+            var semanticCrouch =
+                verticalSample.state == VerticalLocomotionState.Crouch;
+            var hasGroundingCorrection =
+                Mathf.Abs(_filteredCorrectionY) > OwnershipEpsilon ||
+                Mathf.Abs(_targetCorrectionY) > OwnershipEpsilon;
             LatestSample = new CrouchGroundingSample
             {
                 referenceReady = true,
-                measurementTrusted = validFeet && verticalMeasurementAvailable,
-                ownsRootY = Mathf.Abs(_filteredCorrectionY) > OwnershipEpsilon,
+                measurementTrusted = trusted,
+                ownsRootY = semanticCrouch || hasGroundingCorrection,
                 correctionY = _filteredCorrectionY,
-                bilateralDifferenceNormalized = 0f,
+                bilateralDifferenceNormalized = bilateralDifferenceNormalized,
             };
             return LatestSample;
+        }
+
+        private static bool IsGroundingEvidenceSafe(
+            VerticalLocomotionSample sample,
+            VerticalLocomotionSettings settings)
+        {
+            return sample.referenceReady &&
+                sample.isAvailable &&
+                sample.state != VerticalLocomotionState.Jump &&
+                Mathf.Abs(sample.supportRise) <=
+                    settings.groundedSupportTolerance &&
+                sample.footAsymmetry <=
+                    settings.maximumJumpFootAsymmetry &&
+                sample.apparentScaleChange <=
+                    settings.maximumApparentScaleChange;
         }
 
         private void ApplyFilter(float target, float response, float deltaTime)
@@ -192,8 +224,8 @@ namespace GoldenNeedle.Core.Motion.Locomotion
     /// <summary>
     /// Phase 5A root-translation controller. It leaves Phase 4 pose/orientation untouched and
     /// applies locomotion only after retargeting: horizontal X/Z plus bounded tracked vertical
-    /// movement. Jump uses the vertical interpreter directly; grounded crouch uses post-Phase-4
-    /// solved foot geometry so feet remain anchored to their standing ground reference.
+    /// movement. Jump uses the vertical interpreter directly; trustworthy grounded bends use
+    /// post-Phase-4 solved foot geometry so feet remain anchored to their standing ground reference.
     /// Root rotation is never copied from tracking.
     /// </summary>
     [DefaultExecutionOrder(150)]
@@ -549,15 +581,12 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 out var legReferenceScale);
             return _crouchGrounding.Update(
                 true,
-                VerticalSample.referenceReady,
-                VerticalSample.state,
-                VerticalSample.isAvailable,
+                VerticalSample,
+                vertical,
                 feetAvailable,
                 leftFootRelativeY,
                 rightFootRelativeY,
                 legReferenceScale,
-                vertical.maximumCrouchDepth,
-                vertical.verticalResponse,
                 deltaTime);
         }
 

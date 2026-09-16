@@ -152,18 +152,16 @@ namespace GoldenNeedle.Tests
         [Test]
         public void StandingFootAnchorCapturesZeroCorrectionReference()
         {
+            var settings = GroundingSettings();
             var anchor = new GroundedCrouchFootAnchor();
             var sample = anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Standing,
-                true,
+                GroundedVertical(),
+                settings,
                 true,
                 -1f,
                 -1f,
                 1f,
-                0.6f,
-                1000f,
                 0.1f);
 
             Assert.That(sample.referenceReady, Is.True);
@@ -172,20 +170,221 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void CrouchSolvedFootRiseProducesMatchingDownwardRootCorrection()
+        public void ShallowGroundedBendAnchorsFeetBeforeSemanticCrouch()
         {
-            var anchor = ReadyAnchor();
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
+            var shallow = anchor.Update(
+                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Standing,
+                    crouchCompression: 0.08f),
+                settings,
+                true,
+                -0.92f,
+                -0.92f,
+                1f,
+                0.1f);
+
+            Assert.That(shallow.measurementTrusted, Is.True);
+            Assert.That(shallow.ownsRootY, Is.True);
+            Assert.That(shallow.correctionY, Is.EqualTo(-0.08f).Within(0.001f));
+        }
+
+        [Test]
+        public void GroundingCorrectionIncreasesSmoothlyFromShallowBendIntoSemanticCrouch()
+        {
+            var settings = GroundingSettings(response: 8f);
+            var anchor = ReadyAnchor(settings);
+            var shallow = anchor.Update(
+                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Standing,
+                    crouchCompression: 0.08f),
+                settings,
+                true,
+                -0.92f,
+                -0.92f,
+                1f,
+                0.1f);
             var crouch = anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.25f),
+                settings,
                 true,
                 -0.75f,
                 -0.75f,
                 1f,
-                0.6f,
-                1000f,
+                0.1f);
+
+            Assert.That(shallow.correctionY, Is.LessThan(0f));
+            Assert.That(crouch.ownsRootY, Is.True);
+            Assert.That(crouch.correctionY, Is.LessThan(shallow.correctionY));
+            Assert.That(crouch.correctionY, Is.GreaterThanOrEqualTo(-0.25f));
+        }
+
+        [Test]
+        public void ReturningUprightReleasesGroundingTowardZeroWithoutPop()
+        {
+            var settings = GroundingSettings(response: 8f);
+            var anchor = ReadyAnchor(settings);
+            var bent = anchor.Update(
+                true,
+                GroundedVertical(crouchCompression: 0.12f),
+                settings,
+                true,
+                -0.82f,
+                -0.82f,
+                1f,
+                0.1f);
+            var releasing = anchor.Update(
+                true,
+                GroundedVertical(),
+                settings,
+                true,
+                -1f,
+                -1f,
+                1f,
+                0.1f);
+
+            Assert.That(releasing.correctionY, Is.GreaterThan(bent.correctionY));
+            Assert.That(releasing.correctionY, Is.LessThanOrEqualTo(0f));
+            Assert.That(releasing.ownsRootY, Is.True);
+
+            settings.verticalResponse = 1000f;
+            var upright = anchor.Update(
+                true,
+                GroundedVertical(),
+                settings,
+                true,
+                -1f,
+                -1f,
+                1f,
+                0.1f);
+            Assert.That(Mathf.Abs(upright.correctionY), Is.LessThan(0.0001f));
+            Assert.That(upright.ownsRootY, Is.False);
+        }
+
+        [Test]
+        public void TinyStandingFootNoiseRemainsInsideGroundingDeadband()
+        {
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
+            var noise = anchor.Update(
+                true,
+                GroundedVertical(crouchCompression: 0.03f),
+                settings,
+                true,
+                -0.994f,
+                -0.994f,
+                1f,
+                0.1f);
+
+            Assert.That(noise.measurementTrusted, Is.True);
+            Assert.That(noise.ownsRootY, Is.False);
+            Assert.That(Mathf.Abs(noise.correctionY), Is.LessThan(0.0001f));
+        }
+
+        [Test]
+        public void UnilateralSolvedFootMovementDoesNotCreateLargeGroundingCorrection()
+        {
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
+            var unilateral = anchor.Update(
+                true,
+                GroundedVertical(crouchCompression: 0.10f),
+                settings,
+                true,
+                -0.72f,
+                -1.00f,
+                1f,
+                0.1f);
+
+            Assert.That(unilateral.measurementTrusted, Is.False);
+            Assert.That(unilateral.bilateralDifferenceNormalized, Is.GreaterThan(0.12f));
+            Assert.That(Mathf.Abs(unilateral.correctionY), Is.LessThan(0.0001f));
+            Assert.That(unilateral.ownsRootY, Is.False);
+        }
+
+        [Test]
+        public void SupportRiseTakeoffEvidenceDisablesGroundingBeforeSemanticJump()
+        {
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
+            var grounded = anchor.Update(
+                true,
+                GroundedVertical(crouchCompression: 0.08f),
+                settings,
+                true,
+                -0.92f,
+                -0.92f,
+                1f,
+                0.1f);
+            var takeoffEvidence = anchor.Update(
+                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Standing,
+                    crouchCompression: 0.05f,
+                    supportRise: 0.08f),
+                settings,
+                true,
+                -0.88f,
+                -0.88f,
+                1f,
+                0.1f);
+
+            Assert.That(grounded.ownsRootY, Is.True);
+            Assert.That(takeoffEvidence.ownsRootY, Is.False);
+            Assert.That(takeoffEvidence.measurementTrusted, Is.False);
+        }
+
+        [Test]
+        public void SemanticJumpAlwaysDisablesGrounding()
+        {
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
+            anchor.Update(
+                true,
+                GroundedVertical(crouchCompression: 0.08f),
+                settings,
+                true,
+                -0.92f,
+                -0.92f,
+                1f,
+                0.1f);
+            var jump = anchor.Update(
+                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Jump,
+                    supportRise: 0.03f),
+                settings,
+                true,
+                -0.85f,
+                -0.85f,
+                1f,
+                0.1f);
+
+            Assert.That(jump.ownsRootY, Is.False);
+            Assert.That(jump.measurementTrusted, Is.False);
+        }
+
+        [Test]
+        public void DeepSemanticCrouchStillUsesBilateralGroundAnchoring()
+        {
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
+            var crouch = anchor.Update(
+                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.25f),
+                settings,
+                true,
+                -0.75f,
+                -0.75f,
+                1f,
                 0.1f);
 
             Assert.That(crouch.measurementTrusted, Is.True);
@@ -196,18 +395,18 @@ namespace GoldenNeedle.Tests
         [Test]
         public void CrouchGroundingCorrectionIsBounded()
         {
-            var anchor = ReadyAnchor();
+            var settings = GroundingSettings(maximumDepth: 0.30f);
+            var anchor = ReadyAnchor(settings);
             var crouch = anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.60f),
+                settings,
                 true,
                 0f,
                 0f,
                 1f,
-                0.30f,
-                1000f,
                 0.1f);
 
             Assert.That(crouch.correctionY, Is.EqualTo(-0.30f).Within(0.001f));
@@ -216,30 +415,29 @@ namespace GoldenNeedle.Tests
         [Test]
         public void BilateralFootNoiseDoesNotCreateLargeGroundingJitter()
         {
-            var anchor = ReadyAnchor();
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
             var first = anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.25f),
+                settings,
                 true,
                 -0.75f,
                 -0.77f,
                 1f,
-                0.6f,
-                1000f,
                 0.1f);
             var second = anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.25f),
+                settings,
                 true,
                 -0.76f,
                 -0.74f,
                 1f,
-                0.6f,
-                1000f,
                 0.1f);
 
             Assert.That(first.measurementTrusted, Is.True);
@@ -250,30 +448,29 @@ namespace GoldenNeedle.Tests
         [Test]
         public void UnreliableBilateralCrouchMeasurementHoldsLastTrustedCorrection()
         {
-            var anchor = ReadyAnchor();
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
             var trusted = anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.25f),
+                settings,
                 true,
                 -0.75f,
                 -0.75f,
                 1f,
-                0.6f,
-                1000f,
                 0.1f);
             var unreliable = anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.25f),
+                settings,
                 true,
                 -0.60f,
                 -0.90f,
                 1f,
-                0.6f,
-                1000f,
                 0.1f);
 
             Assert.That(unreliable.measurementTrusted, Is.False);
@@ -282,100 +479,33 @@ namespace GoldenNeedle.Tests
         }
 
         [Test]
-        public void CrouchReleaseReturnsTowardStandingWithoutOvershoot()
-        {
-            var anchor = ReadyAnchor();
-            var crouch = anchor.Update(
-                true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
-                true,
-                -0.75f,
-                -0.75f,
-                1f,
-                0.6f,
-                1000f,
-                0.1f);
-            var released = anchor.Update(
-                true,
-                true,
-                VerticalLocomotionState.Standing,
-                true,
-                true,
-                -1f,
-                -1f,
-                1f,
-                0.6f,
-                8f,
-                0.1f);
-
-            Assert.That(released.correctionY, Is.GreaterThan(crouch.correctionY));
-            Assert.That(released.correctionY, Is.LessThanOrEqualTo(0f));
-            Assert.That(released.ownsRootY, Is.True);
-        }
-
-        [Test]
-        public void JumpDisablesGroundedCrouchCompensation()
-        {
-            var anchor = ReadyAnchor();
-            anchor.Update(
-                true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
-                true,
-                -0.75f,
-                -0.75f,
-                1f,
-                0.6f,
-                1000f,
-                0.1f);
-            var jump = anchor.Update(
-                true,
-                true,
-                VerticalLocomotionState.Jump,
-                true,
-                true,
-                -0.80f,
-                -0.80f,
-                1f,
-                0.6f,
-                8f,
-                0.1f);
-
-            Assert.That(jump.ownsRootY, Is.False);
-        }
-
-        [Test]
         public void GroundingResetClearsStaleCrouchState()
         {
-            var anchor = ReadyAnchor();
+            var settings = GroundingSettings();
+            var anchor = ReadyAnchor(settings);
             anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.25f),
+                settings,
                 true,
                 -0.75f,
                 -0.75f,
                 1f,
-                0.6f,
-                1000f,
                 0.1f);
 
             anchor.Reset();
             var afterReset = anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Crouch,
-                true,
+                GroundedVertical(
+                    state: VerticalLocomotionState.Crouch,
+                    crouchCompression: 0.25f),
+                settings,
                 true,
                 -0.75f,
                 -0.75f,
                 1f,
-                0.6f,
-                1000f,
                 0.1f);
 
             Assert.That(afterReset.referenceReady, Is.False);
@@ -418,20 +548,56 @@ namespace GoldenNeedle.Tests
             };
         }
 
-        private static GroundedCrouchFootAnchor ReadyAnchor()
+        private static VerticalLocomotionSettings GroundingSettings(
+            float response = 1000f,
+            float maximumDepth = 0.60f)
+        {
+            return new VerticalLocomotionSettings
+            {
+                maximumCrouchDepth = maximumDepth,
+                verticalResponse = response,
+                groundedSupportTolerance = 0.06f,
+                maximumJumpFootAsymmetry = 0.08f,
+                maximumApparentScaleChange = 0.12f,
+            };
+        }
+
+        private static VerticalLocomotionSample GroundedVertical(
+            VerticalLocomotionState state = VerticalLocomotionState.Standing,
+            float crouchCompression = 0f,
+            float supportRise = 0f,
+            float footAsymmetry = 0f,
+            float apparentScaleChange = 0f,
+            bool available = true)
+        {
+            return new VerticalLocomotionSample
+            {
+                isAvailable = available,
+                referenceReady = true,
+                state = state,
+                jumpPhase = state == VerticalLocomotionState.Jump
+                    ? VerticalJumpPhase.Takeoff
+                    : VerticalJumpPhase.Grounded,
+                crouchCompression = crouchCompression,
+                supportRise = supportRise,
+                footAsymmetry = footAsymmetry,
+                apparentScaleChange = apparentScaleChange,
+                suppressPhysicalDepth = state == VerticalLocomotionState.Jump,
+            };
+        }
+
+        private static GroundedCrouchFootAnchor ReadyAnchor(
+            VerticalLocomotionSettings settings)
         {
             var anchor = new GroundedCrouchFootAnchor();
             anchor.Update(
                 true,
-                true,
-                VerticalLocomotionState.Standing,
-                true,
+                GroundedVertical(),
+                settings,
                 true,
                 -1f,
                 -1f,
                 1f,
-                0.6f,
-                1000f,
                 0.1f);
             return anchor;
         }
