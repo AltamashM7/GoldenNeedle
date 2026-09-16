@@ -6,6 +6,15 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Scenes/Caliberation.unity
+    guid: 67e3e5f0786653f4da9d962f242bc39a
+  - enabled: 1
+    path: Assets/Scenes/GoldenNeedle_Hub.unity
+    guid: 035b8cbd681790546a346b5ce9b99fd4
+  - enabled: 1
+    path: Assets/Scenes/Obstacle Course.unity
+    guid: b5d674c370cf0d94a8fece42b04dc380
+  - enabled: 0
     path: Assets/Scenes/SampleScene.unity
     guid: 99c9720ab356a0642a771bea13969a05
   m_configObjects:
