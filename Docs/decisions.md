@@ -2,104 +2,86 @@
 
 Current authority: `Docs/current-state.md`.
 
-Historical foundation design remains in `Docs/pre-phase5a-foundations.md`; corrective/restoration history remains in `Docs/foundation-corrective-pass-progress.md`; detailed optimization chronology remains in `Docs/optimization-orchestrator-handoff.md`. Historical evidence does not override current decisions below.
+Historical foundation design remains in `Docs/pre-phase5a-foundations.md`; optimization chronology remains in `Docs/optimization-orchestrator-handoff.md`. Historical evidence is used to understand regressions but does not override the current decisions below.
 
-| Decision | Current status | Rationale / current meaning |
+| Decision | Current status | Current meaning |
 |---|---|---|
-| Unity 6.5 / `6000.5.0f1` | **LOCKED** | Preserve the established Unity baseline. |
-| URP 17.5.0 | **LOCKED** | Current rendering baseline; presentation remains CPU-conscious. |
-| CPU-first / no required dedicated GPU | **LOCKED PRODUCT REQUIREMENT** | Golden Needle must run acceptably on ordinary hardware. |
-| Integrated webcam input | **LOCKED PRODUCT REQUIREMENT** | No VR/depth hardware or external tracking application is required. |
-| Replaceable pose-provider boundary | **LOCKED ARCHITECTURAL DIRECTION** | MediaPipe-specific structures remain upstream; downstream consumes project-owned canonical contracts. |
-| Stock MediaPipe/TFLite CPU | **LOCKED FALLBACK / REFERENCE** | Retain the known-safe reference path. |
-| OpenVINO CPU FP32 | **USER-VALIDATED BEST-TESTED LOW-END BACKEND** | Preserve the accepted accelerated body-inference path. |
-| WebCamCPU/GetPixels32 acquisition | **USER ACCEPTED — PASS FOR CURRENT MILESTONE** | Reusable CPU pixels + reusable 320x240 preparation removed the dominant accepted readback bottleneck. |
-| ExistingReadback | **LOCKED FALLBACK / REFERENCE** | Keep the older acquisition/readback route for fallback and comparison. |
-| Body input around 320x240 | **CURRENT BEST-TESTED BASELINE** | Accepted low-end quality/performance baseline. |
-| Persistent OpenVINO worker + newest-only two-slot mailbox | **USER ACCEPTED — PASS** | At most one active inference and one replaceable newest pending frame. |
-| Latest useful frame wins | **LOCKED RUNTIME RULE** | Avoid stale-frame backlog/replay/catch-up. |
-| CanonicalBodyV1 = 20 joints | **PRESERVE AS V1 CONTRACT** | Stable project-owned body contract with partial validity. |
-| Stable Phase 3 canonical frame | **LOCKED CALIBRATION / LOCOMOTION AUTHORITY** | Calibration and Phase-5 action interpretation use the stabilized canonical path. |
-| Selectable Raw/Responsive avatar-drive sources | **PRESERVE FOR OPTIONAL TUNING** | Avatar responsiveness experiments do not replace stable calibration/locomotion authority. |
-| Phase 4 signed canonical-to-avatar mapping | **USER ACCEPTED — PRODUCTION AUTHORITY** | Preserve accepted orientation/axis semantics. |
-| Phase 4 positional targets + analytic two-bone IK | **USER ACCEPTED — PRODUCTION LIMB AUTHORITY** | Preserve avatar-authored proportions and trusted endpoint solving. |
-| Phase 4 modular calibration | **USER ACCEPTED** | Body reference and per-chain geometry remain independently usable. |
-| Fabricating unobservable monocular twist | **REJECTED FOR NORMAL PRODUCTION** | Single-RGB evidence does not justify inventing free axial DOFs. |
-| Production Foundation-E post-solve layer | **SUPERSEDED / FALSE FOR CURRENT RUNTIME** | Production execution remains Phase 4 solve -> Phase 5 root translation/presentation. |
-| Performance optimization milestone | **USER SATISFIED / FROZEN FOR CURRENT HACKATHON MILESTONE** | Reopen only if new reproducible evidence warrants it. |
-| Foundation A unified command/action layer | **RETAINED / WORKING** | Keyboard/speech/future inputs invoke the same actions. |
-| Windows fixed-vocabulary speech | **USER QA PASSED / RETAINED** | Configured phrases dispatched through the shared command router. |
-| Product-default speech confidence | **LOW FOR ALL 14 DEFAULT MAPPINGS** | Matches real USER noisy-environment evidence; custom mappings retain Medium default. |
-| Speech wake prefix | **CONFIGURABLE / EMPTY BY DEFAULT** | Optional future accidental-trigger safeguard. |
-| Foundation B camera presets | **RETAINED** | Back/Front/Left/Right/FullBody/Hands/LeftHand/RightHand remain one primary-camera system. |
-| F12 Lab/Game presentation | **RETAINED / ORTHOGONAL TO CAMERA PRESET** | View mode remains separate from camera preset selection. |
-| Foundation C rich anatomical orientation | **DEFERRED / DORMANT RESEARCH** | Not production pose authority. |
-| Foundation D detailed Hand Landmarker | **DEFERRED** | USER testing showed unacceptable low-end cost. |
-| Foundation E post-Phase-4 detail | **RETIRED FROM PRODUCTION** | Historical research may remain but no live production composition. |
-| Coarse hand/fist experiment | **DEFERRED / ROLLED BACK** | USER rejected the feature/value tradeoff for the current milestone. |
-| Phase 5 root translation executes after Phase 4 | **LOCKED V1 ARCHITECTURE** | Phase 4 remains bone/IK authority; Phase 5 is additive root translation only. |
-| Phase 5 locomotion input | **STABILIZED CANONICAL POSE ONLY** | No additional inference/model is required for horizontal, jump or crouch. |
-| Horizontal physical tracking authority | **SUPPORT-AWARE CAMERA-SPACE AUTHORITY** | Trusted ankle/heel/toe measurements feed stateful Both/Left/Right support authority. |
-| Support authority hysteresis | **0.12 SINGLE ENTER / 0.06 BOTH** | Normalized foot-height separation avoids mode flapping. |
-| Unconditional two-foot midpoint authority | **REJECTED** | A raised swing leg can shift the midpoint while the support foot is planted. |
-| Swing-foot false translation | **BATCH 2 FIX RETAINED** | Raised/moving swing foot alone must not translate physical X/Z. |
-| Support transition continuity | **LOCKED BATCH-2 BEHAVIOR** | Support-mode changes continuity-rebase to prevent teleports. |
-| Batch-2R alternating-step continuity | **COMPLETE / RETAINED** | A landing rebase may release only after coherent stable dual-support relocation so a real alternating step eventually produces net room displacement. |
-| Tracking-loss rebase release | **DISALLOWED** | Reacquisition continuity offsets are not auto-released as alternating-step relocation. |
-| Planted-feet torso lean | **SUPPRESSED / RETAINED** | Torso-only lateral/scale changes do not create physical room translation. |
-| Cadence event threshold | **0.07 / RETAINED** | Batch 2 improved acquisition without weakening event evidence. |
-| Cadence acquisition | **2 EVENTS / 0.38 ACQUIRE CONFIDENCE** | Two clean alternating events acquire; one isolated event does not. |
-| Cadence travel | **0.60 DISTANCE PER STEP / 3.0 MAX SPEED** | Stronger prototype baseline, still Inspector-tunable. |
-| Cadence architecture in Batch 3 | **UNCHANGED** | Jump/crouch does not redesign cadence. |
-| Horizontal Recenter | **IMPLEMENTED / XZ-ONLY** | Current physical X/Z becomes new physical origin while virtual world position is preserved. |
-| Vertical reference coupled to Recenter | **NO** | Horizontal recenter does not silently redefine standing jump/crouch reference or root-Y origin. |
-| Body heading for cadence | **IMPLEMENTED / RETAINED** | Cadence follows mapped body heading; physical room displacement uses the fixed reference map. |
-| Dedicated vertical interpreter | **BATCH 3 CURRENT ARCHITECTURE** | `VerticalLocomotionInterpreter` owns standing reference, vertical action state and proportional Y output rather than burying calculations in the controller. |
-| Vertical standing reference | **RUNTIME / CALIBRATION-SESSION SCOPED** | Capture only from valid calibrated, trustworthy, reasonably standing lower-body/torso geometry; do not continuously redefine during actions. |
-| Jump definition | **COHERENT WHOLE-BODY RISE** | Both support feet, pelvis and chest must rise coherently with bounded foot asymmetry/spread and stable apparent scale. |
-| Single-leg lift as jump | **REJECTED** | One raised leg is insufficient vertical-action evidence. |
-| Jump lifecycle | **GROUNDED -> TAKEOFF -> AIRBORNE -> LANDING -> GROUNDED** | Enter/release hysteresis and bounded tracking grace prevent flicker/stuck airborne state. |
-| Jump root movement | **PROPORTIONAL TRACKED ROOT-Y** | Measured normalized rise maps through Inspector scale/clamp; no fixed animation or ballistic jump. |
-| Crouch definition | **GROUNDED PELVIS-TO-SUPPORT COMPRESSION** | Support remains approximately grounded while normalized pelvis/support height compresses; pelvis/chest move downward. |
-| Crouch hold/release | **STATEFUL HYSTERESIS** | Separate enter/release thresholds allow indefinite valid hold and stable recovery. |
-| Jump/crouch mutual exclusion | **LOCKED BATCH-3 BEHAVIOR** | One explicit vertical state machine owns the action; recovery from crouch returns through Standing. |
-| Vertical root-Y origin | **CALIBRATION-SESSION ROOT ORIGIN** | Controller captures player root Y when a valid calibration session initializes. |
-| Vertical root application | **`verticalOriginY + verticalSample.worldOffsetY`** | Phase-5 additive root translation after Phase 4. |
-| Calibration invalidation with vertical offset | **RESET + RESTORE STANDING Y** | Do not leave the avatar stuck in jump/crouch when body reference becomes invalid. |
-| Missing vertical evidence | **NO FABRICATION / BOUNDED GRACE** | Briefly hold acquired state, then return toward neutral/unavailable; horizontal/pose systems remain independent. |
-| Jump/depth cross-talk | **SUPPRESS AT CONTROLLER/FUSION BOUNDARY** | Hold pre-jump physical depth and zero depth velocity only while jump/landing is active; do not rewrite Batch-2R root tracker. |
-| Lateral physical motion during jump | **PRESERVED** | Jump-depth suppression affects only physical depth component, not lateral X. |
-| Gameplay physics in Motion Engine V1 | **DEFERRED** | No CharacterController, Rigidbody gravity, collision/ground probing or course logic in Batch 3. |
-| Batch-3 vertical joint confidence | **0.40** | Practical default consistent with current stabilized pose confidence conventions. |
-| Jump thresholds | **0.12 ENTER / 0.045 RELEASE** | Normalized coherent rise hysteresis. |
-| Jump world mapping | **1.60 SCALE / 0.90 MAX** | Inspector-tunable proportional visible root-Y response. |
-| Maximum jump foot asymmetry | **0.08** | Reject asymmetric/single-leg rise. |
-| Crouch thresholds | **0.18 ENTER / 0.09 RELEASE** | Normalized pelvis-support compression hysteresis. |
-| Crouch world mapping | **1.20 SCALE / 0.65 MAX** | Inspector-tunable proportional negative root-Y response. |
-| Vertical response | **18/S** | Responsive smoothing without intentionally adding large jump latency. |
-| Vertical tracking grace | **0.16 S** | Brief lower-body loss after valid acquisition does not instantly cancel action. |
-| Apparent-scale acquisition guard | **0.12 LOG-SCALE** | Reject camera-depth/zoom-like change as jump/crouch evidence. |
-| Jump coherence spread | **0.10** | Require feet/pelvis/chest to move together. |
-| Grounded support tolerance | **0.06** | Crouch requires support base to remain approximately planted. |
-| Batch-3 diagnostics | **EXISTING LAB LOCOMOTION DISPLAY EXTENDED** | Show vertical state/phase, signals, Y offset and reference readiness without per-frame Console logging. |
-| Existing Batch-2/2R tests in Batch 3 | **UNCHANGED** | Vertical tests are added separately; horizontal coverage is not weakened. |
-| Builder Unity test evidence | **NO UNITY RUN IN CURRENT ENVIRONMENT** | NUnit Editor tests are authored/static-audited but not claimed as executed unless real runner evidence exists. |
-| USER/runtime testing | **FINAL COMPREHENSIVE QA PENDING** | Batch 3 completes implementation but does not create USER acceptance. |
-| Motion Engine V1 | **NOT YET USER ACCEPTED** | Requires final integrated USER Unity QA after Orchestrator review. |
-| Phase 6 | **NOT STARTED** | Do not begin graybox/Hub/course work during Batch-3 closeout. |
-| Motion Engine branch | **`engine/pose-tracking-spike`** | Continue engine work here; do not merge to `main` without explicit USER approval. |
+| Unity 6.5 / `6000.5.0f1` | **LOCKED** | Preserve established Unity baseline. |
+| URP 17.5.0 | **LOCKED** | Preserve current render baseline. |
+| CPU-first / no dedicated GPU required | **LOCKED PRODUCT REQUIREMENT** | Must remain viable on ordinary hardware. |
+| Integrated webcam input | **LOCKED PRODUCT REQUIREMENT** | No VR/depth hardware required. |
+| CanonicalBodyV1 + replaceable provider boundary | **LOCKED** | Provider-specific data stays upstream. |
+| OpenVINO CPU FP32 + WebCamCPU/GetPixels32 | **USER-VALIDATED LOW-END PATH / FROZEN** | Preserve accepted optimized path unless new reproducible evidence warrants reopening. |
+| Stock MediaPipe/TFLite + ExistingReadback | **FALLBACK / REFERENCE** | Keep known-safe comparison/fallback paths. |
+| Persistent worker + newest-only two-slot mailbox | **USER ACCEPTED** | No stale-frame FIFO/catch-up. |
+| Stable Phase 3 frame | **LOCKED CALIBRATION / LOCOMOTION AUTHORITY** | Phase 5 consumes stabilized canonical evidence. |
+| Phase 4 signed mapping + positional analytic IK | **USER ACCEPTED — PRODUCTION POSE AUTHORITY** | Do not move Phase-5 locomotion corrections into bone/IK ownership. |
+| Phase 4 modular calibration | **USER ACCEPTED** | Preserve body/chain calibration separation. |
+| Fabricated monocular free twist | **REJECTED** | Do not invent unobservable axial DOFs. |
+| Foundation A commands/speech | **RETAINED / WORKING** | Shared action router remains. |
+| Foundation B camera presets | **RETAINED** | Keep current camera/presentation controls. |
+| Foundation C | **DEFERRED / DORMANT** | Not production authority. |
+| Foundation D detailed hands | **DEFERRED** | Low-end runtime cost was unacceptable. |
+| Foundation E post-Phase-4 detail | **RETIRED FROM PRODUCTION** | No live extra pose layer. |
+| Coarse hands | **DEFERRED / ROLLED BACK** | Not part of Motion Engine acceptance. |
+| Phase 5 executes after Phase 4 | **LOCKED V1 ARCHITECTURE** | Phase 5 moves root only. |
+| Phase-5 locomotion input | **STABILIZED CANONICAL POSE ONLY** | No extra model/inference. |
+| Phase-5 physical position state | **ONE OWNER: `CameraSpaceRootTracker`** | Tracker alone owns accepted physical displacement, filter, recenter and reacquisition continuity. |
+| Body/root physical candidate | **TORSO CENTER + YAW-COMPENSATED APPARENT SCALE** | Restores continuous body/root estimate seen in early/pre-Foundation working path. |
+| Support feet role | **VALIDATION / CONSTRAINT** | Ankle/heel/toe evidence validates body candidate; feet are not a second downstream position owner. |
+| Support mode | **BOTH/LEFT/RIGHT VALIDATION HYSTERESIS** | `0.12` single-enter / `0.06` dual-return retained. |
+| Single/swing foot as room translation | **REJECTED** | New physical commit requires trustworthy coherent dual support. |
+| Torso lean without support relocation | **REJECTED** | Body candidate alone cannot commit. |
+| Apparent-scale change without support relocation | **REJECTED** | Prevent lean/zoom/depth-like false Z. |
+| Coherent body + bilateral support relocation | **ACCEPTED PHYSICAL EVIDENCE** | Genuine room movement can commit. |
+| Horizontal commit state | **MEASURED FROM LAST ACCEPTED POSITION** | Small deliberate increments accumulate; idle noise does not continuously retarget root. |
+| Lateral commit evidence floor | **0.012 NORMALIZED** | Reuses long-standing pre-Foundation physical deadzone as accumulated evidence floor, not a second downstream gate. |
+| Depth commit evidence | **BODY + SUPPORT DIRECTION AGREEMENT** | Existing body-scale `0.012`, support `0.018`, differential `0.05–0.20` safeguards retained. |
+| Root position response | **10/S** | One physical position filter in root tracker. |
+| Root velocity response | **8/S** | One physical velocity filter in root tracker. |
+| Tracking loss | **HOLD + REBASE ON REACQUISITION** | First recovered observations map to last accepted physical state; no teleport. |
+| `LocomotionFusion` position authority | **MAPPING/BLENDING ONLY** | No second committed-position/stationary/rebase state machine. |
+| Fusion lateral/depth scale | **0.9 / 1.5** | Retained active world mapping. |
+| Fusion origin deadzones | **0.012 / 0.012** | Retained only as origin-space mapping deadzones, not state ownership. |
+| Physical velocity cadence suppression | **RETAINED** | Authoritative physical velocity suppresses duplicate cadence motion. |
+| Cadence event threshold | **0.07** | Retained. |
+| Cadence acquisition | **2 EVENTS / 0.38 ACQUIRE** | Retained current Batch-2 behavior. |
+| Cadence sustain/stop | **0.25 / 0.50 S** | Retained. |
+| Cadence travel | **0.60 PER STEP / 3.0 MAX SPEED** | Retained. |
+| Horizontal recenter | **XZ-ONLY / WORLD-POSITION PRESERVING** | Tracker origin resets; virtual world origin is rebased to current character position. |
+| Vertical standing reference | **CALIBRATION-SESSION SCOPED** | Persistent action reference; horizontal recenter does not modify it. |
+| Vertical semantic authority | **`VerticalLocomotionInterpreter` ONLY** | Jump/Crouch state remains one state machine. |
+| Semantic Crouch thresholds | **0.18 ENTER / 0.09 RELEASE** | Gameplay/state threshold remains distinct from continuous body descent. |
+| Negative root-Y primary signal | **PELVIS-TO-SUPPORT COMPRESSION** | Continuous grounded body compression is the primary crouch/bend translation signal. |
+| Shallow grounded bend | **MAY LOWER ROOT WHILE STATE REMAINS `Standing`** | Motion and semantic state are intentionally separate. |
+| Grounded compression motion deadband | **DERIVED: `clamp(0.25*crouchRelease, 0.01, 0.05)`** | Neutral noise suppression without waiting for semantic Crouch. |
+| Crouch world mapping | **1.20 SCALE / 0.65 MAX** | Retained proportional negative root-Y tuning. |
+| Post-Phase-4 solved-foot root-Y anchor | **REMOVED AS AUTHORITY** | Feet are validation/constraint evidence, not primary root-Y position. |
+| Jump definition | **COHERENT WHOLE-BODY RISE** | Both support feet + pelvis + chest with scale/asymmetry/spread safeguards. |
+| Single-leg lift as jump | **REJECTED** | Retained. |
+| Jump lifecycle | **GROUNDED -> TAKEOFF -> AIRBORNE -> LANDING -> GROUNDED** | Retained Batch-3 state machine. |
+| Jump thresholds | **0.12 ENTER / 0.045 RELEASE** | Retained. |
+| Jump world mapping | **1.60 SCALE / 0.90 MAX** | Retained proportional positive root-Y. |
+| Jump positive-Y authority | **EXCLUSIVE WHILE JUMP ACTIVE** | Grounded compression cannot pin takeoff. |
+| Jump/depth cross-talk | **CONTROLLER/FUSION BOUNDARY HOLD** | Pre-jump accepted depth held and depth velocity zeroed while jump/landing active. |
+| Lateral motion during jump | **PRESERVED** | Depth isolation does not zero lateral X. |
+| Vertical response / grace | **18/S / 0.16 S** | Retained. |
+| Vertical apparent-scale guard / coherence spread / grounded tolerance | **0.12 / 0.10 / 0.06** | Retained. |
+| Gameplay physics in Motion Engine V1 | **DEFERRED** | No CharacterController, Rigidbody gravity, collisions or course logic. |
+| Authority diagnostics | **F9 SHOWS CANDIDATE / SUPPORT VALIDATION / ACCEPTED ROOT + VERTICAL STATE** | Debug visibility reflects reconstructed ownership without per-frame logging. |
+| Obsolete stability/grounding tests | **REMOVED** | Tests encoding removed fusion commit gate and solved-foot Y authority must not constrain future architecture. |
+| Editor test execution in Builder environment | **UNAVAILABLE** | Do not claim automated Unity pass without real runner evidence. |
+| Motion Engine V1 | **NOT YET USER ACCEPTED** | Requires genuine integrated USER Unity webcam QA. |
+| Phase 6 | **NOT STARTED** | Do not begin until Motion Engine result is reviewed. |
+| `main` merge | **EXPLICIT USER APPROVAL REQUIRED** | Engine remains on `engine/pose-tracking-spike`. |
 
-## Current completion sequence
+## Reconstruction lineage
 
-- Batch 1 — **COMPLETE**.
-- Batch 2 — **COMPLETE**.
-- Batch 2R — **COMPLETE**.
-- Batch 3 — **IMPLEMENTED / USER QA PENDING**.
-- Motion Engine V1 — **NOT YET USER ACCEPTED**.
-- Phase 6 — **NOT STARTED**.
+- early body-root prototype: `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe`;
+- support-base correction: `33698719a2907d30bb3396f66e5b79e59ccbfe9e`;
+- last known good pre-Foundation Phase 5: `e26b33ee62305cb7d3ba9e8d929dfe7662487ea0`;
+- immediate pre-reconstruction runtime: `466d65826ab747493c211e1a3250aafa305167c8`;
+- reconstruction baseline/handoff: `08d7ea5785dd5935ed7240f004313b2a769d7a52`;
+- reconstruction implementation/tests: `753ef564c253c48d6d2c71e9095d1e6e7878e2fe`.
 
-Batch-3 starting SHA: `e6044b45d94dbe4ee9da3702828c1ee73409d475`.
-
-Batch-3 implementation/tests checkpoint: `220a4b958c8a3d280799ea3c0836fa6536a486a0`.
-
-Current status: `BATCH 3 IMPLEMENTED / USER QA PENDING / AWAITING ORCHESTRATOR REVIEW`.
+Current status: **PHASE-5 AUTHORITY RECONSTRUCTION IMPLEMENTED / USER QA PENDING**.

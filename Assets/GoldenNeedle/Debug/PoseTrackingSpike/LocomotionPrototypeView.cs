@@ -5,9 +5,10 @@ using UnityEngine;
 namespace GoldenNeedle.Debug.PoseTrackingSpike
 {
     /// <summary>
-    /// Minimal fixed-camera Phase 5A locomotion viewport. It creates only a floor/grid and distance
-    /// references around the starting player position so translation can be judged visually. It
-    /// also extends the existing Lab locomotion diagnostics with a compact Batch-3 vertical readout.
+    /// Minimal fixed-camera Phase-5 locomotion viewport plus compact authority/vertical diagnostics.
+    /// The display makes the reconstructed split explicit: body candidate, support validation and
+    /// accepted physical displacement are separate observations; only the accepted displacement
+    /// reaches fusion/root translation.
     /// </summary>
     [DefaultExecutionOrder(170)]
     public sealed class LocomotionPrototypeView : MonoBehaviour
@@ -28,7 +29,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
         private Vector3 _worldOrigin;
         private PoseTrackingSpikePresenter _presenter;
         private ThirdPersonLabCamera _gameViewCamera;
-        private GUIStyle _verticalDiagnosticStyle;
+        private GUIStyle _diagnosticStyle;
 
         public bool IsReady => _initialized && _camera != null && _renderTexture != null;
         public RenderTexture Texture => _renderTexture;
@@ -68,9 +69,9 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 return;
             }
 
-            EnsureVerticalDiagnosticStyle();
+            EnsureDiagnosticStyle();
             var panel = GetLocomotionPanelRect(Screen.width, Screen.height);
-            var height = Mathf.Min(116f, Mathf.Max(88f, panel.height * 0.32f));
+            var height = Mathf.Min(150f, Mathf.Max(118f, panel.height * 0.39f));
             var rect = new Rect(
                 panel.x + 10f,
                 panel.yMax - height - 8f,
@@ -81,6 +82,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             GUI.DrawTexture(rect, Texture2D.whiteTexture);
             GUI.color = Color.white;
 
+            var root = locomotion.RootSample;
             var vertical = locomotion.VerticalSample;
             var availability = vertical.isAvailable
                 ? "Live"
@@ -89,21 +91,27 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             var origin = locomotion.HasVerticalOrigin
                 ? locomotion.VerticalOriginY.ToString("0.00")
                 : "waiting";
+            var accepted = root.movementAccepted ? "ACCEPT" : "hold";
+            var support = root.supportValidated ? "valid" : "reject";
+            var bend = vertical.groundedBendActive ? "grounded bend" : "neutral";
+
             var text =
-                $"VERTICAL: {vertical.state} / {vertical.jumpPhase}   {availability}\n" +
-                $"Jump signal: {vertical.jumpSignal:0.000}   foot asym={vertical.footAsymmetry:0.000}   scale d={vertical.apparentScaleChange:0.000}\n" +
-                $"Crouch compression: {vertical.crouchCompression:0.000}   support rise={vertical.supportRise:0.000}\n" +
-                $"Y offset: {vertical.worldOffsetY:+0.00;-0.00;0.00}   final Y={locomotion.FinalWorldPositionY:0.00}\n" +
-                $"Reference: {reference}   root-Y origin={origin}";
+                $"PHYSICAL AUTHORITY: body={Format(root.bodyCandidateXZ)}   support={root.supportMode}/{support}   frame={accepted}\n" +
+                $"Support evidence={Format(root.supportEvidenceXZ)}   accepted X/Z={Format(root.displacementXZ)}   v={Format(root.velocityXZ)}\n" +
+                $"VERTICAL: {vertical.state}/{vertical.jumpPhase}   {availability}   {bend}\n" +
+                $"Compression={vertical.crouchCompression:0.000}   support rise={vertical.supportRise:0.000}   asym={vertical.footAsymmetry:0.000}\n" +
+                $"Jump={vertical.jumpSignal:0.000}   scale d={vertical.apparentScaleChange:0.000}   Y={vertical.worldOffsetY:+0.00;-0.00;0.00}   final={locomotion.FinalWorldPositionY:0.00}\n" +
+                $"Reference={reference}   root-Y origin={origin}";
 
             GUI.Label(
-                new Rect(
-                    rect.x + 8f,
-                    rect.y + 5f,
-                    rect.width - 16f,
-                    rect.height - 10f),
+                new Rect(rect.x + 8f, rect.y + 5f, rect.width - 16f, rect.height - 10f),
                 text,
-                _verticalDiagnosticStyle);
+                _diagnosticStyle);
+        }
+
+        private static string Format(Vector2 value)
+        {
+            return $"({value.x:+0.00;-0.00;0.00}, {value.y:+0.00;-0.00;0.00})";
         }
 
         private void TryInitialize()
@@ -131,7 +139,7 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
 
             _environmentRoot = new GameObject("Phase5A_LocomotionGrid").transform;
             _environmentRoot.SetParent(transform, true);
-            _environmentRoot.position = new Vector3(_worldOrigin.x, _worldOrigin.y, _worldOrigin.z);
+            _environmentRoot.position = _worldOrigin;
 
             _gridMaterial = CreateMaterial(
                 "Phase5A_Grid",
@@ -157,7 +165,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                     major);
             }
 
-            // Simple distance posts every two units along the camera/world depth axis.
             for (var z = -4; z <= 6; z += 2)
             {
                 var marker = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -170,7 +177,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 {
                     renderer.sharedMaterial = _majorGridMaterial;
                 }
-
                 RemoveCollider(marker);
             }
         }
@@ -189,7 +195,6 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
             {
                 renderer.sharedMaterial = material;
             }
-
             RemoveCollider(line);
         }
 
@@ -228,20 +233,20 @@ namespace GoldenNeedle.Debug.PoseTrackingSpike
                 filterMode = FilterMode.Bilinear,
                 antiAliasing = 1,
                 useMipMap = false,
-                autoGenerateMips = false
+                autoGenerateMips = false,
             };
             _renderTexture.Create();
             _camera.targetTexture = _renderTexture;
         }
 
-        private void EnsureVerticalDiagnosticStyle()
+        private void EnsureDiagnosticStyle()
         {
-            if (_verticalDiagnosticStyle != null)
+            if (_diagnosticStyle != null)
             {
                 return;
             }
 
-            _verticalDiagnosticStyle = new GUIStyle(GUI.skin.label)
+            _diagnosticStyle = new GUIStyle(GUI.skin.label)
             {
                 fontSize = 11,
                 wordWrap = true,

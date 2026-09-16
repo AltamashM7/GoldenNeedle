@@ -31,19 +31,19 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [InspectorName("Maximum Jump Foot Asymmetry")]
         [Min(0.01f)] public float maximumJumpFootAsymmetry = 0.08f;
 
-        [Tooltip("Normalized pelvis-to-support compression required to acquire crouch.")]
+        [Tooltip("Normalized pelvis-to-support compression required to acquire semantic crouch.")]
         [InspectorName("Crouch Enter Threshold")]
         [Min(0.01f)] public float crouchEnterThreshold = 0.18f;
 
-        [Tooltip("Normalized pelvis-to-support compression below which crouch releases.")]
+        [Tooltip("Normalized pelvis-to-support compression below which semantic crouch releases.")]
         [InspectorName("Crouch Release Threshold")]
         [Min(0f)] public float crouchReleaseThreshold = 0.09f;
 
-        [Tooltip("World-space meters applied per normalized crouch compression amount.")]
+        [Tooltip("World-space meters applied per normalized grounded body-compression amount.")]
         [InspectorName("Crouch Depth / World Scale")]
         [Min(0f)] public float crouchWorldScale = 1.20f;
 
-        [Tooltip("Maximum downward avatar-root offset produced by physical crouching.")]
+        [Tooltip("Maximum downward avatar-root offset produced by grounded body compression.")]
         [InspectorName("Maximum Crouch Depth")]
         [Min(0f)] public float maximumCrouchDepth = 0.65f;
 
@@ -51,17 +51,17 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         [InspectorName("Vertical Response")]
         [Min(0.1f)] public float verticalResponse = 18f;
 
-        [Tooltip("How long an acquired jump/crouch may hold through missing required landmarks before returning safely toward neutral.")]
+        [Tooltip("How long an acquired vertical state may hold through missing required landmarks before returning safely toward neutral.")]
         [InspectorName("Vertical Tracking Grace")]
         [Min(0f)] public float trackingGraceSeconds = 0.16f;
 
-        [Tooltip("Maximum logarithmic apparent-body-scale change accepted while acquiring a vertical action. Larger scale changes are treated as camera-depth evidence instead.")]
+        [Tooltip("Maximum logarithmic apparent-body-scale change accepted while acquiring a vertical action.")]
         [Min(0.01f)] public float maximumApparentScaleChange = 0.12f;
 
         [Tooltip("Maximum normalized spread between left foot, right foot, pelvis and chest rise during jump acquisition.")]
         [Min(0.01f)] public float maximumJumpCoherenceSpread = 0.10f;
 
-        [Tooltip("Maximum normalized support-base movement considered grounded for crouch and jump landing.")]
+        [Tooltip("Maximum normalized support-base movement considered grounded for bend/crouch and jump landing.")]
         [Min(0.01f)] public float groundedSupportTolerance = 0.06f;
 
         public void Sanitize()
@@ -131,6 +131,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         public float footAsymmetry;
         public float apparentScaleChange;
         public float worldOffsetY;
+        public bool groundedBendActive;
         public bool suppressPhysicalDepth;
 
         public bool IsJumpActive => state == VerticalLocomotionState.Jump;
@@ -138,10 +139,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
     }
 
     /// <summary>
-    /// Interprets stabilized canonical image geometry into vertical locomotion only. It owns a
-    /// runtime standing reference and never changes Phase 3 filtering or Phase 4 pose/IK authority.
-    /// Jump requires coherent support + pelvis + chest rise; crouch requires grounded support with
-    /// pelvis-to-support compression. The two actions share one explicit state machine.
+    /// Interprets stabilized canonical image geometry into vertical locomotion only. Semantic Jump
+    /// and Crouch remain one explicit state machine. Independently, trustworthy grounded
+    /// pelvis-to-support compression continuously drives negative root Y, so a shallow bend lowers
+    /// the body before semantic Crouch acquisition. Jump remains the exclusive positive-Y owner.
     /// </summary>
     public sealed class VerticalLocomotionInterpreter
     {
@@ -225,29 +226,13 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 if (!CanCaptureStandingReference(measurement))
                 {
                     ApplyOffsetFilter(0f, dt);
-                    return Publish(
-                        false,
-                        false,
-                        VerticalLocomotionState.Unavailable,
-                        VerticalJumpPhase.Grounded,
-                        0f,
-                        0f,
-                        0f,
-                        0f,
-                        0f);
+                    return Publish(false, false, VerticalLocomotionState.Unavailable,
+                        VerticalJumpPhase.Grounded, 0f, 0f, 0f, 0f, 0f, false);
                 }
 
                 CaptureReference(measurement);
-                return Publish(
-                    true,
-                    true,
-                    VerticalLocomotionState.Standing,
-                    VerticalJumpPhase.Grounded,
-                    0f,
-                    0f,
-                    0f,
-                    0f,
-                    0f);
+                return Publish(true, true, VerticalLocomotionState.Standing,
+                    VerticalJumpPhase.Grounded, 0f, 0f, 0f, 0f, 0f, false);
             }
 
             var referenceHeight = Mathf.Max(0.0001f, _reference.PelvisSupportHeight);
@@ -260,21 +245,17 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             var jumpSignal = Min4(leftRise, rightRise, pelvisRise, chestRise);
             var jumpSpread = Max4(leftRise, rightRise, pelvisRise, chestRise) - jumpSignal;
             var crouchCompression = 1f - measurement.PelvisSupportHeight / referenceHeight;
-            var scaleChange = Mathf.Abs(
-                Mathf.Log(
-                    Mathf.Max(0.0001f, measurement.apparentScale) /
-                    Mathf.Max(0.0001f, _reference.apparentScale)));
+            var scaleChange = Mathf.Abs(Mathf.Log(
+                Mathf.Max(0.0001f, measurement.apparentScale) /
+                Mathf.Max(0.0001f, _reference.apparentScale)));
 
             var scaleStable = scaleChange <= _settings.maximumApparentScaleChange;
             var feetCoherent = footAsymmetry <= _settings.maximumJumpFootAsymmetry;
-            var jumpCandidate = scaleStable &&
-                feetCoherent &&
+            var supportGrounded = Mathf.Abs(supportRise) <= _settings.groundedSupportTolerance;
+            var jumpCandidate = scaleStable && feetCoherent &&
                 jumpSignal >= _settings.jumpEnterThreshold &&
                 jumpSpread <= _settings.maximumJumpCoherenceSpread;
-            var supportGrounded = Mathf.Abs(supportRise) <= _settings.groundedSupportTolerance;
-            var crouchCandidate = scaleStable &&
-                feetCoherent &&
-                supportGrounded &&
+            var crouchCandidate = scaleStable && feetCoherent && supportGrounded &&
                 crouchCompression >= _settings.crouchEnterThreshold &&
                 pelvisRise <= -_settings.crouchEnterThreshold * 0.50f &&
                 chestRise <= -_settings.crouchEnterThreshold * 0.25f;
@@ -285,7 +266,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 _jumpPhase = VerticalJumpPhase.Grounded;
             }
 
-            var targetOffsetY = 0f;
+            var jumpTarget = 0f;
             switch (_state)
             {
                 case VerticalLocomotionState.Jump:
@@ -294,7 +275,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                         if (jumpCandidate)
                         {
                             _jumpPhase = VerticalJumpPhase.Takeoff;
-                            targetOffsetY = JumpOffset(jumpSignal);
+                            jumpTarget = JumpOffset(jumpSignal);
                         }
                         else
                         {
@@ -307,27 +288,18 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                         jumpSignal >= _settings.jumpReleaseThreshold)
                     {
                         _jumpPhase = VerticalJumpPhase.Airborne;
-                        targetOffsetY = JumpOffset(jumpSignal);
+                        jumpTarget = JumpOffset(jumpSignal);
                     }
                     else
                     {
                         _jumpPhase = VerticalJumpPhase.Landing;
-                        targetOffsetY = 0f;
                     }
                     break;
 
                 case VerticalLocomotionState.Crouch:
-                    if (scaleStable &&
-                        feetCoherent &&
-                        supportGrounded &&
-                        crouchCompression >= _settings.crouchReleaseThreshold)
+                    if (!(scaleStable && feetCoherent && supportGrounded &&
+                        crouchCompression >= _settings.crouchReleaseThreshold))
                     {
-                        targetOffsetY = CrouchOffset(crouchCompression);
-                    }
-                    else
-                    {
-                        // Returning from crouch goes through Standing first. A rising crouch cannot
-                        // become a jump simply because pelvis/chest move upward toward neutral.
                         _state = VerticalLocomotionState.Standing;
                         _jumpPhase = VerticalJumpPhase.Grounded;
                     }
@@ -338,13 +310,12 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                     {
                         _state = VerticalLocomotionState.Jump;
                         _jumpPhase = VerticalJumpPhase.Takeoff;
-                        targetOffsetY = JumpOffset(jumpSignal);
+                        jumpTarget = JumpOffset(jumpSignal);
                     }
                     else if (crouchCandidate)
                     {
                         _state = VerticalLocomotionState.Crouch;
                         _jumpPhase = VerticalJumpPhase.Grounded;
-                        targetOffsetY = CrouchOffset(crouchCompression);
                     }
                     else
                     {
@@ -354,17 +325,20 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                     break;
             }
 
+            var groundedBendSafe = _state != VerticalLocomotionState.Jump &&
+                scaleStable && feetCoherent && supportGrounded;
+            var bendTarget = groundedBendSafe
+                ? GroundedCompressionOffset(crouchCompression)
+                : 0f;
+            var groundedBendActive = bendTarget < -0.00001f;
+            var targetOffsetY = _state == VerticalLocomotionState.Jump
+                ? jumpTarget
+                : bendTarget;
+
             ApplyOffsetFilter(targetOffsetY, dt);
-            return Publish(
-                true,
-                true,
-                _state,
-                _jumpPhase,
-                jumpSignal,
-                crouchCompression,
-                supportRise,
-                footAsymmetry,
-                scaleChange);
+            return Publish(true, true, _state, _jumpPhase, jumpSignal,
+                crouchCompression, supportRise, footAsymmetry, scaleChange,
+                groundedBendActive);
         }
 
         private VerticalLocomotionSample HandleUnavailable(float deltaTime)
@@ -384,16 +358,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             _state = VerticalLocomotionState.Unavailable;
             _jumpPhase = VerticalJumpPhase.Grounded;
             ApplyOffsetFilter(0f, deltaTime);
-            return Publish(
-                false,
-                _hasReference,
-                VerticalLocomotionState.Unavailable,
-                VerticalJumpPhase.Grounded,
-                LatestSample.jumpSignal,
-                LatestSample.crouchCompression,
-                LatestSample.supportRise,
-                LatestSample.footAsymmetry,
-                LatestSample.apparentScaleChange);
+            return Publish(false, _hasReference, VerticalLocomotionState.Unavailable,
+                VerticalJumpPhase.Grounded, LatestSample.jumpSignal,
+                LatestSample.crouchCompression, LatestSample.supportRise,
+                LatestSample.footAsymmetry, LatestSample.apparentScaleChange, false);
         }
 
         private void CaptureReference(Measurement measurement)
@@ -417,10 +385,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             }
 
             var footAsymmetry = Mathf.Abs(
-                measurement.leftFoot.y - measurement.rightFoot.y) /
-                legHeight;
+                measurement.leftFoot.y - measurement.rightFoot.y) / legHeight;
             var kneeSupportHeight =
-                ((measurement.leftKneeY + measurement.rightKneeY) * 0.5f - measurement.SupportY);
+                ((measurement.leftKneeY + measurement.rightKneeY) * 0.5f -
+                    measurement.SupportY);
             var legToTorsoRatio = legHeight / torsoHeight;
             return footAsymmetry <= _settings.maximumJumpFootAsymmetry &&
                 legToTorsoRatio >= 0.75f &&
@@ -436,10 +404,18 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 _settings.maximumJumpHeight);
         }
 
-        private float CrouchOffset(float compression)
+        private float GroundedCompressionOffset(float compression)
         {
+            // Reuse the semantic release tuning to derive a much smaller motion deadband. This
+            // removes neutral measurement noise without making semantic Crouch the point where the
+            // body suddenly starts descending.
+            var motionDeadband = Mathf.Clamp(
+                _settings.crouchReleaseThreshold * 0.25f,
+                0.01f,
+                0.05f);
+            var effectiveCompression = Mathf.Max(0f, compression - motionDeadband);
             return -Mathf.Clamp(
-                Mathf.Max(0f, compression) * _settings.crouchWorldScale,
+                effectiveCompression * _settings.crouchWorldScale,
                 0f,
                 _settings.maximumCrouchDepth);
         }
@@ -470,7 +446,8 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             float crouchCompression,
             float supportRise,
             float footAsymmetry,
-            float scaleChange)
+            float scaleChange,
+            bool groundedBendActive)
         {
             LatestSample = new VerticalLocomotionSample
             {
@@ -484,6 +461,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
                 footAsymmetry = footAsymmetry,
                 apparentScaleChange = scaleChange,
                 worldOffsetY = _filteredOffsetY,
+                groundedBendActive = groundedBendActive,
                 suppressPhysicalDepth = state == VerticalLocomotionState.Jump,
             };
             return LatestSample;
@@ -493,18 +471,10 @@ namespace GoldenNeedle.Core.Motion.Locomotion
         {
             measurement = default;
             if (frame == null ||
-                !TrySupportFoot(
-                    frame,
-                    CanonicalJointId.LeftAnkle,
-                    CanonicalJointId.LeftHeel,
-                    CanonicalJointId.LeftToe,
-                    out var leftFoot) ||
-                !TrySupportFoot(
-                    frame,
-                    CanonicalJointId.RightAnkle,
-                    CanonicalJointId.RightHeel,
-                    CanonicalJointId.RightToe,
-                    out var rightFoot) ||
+                !TrySupportFoot(frame, CanonicalJointId.LeftAnkle, CanonicalJointId.LeftHeel,
+                    CanonicalJointId.LeftToe, out var leftFoot) ||
+                !TrySupportFoot(frame, CanonicalJointId.RightAnkle, CanonicalJointId.RightHeel,
+                    CanonicalJointId.RightToe, out var rightFoot) ||
                 !TryImageJoint(frame, CanonicalJointId.Pelvis, out var pelvis) ||
                 !TryImageJoint(frame, CanonicalJointId.Chest, out var chest) ||
                 !TryImageJoint(frame, CanonicalJointId.LeftHip, out var leftHip) ||
@@ -516,9 +486,7 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             }
 
             var torsoHeight = chest.imagePosition.y - pelvis.imagePosition.y;
-            var hipSpan = Vector2.Distance(
-                leftHip.imagePosition,
-                rightHip.imagePosition);
+            var hipSpan = Vector2.Distance(leftHip.imagePosition, rightHip.imagePosition);
             if (torsoHeight <= 0.005f || hipSpan <= 0.005f)
             {
                 return false;
@@ -577,10 +545,12 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             var confidenceSum = 0f;
             var weightSum = 0f;
             var validPoints = 0;
-
-            AddSupportPoint(frame.GetJoint(ankleId), 0.40f, ref weightedY, ref confidenceSum, ref weightSum, ref validPoints);
-            AddSupportPoint(frame.GetJoint(heelId), 0.30f, ref weightedY, ref confidenceSum, ref weightSum, ref validPoints);
-            AddSupportPoint(frame.GetJoint(toeId), 0.30f, ref weightedY, ref confidenceSum, ref weightSum, ref validPoints);
+            AddSupportPoint(frame.GetJoint(ankleId), 0.40f, ref weightedY,
+                ref confidenceSum, ref weightSum, ref validPoints);
+            AddSupportPoint(frame.GetJoint(heelId), 0.30f, ref weightedY,
+                ref confidenceSum, ref weightSum, ref validPoints);
+            AddSupportPoint(frame.GetJoint(toeId), 0.30f, ref weightedY,
+                ref confidenceSum, ref weightSum, ref validPoints);
 
             if (validPoints < 2 || weightSum <= 0f)
             {
@@ -603,11 +573,9 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             ref float weightSum,
             ref int validPoints)
         {
-            if (!joint.IsTracked ||
-                !joint.hasImagePosition ||
+            if (!joint.IsTracked || !joint.hasImagePosition ||
                 joint.confidence < _settings.minimumJointConfidence ||
-                !IsFinite(joint.imagePosition) ||
-                !IsFinite(joint.confidence))
+                !IsFinite(joint.imagePosition) || !IsFinite(joint.confidence))
             {
                 return;
             }
@@ -624,11 +592,9 @@ namespace GoldenNeedle.Core.Motion.Locomotion
             out CanonicalPoseJoint joint)
         {
             joint = frame.GetJoint(id);
-            return joint.IsTracked &&
-                joint.hasImagePosition &&
+            return joint.IsTracked && joint.hasImagePosition &&
                 joint.confidence >= _settings.minimumJointConfidence &&
-                IsFinite(joint.imagePosition) &&
-                IsFinite(joint.confidence);
+                IsFinite(joint.imagePosition) && IsFinite(joint.confidence);
         }
 
         private static float Min4(float a, float b, float c, float d)
