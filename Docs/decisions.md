@@ -2,7 +2,7 @@
 
 Current authority: `Docs/current-state.md`.
 
-Historical foundation design remains in `Docs/pre-phase5a-foundations.md`; optimization chronology remains in `Docs/optimization-orchestrator-handoff.md`. Historical evidence can explain regressions but does not override current decisions below.
+Historical foundation design remains in `Docs/pre-phase5a-foundations.md`; optimization chronology remains in `Docs/optimization-orchestrator-handoff.md`. Historical evidence may explain regressions but does not override current decisions below.
 
 | Decision | Current status | Current meaning |
 |---|---|---|
@@ -15,7 +15,7 @@ Historical foundation design remains in `Docs/pre-phase5a-foundations.md`; optim
 | Stock MediaPipe/TFLite + ExistingReadback | **FALLBACK / REFERENCE** | Keep known-safe comparison/fallback paths. |
 | Newest-only two-slot mailbox | **USER ACCEPTED** | No stale-frame FIFO/catch-up. |
 | Stable Phase 3 frame | **LOCKED CALIBRATION / LOCOMOTION AUTHORITY** | Phase 5 consumes stabilized canonical evidence. |
-| Phase 4 signed mapping + positional analytic IK | **USER ACCEPTED — NORMAL POSE AUTHORITY** | General Phase-4 mapping, target generation and solve remain unchanged. |
+| Phase 4 signed mapping + positional analytic IK | **USER ACCEPTED — SOLE NORMAL LEG-POSE AUTHORITY** | General Phase-4 mapping/targets/IK remain unchanged; crouch no longer re-solves legs afterward. |
 | Phase 4 modular calibration | **USER ACCEPTED** | Preserve body/chain calibration separation. |
 | Fabricated monocular free twist | **REJECTED** | Do not invent unobservable axial DOFs. |
 | Foundation A commands/speech | **RETAINED / WORKING** | Shared action router remains. |
@@ -26,61 +26,59 @@ Historical foundation design remains in `Docs/pre-phase5a-foundations.md`; optim
 | Coarse hands | **DEFERRED / ROLLED BACK** | Not part of Motion Engine acceptance. |
 | Phase-5 input | **STABILIZED CANONICAL POSE ONLY** | No extra model/inference. |
 | Physical X/Z position state | **ONE OWNER: `CameraSpaceRootTracker`** | Tracker alone owns accepted displacement, filtering, recenter and reacquisition continuity. |
+| Horizontal authority reconstruction | **FROZEN FOR THIS PASS** | USER reported idle/root stability substantially improved; do not reopen without new evidence. |
 | Body/root candidate | **TORSO CENTER + YAW-COMPENSATED APPARENT SCALE** | Continuous camera-space candidate from reconstructed authority path. |
 | Support feet for horizontal movement | **VALIDATION** | Bilateral ankle/heel/toe evidence validates body candidate; not another X/Z owner. |
 | Support mode | **BOTH/LEFT/RIGHT VALIDATION HYSTERESIS** | `0.12` single-enter / `0.06` dual-return retained. |
 | Single/swing foot as room translation | **REJECTED** | New physical commit requires trustworthy coherent dual support. |
 | Torso lean without support relocation | **REJECTED** | Body candidate alone cannot commit. |
 | Scale change without support relocation | **REJECTED** | Prevent false forward/back translation. |
-| Coherent body + bilateral support relocation | **ACCEPTED PHYSICAL EVIDENCE** | Genuine room movement can commit. |
-| Horizontal commit state | **FROM LAST ACCEPTED POSITION** | Slow deliberate increments accumulate; idle noise does not continuously retarget root. |
-| Tracking loss | **HOLD + REBASE ON REACQUISITION** | No teleport; later coherent motion remains possible. |
-| `LocomotionFusion` authority | **MAPPING/BLENDING ONLY** | No second committed-position/stationary/rebase state machine. |
+| `LocomotionFusion` authority | **MAPPING/BLENDING ONLY** | No second position state machine. |
 | Cadence tuning | **RETAINED** | `0.07` event; 2 events / `0.38` acquire; `0.25` sustain; `0.50 s` stop; `0.60` per step; `3.0` max. |
 | Horizontal recenter | **XZ-ONLY / WORLD-POSITION PRESERVING** | Physical origin resets without teleporting avatar. |
-| Vertical standing reference | **CALIBRATION-SESSION SCOPED** | Horizontal recenter does not redefine it. |
-| Vertical semantic authority | **`VerticalLocomotionInterpreter` ONLY** | Jump/Crouch state remains one state machine. |
-| Semantic Crouch thresholds | **0.18 ENTER / 0.09 RELEASE** | Gameplay state separate from continuous body descent. |
-| Negative root-Y signal | **PELVIS-TO-SUPPORT COMPRESSION** | Primary continuous grounded bend/crouch translation signal. |
+| Vertical semantic authority | **`VerticalLocomotionInterpreter` ONLY** | Jump/Crouch semantic state remains one state machine. |
+| Semantic Crouch thresholds | **0.18 ENTER / 0.09 RELEASE** | Gameplay state remains separate from continuous shallow-bend descent. |
+| Primary grounded crouch evidence | **NORMALIZED PELVIS-TO-SUPPORT COMPRESSION** | USER body compression remains the source of crouch amount. |
 | Shallow grounded bend | **MAY LOWER ROOT WHILE STATE=`Standing`** | Motion/state intentionally separated. |
-| Crouch world mapping | **1.20 SCALE / 0.65 MAX** | Retained. |
-| Solved avatar foot motion as root-Y input | **REJECTED** | Feet must never decide tracked crouch depth/root position. |
-| Jump definition | **COHERENT WHOLE-BODY RISE** | Bilateral support + pelvis + chest with scale/asymmetry/spread safeguards. |
-| Single-leg lift as jump | **REJECTED** | Retained. |
+| Legacy interpreter grounded `worldOffsetY` | **COMPATIBILITY / DIAGNOSTIC, NOT PRODUCTION GROUNDED ROOT-Y** | Interpreter remains unchanged in this narrow pass; controller uses avatar-relative mapping for non-Jump grounded Y. |
+| Production grounded root-Y scale | **AVATAR-RELATIVE STANDING LEG GEOMETRY** | Same normalized USER compression scales by controlled avatar reference-leg size. |
+| Avatar standing leg scale | **BILATERAL REFERENCE-POSE ROOT-TO-FOOT UP SPAN** | Prefer anatomical vertical span; fallback direct span then cached chain reach. Stable across live crouch. |
+| Avatar crouch depth multiplier | **1.20 DIMENSIONLESS** | Applied after normalized compression and avatar standing-leg scale. |
+| Maximum crouch depth | **0.65 OF AVATAR STANDING LEG SCALE** | Leg-relative cap replaces fixed absolute production cap. |
+| Solved avatar foot motion as crouch-depth input | **REJECTED** | Feet do not decide how far the USER crouched. |
+| Post-root full crouch leg IK | **REMOVED / REJECTED** | Runtime no longer calls a second two-bone leg solve after Phase-5 root movement. |
+| Grounded residual correction | **NONE IN CURRENT RECONSTRUCTION** | Evaluate avatar-relative root mapping first; diagnostics explicitly report `residual=off`. |
+| Future residual, if evidence requires it | **ROOT-ONLY / SMALL / AVATAR-RELATIVE / BOUNDED** | Must not re-author knees or become primary crouch authority. |
+| Phase-4 knee pose during crouch | **PRESERVED** | No crouch-specific leg rotation writes after Phase 4. |
+| Jump definition | **COHERENT WHOLE-BODY RISE** | Existing bilateral support + pelvis + chest safeguards retained. |
+| Single-leg lift as jump | **REJECTED** | Existing behavior retained. |
 | Jump lifecycle | **GROUNDED -> TAKEOFF -> AIRBORNE -> LANDING -> GROUNDED** | Retained. |
 | Jump thresholds | **0.12 ENTER / 0.045 RELEASE** | Retained. |
-| Jump world mapping | **1.60 SCALE / 0.90 MAX** | Retained. |
-| Jump positive-Y authority | **EXCLUSIVE WHILE JUMP ACTIVE** | Grounded correction cannot pin takeoff. |
-| Jump/depth cross-talk | **CONTROLLER/FUSION BOUNDARY HOLD** | Pre-jump depth held and depth velocity zeroed while jump/landing active. |
-| Vertical response / grace | **18/S / 0.16 S** | Retained. |
-| Grounded support tolerance | **0.06** | Reused by grounded-foot constraint; not a new contact detector. |
-| Maximum vertical foot asymmetry | **0.08** | Reused to reject unilateral/swing contact from grounded lock. |
-| Grounded-foot standing reference | **PER-FOOT WORLD Y / SESSION-BINDING SCOPED** | Capture only from trustworthy neutral standing; never drift during bend/jump. |
-| Grounded-foot target | **CURRENT PHASE-4 X/Z + CAPTURED STANDING Y** | Constrain floor height while preserving live stance X/Z. |
-| Grounded-foot active condition | **BILATERAL TRUSTWORTHY GROUNDED BEND/RECOVERY ONLY** | Live vertical evidence, not Jump, support within tolerance, coherent feet, negative/root-recovery Y. |
-| Neutral standing leg re-solve | **AVOIDED** | Capture/hold reference but do not continuously solve with zero vertical correction. |
-| Jump/takeoff grounded lock | **IMMEDIATE RELEASE** | Never pin airborne feet. |
-| Single-leg/swing grounded lock | **RELEASE/SKIP** | Raised foot remains free. |
-| Missing leg chain/evidence | **SAFE SKIP** | Do not fabricate contact or alter root. |
-| Grounded residual solver | **REUSE `AnalyticTwoBoneIkSolver`** | Existing project IK math/contract reused; no second IK algorithm. |
-| Normal `HumanoidRetargeter` behavior | **UNCHANGED** | General Phase-4 solve, arms, mapping, target generation and smoothing untouched. |
-| Grounded residual execution order | **AFTER PHASE-5 ROOT WRITE** | Phase 4 @100 -> Phase5 root + residual legs @150 -> diagnostics/presentation @170. |
-| Grounded residual bend preference | **CURRENT KNEE -> PREVIOUS RELIABLE -> BINDING REFERENCE** | Preserve knee-side continuity and Phase-4 anatomical convention. |
-| Grounded residual root authority | **NONE** | Helper rotates leg root/mid only; endpoint residual never writes root Y. |
-| Grounded reach limits | **EXISTING ANALYTIC CLAMP** | Impossible targets clamp safely and are exposed diagnostically. |
-| Gameplay physics | **DEFERRED** | No CharacterController, Rigidbody gravity, collision, raycast grounding or course logic. |
-| Grounded diagnostics | **F9 REFERENCE / LOCK / Y RESIDUAL / CLAMP** | No per-frame Console logging. |
-| Existing reconstructed horizontal tests | **UNTOUCHED IN GROUNDED PASS** | Do not weaken successful authority-reconstruction expectations. |
-| Existing reconstructed vertical tests | **UNTOUCHED IN GROUNDED PASS** | Root-Y semantics remain unchanged. |
-| Grounded constraint Editor tests | **ADDED / STATICALLY AUDITED** | Actual Unity execution unavailable in Builder environment. |
-| Motion Engine V1 | **NOT YET USER ACCEPTED** | Requires genuine integrated USER Unity webcam QA. |
+| Jump positive-Y authority | **EXCLUSIVE WHILE JUMP ACTIVE** | Controller bypasses grounded crouch mapper and clamps jump Y non-negative. |
+| Jump/depth cross-talk | **CONTROLLER/FUSION BOUNDARY HOLD** | Pre-jump depth held and depth velocity zeroed while jump owns vertical motion. |
+| Vertical response / grace | **18/S / 0.16 S** | Retained and reused by avatar-relative crouch mapping. |
+| Grounded support/asymmetry gating | **INTERPRETER-OWNED / RETAINED** | Existing evidence determines whether grounded bend is trustworthy. |
+| Gameplay physics | **DEFERRED** | No CharacterController, Rigidbody gravity, raycast terrain grounding or course logic. |
+| F9 crouch diagnostics | **COMPRESSION / AVATAR LEG SCALE / PRIMARY TARGET / FINAL Y / CAP / RESIDUAL=OFF** | Diagnostics reflect current authority; no stale grounded-foot-lock claims. |
+| Old `GroundedFootConstraint` | **REMOVED** | Full post-root foot endpoint IK encoded rejected tucked-leg behavior. |
+| Existing reconstructed horizontal tests | **UNTOUCHED** | Do not weaken successful authority expectations. |
+| Existing semantic vertical tests | **UNTOUCHED** | Interpreter semantics remain source-compatible. |
+| Avatar-relative crouch tests | **ADDED / STATICALLY AUDITED** | Includes avatar-proportion/chibi regression and Phase-4 leg-rotation preservation. |
+| Unity Editor tests in Builder environment | **UNAVAILABLE** | Do not claim automated Unity pass without real runner evidence. |
+| Motion Engine V1 | **NOT YET USER ACCEPTED** | Requires genuine USER Unity webcam QA. |
 | Phase 6 | **NOT STARTED** | Do not begin until Motion Engine result is reviewed. |
 | `main` merge | **EXPLICIT USER APPROVAL REQUIRED** | Engine remains on `engine/pose-tracking-spike`. |
 
 ## Current corrective lineage
 
-- Phase-5 authority-reconstruction final docs HEAD before grounded handoff: `92b6a36547e0ab2db043331c4b7cc9c8363e6d90`;
-- grounded-foot handoff/baseline: `3390492e9efdd72fa3bab9cc8a58910e7473ed06`;
-- grounded-foot implementation/tests/diagnostics: `a3f9e273b575146c3b56a3966d123f48177c5b5a`.
+- USER-tested tucked-crouch runtime: `9cda38b5c47f38d91800839cdd99db1d52fb0916`;
+- avatar-relative reconstruction handoff: `5e90551b7045dba96787c43fb9d4562d3438257a`;
+- avatar-relative implementation/tests/diagnostics: `2c9c3f6eaf4801e1832b32ad7afc79bb6597807b`.
 
-Current status: **GROUNDED FOOT CONSTRAINT IMPLEMENTED / USER QA PENDING**.
+Historical comparison points used during diagnosis:
+
+- original Batch-3 vertical implementation: `220a4b958c8a3d280799ea3c0836fa6536a486a0`;
+- solved-foot root-Y experiment: `86701d0082692c17844db89c03fe4753e1876cf6`;
+- pre-Foundation basic locomotion reference: `e26b33ee62305cb7d3ba9e8d929dfe7662487ea0`.
+
+Current status: **AVATAR-RELATIVE CROUCH GROUNDING RECONSTRUCTED / USER QA PENDING**.
