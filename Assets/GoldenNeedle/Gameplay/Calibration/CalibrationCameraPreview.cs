@@ -22,6 +22,9 @@ namespace GoldenNeedle.Gameplay.Calibration
         private int _lastRotationDegrees;
         private bool _lastHorizontalMirror;
         private bool _lastVerticalCorrection;
+        private RectTransform _lastTargetTransform;
+        private float _lastTargetWidth;
+        private float _lastTargetHeight;
         private bool _hasAppliedState;
 
         public bool HasValidPreview { get; private set; }
@@ -29,10 +32,7 @@ namespace GoldenNeedle.Gameplay.Calibration
         private void Awake()
         {
             ResolveReferences();
-            if (aspectRatioFitter != null)
-            {
-                aspectRatioFitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
-            }
+            DisableAspectRatioFitter();
         }
 
         public void SetPlayerFacade(GoldenNeedlePlayerFacade playerFacade)
@@ -62,6 +62,7 @@ namespace GoldenNeedle.Gameplay.Calibration
         private void ApplyCurrentState()
         {
             ResolveReferences();
+            DisableAspectRatioFitter();
             if (rawImage == null || _playerFacade == null)
             {
                 HasValidPreview = false;
@@ -74,6 +75,10 @@ namespace GoldenNeedle.Gameplay.Calibration
             var rotationDegrees = _playerFacade.CameraPreviewRotationDegrees;
             var horizontalMirror = _playerFacade.CameraPreviewPresentationHorizontalMirror;
             var verticalCorrection = _playerFacade.CameraPreviewDisplayVerticalCorrection;
+            var contentTransform = rawImage.rectTransform;
+            var targetTransform = contentTransform.parent as RectTransform;
+            var targetWidth = targetTransform == null ? 0f : targetTransform.rect.width;
+            var targetHeight = targetTransform == null ? 0f : targetTransform.rect.height;
 
             if (_hasAppliedState &&
                 _lastTexture == texture &&
@@ -81,7 +86,10 @@ namespace GoldenNeedle.Gameplay.Calibration
                 _lastSourceHeight == sourceHeight &&
                 _lastRotationDegrees == rotationDegrees &&
                 _lastHorizontalMirror == horizontalMirror &&
-                _lastVerticalCorrection == verticalCorrection)
+                _lastVerticalCorrection == verticalCorrection &&
+                _lastTargetTransform == targetTransform &&
+                Mathf.Approximately(_lastTargetWidth, targetWidth) &&
+                Mathf.Approximately(_lastTargetHeight, targetHeight))
             {
                 return;
             }
@@ -90,6 +98,8 @@ namespace GoldenNeedle.Gameplay.Calibration
                 sourceWidth,
                 sourceHeight,
                 rotationDegrees,
+                targetWidth,
+                targetHeight,
                 horizontalMirror,
                 verticalCorrection);
 
@@ -98,30 +108,41 @@ namespace GoldenNeedle.Gameplay.Calibration
                 ? new Color(0.08f, 0.09f, 0.12f, 1f)
                 : Color.white;
 
-            var contentTransform = rawImage.rectTransform;
+            contentTransform.anchorMin = new Vector2(0.5f, 0.5f);
+            contentTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            contentTransform.pivot = new Vector2(0.5f, 0.5f);
+            contentTransform.anchoredPosition = Vector2.zero;
             contentTransform.localRotation = Quaternion.Euler(0f, 0f, geometry.RotationDegrees);
             contentTransform.localScale = new Vector3(
                 geometry.HorizontalMirror ? -1f : 1f,
                 geometry.VerticalCorrection ? -1f : 1f,
                 1f);
 
-            if (aspectRatioFitter != null)
+            if (geometry.HasValidSource && geometry.HasValidTarget)
             {
-                aspectRatioFitter.enabled = geometry.HasValidSource;
-                if (geometry.HasValidSource)
-                {
-                    aspectRatioFitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
-                    aspectRatioFitter.aspectRatio = geometry.AspectRatio;
-                }
+                contentTransform.SetSizeWithCurrentAnchors(
+                    RectTransform.Axis.Horizontal,
+                    geometry.RawTextureSize.x);
+                contentTransform.SetSizeWithCurrentAnchors(
+                    RectTransform.Axis.Vertical,
+                    geometry.RawTextureSize.y);
+            }
+            else
+            {
+                contentTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, 0f);
+                contentTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, 0f);
             }
 
-            HasValidPreview = geometry.HasValidSource && texture != null;
+            HasValidPreview = geometry.HasValidSource && geometry.HasValidTarget && texture != null;
             _lastTexture = texture;
             _lastSourceWidth = sourceWidth;
             _lastSourceHeight = sourceHeight;
             _lastRotationDegrees = rotationDegrees;
             _lastHorizontalMirror = horizontalMirror;
             _lastVerticalCorrection = verticalCorrection;
+            _lastTargetTransform = targetTransform;
+            _lastTargetWidth = targetWidth;
+            _lastTargetHeight = targetHeight;
             _hasAppliedState = true;
         }
 
@@ -129,6 +150,14 @@ namespace GoldenNeedle.Gameplay.Calibration
         {
             rawImage = rawImage == null ? GetComponent<RawImage>() : rawImage;
             aspectRatioFitter = aspectRatioFitter == null ? GetComponent<AspectRatioFitter>() : aspectRatioFitter;
+        }
+
+        private void DisableAspectRatioFitter()
+        {
+            if (aspectRatioFitter != null)
+            {
+                aspectRatioFitter.enabled = false;
+            }
         }
     }
 }
