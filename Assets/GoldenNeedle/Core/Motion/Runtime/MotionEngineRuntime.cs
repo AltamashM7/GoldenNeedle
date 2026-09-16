@@ -213,6 +213,18 @@ namespace GoldenNeedle.Core.Motion.Runtime
             _calibration?.Begin(_lastEvaluationTimeSeconds);
         }
 
+        public bool TrySetAvatarDriveSource(AvatarDrivePoseSource source)
+        {
+            if (source != AvatarDrivePoseSource.StabilizedCanonical &&
+                source != AvatarDrivePoseSource.RawCanonical)
+            {
+                return false;
+            }
+
+            avatarDrivePoseSource = source;
+            return true;
+        }
+
         public void ResetCalibration()
         {
             _calibration?.Reset();
