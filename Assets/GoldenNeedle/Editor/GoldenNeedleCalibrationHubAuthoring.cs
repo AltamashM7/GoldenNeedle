@@ -55,7 +55,7 @@ namespace GoldenNeedle.Editor.Gameplay
                 summary.AppendLine($"root[{rootIndex}] '{roots[rootIndex].name}' position={roots[rootIndex].transform.position}");
             }
 
-            var renderers = UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var renderers = UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include);
             for (var index = 0; index < renderers.Length; index++)
             {
                 var renderer = renderers[index];
@@ -67,7 +67,7 @@ namespace GoldenNeedle.Editor.Gameplay
                 summary.AppendLine($"renderer '{GetHierarchyPath(renderer.transform)}' bounds={renderer.bounds}");
             }
 
-            var colliders = UnityEngine.Object.FindObjectsByType<Collider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var colliders = UnityEngine.Object.FindObjectsByType<Collider>(FindObjectsInactive.Include);
             for (var index = 0; index < colliders.Length; index++)
             {
                 var collider = colliders[index];
@@ -172,7 +172,7 @@ namespace GoldenNeedle.Editor.Gameplay
                 return;
             }
 
-            var renderers = UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var renderers = UnityEngine.Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include);
             for (var index = 0; index < renderers.Length; index++)
             {
                 var renderer = renderers[index];
@@ -184,7 +184,7 @@ namespace GoldenNeedle.Editor.Gameplay
                 UnityEngine.Debug.Log($"  renderer '{GetHierarchyPath(renderer.transform)}' bounds={renderer.bounds}");
             }
 
-            var colliders = UnityEngine.Object.FindObjectsByType<Collider>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+            var colliders = UnityEngine.Object.FindObjectsByType<Collider>(FindObjectsInactive.Include);
             for (var index = 0; index < colliders.Length; index++)
             {
                 var collider = colliders[index];

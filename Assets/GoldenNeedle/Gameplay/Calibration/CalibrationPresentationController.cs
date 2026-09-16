@@ -18,7 +18,6 @@ namespace GoldenNeedle.Gameplay.Calibration
         [SerializeField] private GoldenNeedlePlayerFacade playerFacade;
         [SerializeField] private Transform characterStageAnchor;
         [SerializeField] private bool placeCharacterAtStageOnStart = true;
-        [SerializeField] private bool suppressAvatarPoseDriveOnIntro = true;
         [SerializeField] private Animator characterAnimator;
         [SerializeField] private string idleStateName;
         [Min(0f), SerializeField] private float idleCrossFadeSeconds = 0.15f;

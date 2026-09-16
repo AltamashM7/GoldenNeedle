@@ -331,7 +331,7 @@ namespace GoldenNeedle.Editor.Gameplay
                 text.color = defaultColor;
                 text.alignment = TextAlignmentOptions.Center;
                 text.raycastTarget = false;
-                text.enableWordWrapping = true;
+                text.textWrappingMode = TextWrappingModes.Normal;
             }
 
             if (text.font == null && font != null)
