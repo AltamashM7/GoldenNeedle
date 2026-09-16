@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using GoldenNeedle.Gameplay.Flow;
 using NUnit.Framework;
@@ -99,7 +98,7 @@ namespace GoldenNeedle.Tests.Editor
 
         private Scene CreateScene()
         {
-            var scene = SceneManager.CreateScene($"GameplayFlowTest_{Guid.NewGuid():N}");
+            var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
             _createdScenes.Add(scene);
             return scene;
         }
