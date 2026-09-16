@@ -200,8 +200,9 @@ namespace GoldenNeedle.Tests
             try
             {
                 var constraint = ReadyConstraint(context, out _, out _);
-                context.leftUpperLeg.rotation =
-                    Quaternion.AngleAxis(18f, Vector3.forward) * context.leftUpperLeg.rotation;
+                var leftUpperLeg = context.bones[(int)CanonicalBoneId.LeftUpperLeg];
+                leftUpperLeg.rotation =
+                    Quaternion.AngleAxis(18f, Vector3.forward) * leftUpperLeg.rotation;
                 var raisedBefore = context.leftFoot.position;
 
                 var unilateral = BendSample(-0.08f, true);
