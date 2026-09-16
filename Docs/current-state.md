@@ -11,26 +11,26 @@ Active branch: `engine/pose-tracking-spike`
 - Do **not** merge to `main` without explicit USER approval.
 - Do not force-push, rebase, amend, reset, or rewrite shared history.
 - Independently verify the live remote branch before new work.
-- USER Unity/manual evidence is the acceptance authority.
+- USER Unity/manual/runtime evidence is the acceptance authority.
 - Phase 6 remains **NOT STARTED**.
 
 ## Current checkpoint
 
-Phase-5 authority-reconstruction baseline:
+Grounded-foot corrective-pass baseline/handoff:
 
-`08d7ea5785dd5935ed7240f004313b2a769d7a52`
+`3390492e9efdd72fa3bab9cc8a58910e7473ed06`
 
-Published reconstruction implementation/tests/diagnostics/docs checkpoint:
+Grounded-foot implementation/tests/diagnostics checkpoint:
 
-`dc48e9d2f18c65b1631fbdb390e60578087a1303`
+`a3f9e273b575146c3b56a3966d123f48177c5b5a`
 
 Current status:
 
-**PHASE-5 AUTHORITY RECONSTRUCTION IMPLEMENTED / USER QA PENDING**
+**GROUNDED FOOT CONSTRAINT IMPLEMENTED / USER QA PENDING**
 
 Motion Engine V1 remains **NOT YET USER ACCEPTED**.
 
-## Preserved production baseline
+## Preserved production body pipeline
 
 ```text
 Unity WebCamTexture
@@ -42,96 +42,173 @@ Unity WebCamTexture
 -> 33 normalized + world landmarks
 -> CanonicalBodyV1
 -> Phase 3 stabilization/calibration authority
--> Phase 4 positional/IK avatar control
+-> Phase 4 positional/analytic-IK avatar control
 -> Phase 5 root translation
 -> presentation
 ```
 
-Stock MediaPipe/TFLite and ExistingReadback remain fallback/reference paths. The accepted low-end optimization milestone remains frozen unless new reproducible evidence requires reopening it. Phase 3 remains locomotion/calibration data authority; Phase 4 remains USER-accepted bone/IK authority; Phase 5 moves only the avatar/player root after Phase 4.
+Stock MediaPipe/TFLite and ExistingReadback remain fallback/reference paths. The accepted low-end optimization milestone remains frozen. Phase 3 remains locomotion/calibration data authority. Phase 4 remains the USER-accepted normal pose/IK authority.
 
 Foundation A commands/speech and Foundation B cameras remain retained. Foundation C is dormant research, Foundation D hands are deferred, Foundation E is retired from production, and coarse hands remain deferred/rolled back.
 
-## Why Phase 5 was reconstructed
+## Phase-5 authority reconstruction remains frozen
 
-The post-Batch-3 runtime had accumulated multiple position authorities: support/rebase state in `CameraSpaceRootTracker`, another committed-position/stationary state machine in `LocomotionFusion`, and later a post-Phase-4 solved-foot root-Y anchor. USER runtime still showed locomotion-caused idle motion and insufficient body descent during crouch.
+The prior reconstruction remains the horizontal baseline. USER runtime evidence after that pass showed that locomotion-caused idle/root jitter was mostly fixed, so this grounded-foot pass deliberately does not reopen horizontal ownership.
 
-Historical checkpoints were independently inspected before editing:
+`CameraSpaceRootTracker` remains the **only stateful physical X/Z position authority**. It owns accepted displacement, filtering/velocity, bilateral support validation, recenter and tracking-loss/reacquisition continuity.
 
-- `87698948b12cd10b6fef2072d0ad0ce9eeaecdfe` — early continuous torso/body-root prototype;
-- `33698719a2907d30bb3396f66e5b79e59ccbfe9e` — support-base corrective commit;
-- `e26b33ee62305cb7d3ba9e8d929dfe7662487ea0` — last known good pre-Foundation Phase-5 reference;
-- `466d65826ab747493c211e1a3250aafa305167c8` — immediate pre-reconstruction implementation.
+Torso center plus yaw-compensated apparent scale remain the continuous body/root candidate. Weighted ankle/heel/toe support evidence validates room relocation. Support hysteresis remains `0.12` single-enter / `0.06` dual-return. Only coherent bilateral support can validate new room-position movement.
 
-The reconstruction keeps useful behavior from all four rather than reverting wholesale.
+`LocomotionFusion` remains mapping/blending only. Current fusion scales/deadzones, physical velocity cadence suppression, cadence tuning and horizontal recenter semantics are unchanged.
 
-## Reconstructed horizontal authority
+No behavior changes were made to:
 
-`CameraSpaceRootTracker` is again the **only stateful physical-position authority**. It owns the physical reference, accepted displacement, filtering/velocity, support validation, tracking-loss/reacquisition continuity and recenter.
+- `CameraSpaceRootTracker.cs`;
+- `LocomotionFusion.cs`;
+- cadence implementation/defaults;
+- tracking-loss continuity;
+- horizontal recenter.
 
-Torso center plus yaw-compensated apparent scale provide the continuous body/root candidate. Weighted ankle/heel/toe support observations validate whether that candidate is genuine room relocation rather than lean/sway/swing articulation.
+## Vertical root authority remains body-compression driven
 
-Support classification remains `Both/Left/Right` with:
+`VerticalLocomotionInterpreter` remains the only Jump/Crouch semantic authority. Negative root Y still comes from trustworthy normalized pelvis-to-support compression relative to the runtime standing reference.
 
-- `supportSingleFootEnter = 0.12`;
-- `supportBothEnter = 0.06`.
+A shallow planted bend may lower root Y while semantic state is still `Standing`; deeper compression follows the same proportional path and may cross semantic `Crouch` at the existing `0.18` enter / `0.09` release thresholds. Current crouch mapping remains `1.20` world scale / `0.65` max depth.
 
-Only coherent dual support can validate a new room-position commit. Body and bilateral-support deltas must agree in direction. Small evidence is measured from the last accepted physical state, so idle fluctuations do not rewrite position while slow deliberate movement accumulates until it can commit.
+Jump remains coherent whole-body rise and exclusively owns positive root Y while active. Existing jump thresholds, lifecycle, tracking grace and controller/fusion depth isolation are unchanged.
 
-The long-standing normalized lateral evidence floor is `0.012`. Existing depth safeguards remain body-scale evidence `0.012`, support-depth evidence `0.018`, and foot-differential reliability `0.05–0.20`. Root position/velocity responses remain `10/s` and `8/s`.
-
-Tracking loss holds the last accepted displacement. First reacquired body/support observations are continuity-rebased onto that state before subsequent coherent movement can commit.
-
-`LocomotionFusion` no longer owns another committed-position/stationary/rebase state machine. It maps the authoritative root displacement, holds the last mapped contribution during invalidity, and blends cadence based on authoritative root velocity.
-
-Current fusion values remain lateral/depth scale `0.9 / 1.5`, origin deadzones `0.012 / 0.012`, physical velocity suppression `0.08 / 0.32`, minimum root confidence `0.30`.
-
-Cadence code/serialization remains unchanged: event threshold `0.07`, 2-event acquisition, acquire `0.38`, sustain `0.25`, timeout `0.50 s`, rate `0.8–4.5/s`, distance per step `0.60`, max speed `3.0`.
-
-Horizontal `Recenter()` remains X/Z-only and preserves virtual world position.
-
-## Reconstructed vertical authority
-
-`VerticalLocomotionInterpreter` remains the only semantic Jump/Crouch state authority. States remain `Unavailable`, `Standing`, `Jump`, `Crouch`, with jump phases `Grounded -> Takeoff -> Airborne -> Landing -> Grounded`.
-
-Negative root Y is now driven directly from trustworthy normalized pelvis-to-support compression relative to the runtime standing reference. The same signal exists before semantic `Crouch` acquisition, so a shallow planted bend can remain semantically `Standing` while already lowering root Y. Deeper compression continues through the same path and may cross the existing `0.18` Crouch enter threshold; release remains `0.09`.
-
-A small neutral-motion deadband is derived from existing crouch release tuning:
+Critically, solved avatar foot motion does **not** choose root Y. The dependency remains:
 
 ```text
-motionDeadband = clamp(0.25 * crouchReleaseThreshold, 0.01, 0.05)
-effectiveCompression = max(0, compression - motionDeadband)
-rootY = -clamp(effectiveCompression * crouchWorldScale, 0, maximumCrouchDepth)
+tracked pelvis-to-support compression
+-> Phase-5 root Y descent
+-> grounded leg residual correction
 ```
 
-Current crouch mapping remains `1.20` scale / `0.65` max. Grounded compression requires coherent feet, approximately grounded support and stable apparent scale.
-
-Jump remains coherent whole-body rise and exclusively owns positive root Y while active. Current jump thresholds/scales remain `0.12` enter, `0.045` release, `1.60` scale, `0.90` max, `0.08` max foot asymmetry, `0.10` coherence spread. The existing pre-jump physical-depth hold remains at the controller/fusion boundary so takeoff cannot leak into world Z.
-
-`GroundedCrouchFootAnchor` and the separate post-Phase-4 solved-foot-rise root-Y correction are removed from runtime authority. Feet are evidence/constraint; pelvis/body compression is the primary negative-Y signal.
-
-Controller target is again one vertical result:
+not:
 
 ```text
-X/Z = virtualOriginXZ + mapped physical contribution + integrated cadence
-Y   = verticalOriginY + verticalSample.worldOffsetY
+solved foot position
+-> choose root Y
 ```
 
-No CharacterController, Rigidbody gravity, collision probing, autonomous ballistics or Phase-6 gameplay physics is introduced.
+## Grounded-foot constraint corrective pass
+
+USER QA of the reconstruction exposed one remaining crouch hierarchy defect: body descent could occur, but the avatar feet could sink below the standing floor plane even though the USER's real feet remained planted.
+
+The new `GroundedFootConstraint` fixes only that residual geometry after root placement.
+
+### Standing floor reference
+
+Once calibration and the existing vertical standing reference are valid, both leg chains are available, vertical evidence is live/coherent/grounded, semantic state is `Standing`, grounded bend is inactive and root-Y offset is effectively zero, the helper captures each avatar foot tip's current world Y.
+
+The left and right standing Y values are retained independently. The reference is not continuously rewritten during crouch or jump.
+
+It is cleared on:
+
+- calibration loss/new calibration session;
+- player-root/binding change;
+- `HumanoidRigBinding.ReferencePoseVersion` change.
+
+Horizontal `Recenter()` does not redefine it.
+
+### Active gate
+
+The post-root constraint runs only when all of the following are true:
+
+- calibration/body reference is valid;
+- binding and both leg chains are available;
+- vertical reference is ready and the vertical measurement is currently available;
+- semantic state is not `Jump`;
+- support rise remains inside existing grounded tolerance;
+- bilateral foot asymmetry remains inside the existing maximum;
+- grounded bend is active, or filtered negative root Y is still recovering toward standing;
+- locomotion root drive is enabled.
+
+Jump/takeoff, unilateral swing/asymmetric support, missing chains and unavailable vertical evidence immediately skip the correction rather than fabricating contact.
+
+### Target semantics
+
+For each leg, after Phase-5 root X/Z/Y has already been written:
+
+```text
+post-Phase4/post-root foot = (x, y, z)
+grounded target          = (x, capturedStandingFootY, z)
+```
+
+Therefore Phase 4 retains live stance width and X/Z foot intent. The constraint corrects only the residual vertical floor error.
+
+A grounded target is never constructed below the captured standing plane.
+
+### IK reuse and execution order
+
+`GroundedFootConstraint` uses the existing project-owned `AnalyticTwoBoneIkSolver` and existing `TwoBoneIkRequest/Result` types. It reads chain root/mid/tip transforms and measured segment lengths through `HumanoidRigBinding`.
+
+No second IK algorithm was introduced and normal `HumanoidRetargeter` behavior was not modified.
+
+Bend stability hierarchy is:
+
+1. current Phase-4-solved knee plane;
+2. previous reliable grounded-correction bend direction;
+3. existing binding/reference chain bend direction.
+
+The correction rotates only the two leg root/mid joints; it never writes avatar/player root position.
+
+Runtime order is now:
+
+```text
+HumanoidRetargeter @ 100
+-> normal Phase-4 solve + existing presentation smoothing
+EmbodiedLocomotionController @ 150
+-> authoritative Phase-5 X/Z/Y root placement
+-> grounded-foot residual solve for LeftLeg + RightLeg only when gated
+LocomotionPrototypeView @ 170
+-> presentation diagnostics
+```
+
+Because the grounded correction runs after Phase-4's visible/smoothed pose has already been written, Phase-4 presentation smoothing does not overwrite it later in the same frame.
+
+### Reach limits
+
+The existing analytic solver continues to clamp unreachable endpoint requests. Grounded diagnostics expose whether either leg was reach-clamped. Endpoint residual is diagnostic only and never feeds back into root Y.
 
 ## Diagnostics
 
-F9 locomotion diagnostics expose body candidate, support mode/validation, support evidence, accepted physical displacement/velocity, per-frame commit state, vertical state/jump phase, grounded-bend activity, compression/support rise/asymmetry/scale change, and current/final root Y. No per-frame Console logging is added.
+F9 locomotion diagnostics retain reconstructed physical/vertical authority data and now additionally show:
+
+- grounded standing-plane reference ready/waiting;
+- grounded lock active/idle;
+- left/right post-solve Y residual from the captured standing plane;
+- whether either leg target was reach-clamped.
+
+No per-frame Console logging was added.
 
 ## Deterministic coverage
 
-`Phase5LocomotionTests.cs` now tests neutral/nonzero idle stability, lean and scale-only rejection, swing-foot rejection, coherent room relocation, alternating-step completion, landing continuity, slow-movement accumulation, loss/reacquisition, recenter, physical/cadence blending, depth corroboration, axis/heading semantics and jogging-in-place cadence.
+Existing reconstructed `Phase5LocomotionTests.cs` and `VerticalLocomotionTests.cs` were left untouched.
 
-`VerticalLocomotionTests.cs` tests neutral standing, shallow compression before semantic Crouch, deeper continuous descent through semantic Crouch, semantic/motion separation, planted-crouch X/Z isolation, recovery, coherent jump, jump ownership after bend, single-leg/scale rejection, landing, tracking/calibration reset and in-place jump X/Z isolation.
+New `GroundedFootConstraintTests.cs` covers:
 
-The obsolete `LocomotionGroundingStabilityTests.cs` suite was removed because it encoded the superseded downstream fusion gate and post-solve foot-anchor authority.
+1. stable bilateral standing-plane capture;
+2. shallow root descent with both feet restored to standing Y;
+3. deeper crouch with root lower while both feet remain on-plane;
+4. shallow -> deep -> recovery plane continuity;
+5. finite/same-side knee bend direction through that sequence;
+6. Y-only grounded target construction preserving current X/Z;
+7. target never below captured plane;
+8. semantic Jump release;
+9. takeoff/support-rise release;
+10. unilateral/swing evidence release;
+11. missing leg chain safe failure;
+12. explicit reset and binding-reference-version invalidation;
+13. calibration-loss reference reset without root corruption.
+
+The synthetic test rig's shallow/deep/recovery targets are all within the existing analytic solver's reachable interval, so normal expected cases do not depend on reach clamping.
 
 ## Verification status
 
-No Unity Editor/Test Runner is available in the Builder execution environment. The deterministic Editor tests are authored and statically audited but are **not claimed as executed** without real runner evidence.
+No Unity Editor, .NET C# compiler or Test Runner is available in the Builder execution environment. The focused Editor tests are authored and the source/geometry/diff are statically audited, but they are **not claimed as executed**.
 
-The next boundary is genuine USER Unity webcam QA of the reconstructed Motion Engine. Do not start Phase 6, reopen performance/hands work, or merge `main` before that result is reviewed.
+The next boundary is genuine USER Unity webcam QA focused on shallow/deep grounded bends, recovery, swing-leg release, jump release and confirmation that horizontal idle stability remains unchanged.
+
+Do not start Phase 6, reopen performance/hands work, or merge `main` before that QA is reviewed.
