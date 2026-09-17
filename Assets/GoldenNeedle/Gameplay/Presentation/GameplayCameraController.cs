@@ -129,12 +129,7 @@ namespace GoldenNeedle.Gameplay.Presentation
             }
 
             var deltaTime = Mathf.Max(0.0001f, Time.unscaledDeltaTime);
-            RefreshHeading(facade, deltaTime);
-            if (!_hasHeading)
-            {
-                focusTargetDiagnostic = "Waiting for retained body heading";
-                return;
-            }
+            RefreshHeading(facade, playerRoot, deltaTime);
 
             var preset = CurrentPreset;
             if (preset == null)
@@ -219,28 +214,49 @@ namespace GoldenNeedle.Gameplay.Presentation
             return facade != null;
         }
 
-        private void RefreshHeading(GoldenNeedlePlayerFacade facade, float deltaTime)
+        private void RefreshHeading(
+            GoldenNeedlePlayerFacade facade,
+            Transform playerRoot,
+            float deltaTime)
         {
-            if (!facade.HasWorldHeading ||
-                facade.WorldHeadingXZ.sqrMagnitude <= 0.000001f)
+            if (facade.HasWorldHeading &&
+                CameraViewPresetMath.IsFinite(facade.WorldHeadingXZ) &&
+                facade.WorldHeadingXZ.sqrMagnitude > 0.000001f)
+            {
+                var targetHeading = facade.WorldHeadingXZ.normalized;
+                if (!_hasHeading)
+                {
+                    _smoothedHeading = targetHeading;
+                    _hasHeading = true;
+                    return;
+                }
+
+                var alpha = CameraViewPresetMath.ResponseAlpha(8f, deltaTime);
+                var blended = Vector2.Lerp(_smoothedHeading, targetHeading, alpha);
+                if (blended.sqrMagnitude > 0.000001f)
+                {
+                    _smoothedHeading = blended.normalized;
+                }
+                return;
+            }
+
+            if (_hasHeading)
             {
                 return;
             }
 
-            var targetHeading = facade.WorldHeadingXZ.normalized;
-            if (!_hasHeading)
+            var rootForward = playerRoot == null ? Vector3.zero : playerRoot.forward;
+            var fallbackHeading = new Vector2(rootForward.x, rootForward.z);
+            if (!CameraViewPresetMath.IsFinite(fallbackHeading) ||
+                fallbackHeading.sqrMagnitude <= 0.000001f)
             {
-                _smoothedHeading = targetHeading;
-                _hasHeading = true;
-                return;
+                // Back presets orbit along negative forward, so +Z is the stable world-forward
+                // convention when the avatar has not supplied a body heading yet.
+                fallbackHeading = new Vector2(0f, 1f);
             }
 
-            var alpha = CameraViewPresetMath.ResponseAlpha(8f, deltaTime);
-            var blended = Vector2.Lerp(_smoothedHeading, targetHeading, alpha);
-            if (blended.sqrMagnitude > 0.000001f)
-            {
-                _smoothedHeading = blended.normalized;
-            }
+            _smoothedHeading = fallbackHeading.normalized;
+            _hasHeading = true;
         }
 
         private bool TryResolveFocus(

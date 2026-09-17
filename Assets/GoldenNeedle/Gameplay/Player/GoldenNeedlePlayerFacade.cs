@@ -66,6 +66,32 @@ namespace GoldenNeedle.Gameplay.Player
         public float LocomotionFinalWorldPositionY => locomotionController == null
             ? 0f
             : locomotionController.FinalWorldPositionY;
+        public PoseProviderStatus ProviderStatus => poseProvider == null
+            ? PoseProviderStatus.Stopped
+            : poseProvider.Status;
+        public string ProviderStatusMessage => poseProvider == null
+            ? "Pose provider reference is missing"
+            : poseProvider.StatusMessage;
+        public string SelectedCameraName => poseProvider == null ? string.Empty : poseProvider.SelectedCameraName;
+        public bool PoseProviderHasCameraTexture => poseProvider != null && poseProvider.HasCameraTexture;
+        public bool PoseProviderCameraPlaying => poseProvider != null && poseProvider.IsCameraPlaying;
+        public bool PoseProviderIsBootstrapping => poseProvider != null && poseProvider.IsBootstrapping;
+        public bool PoseProviderHasReceivedResult => poseProvider != null && poseProvider.HasReceivedResult;
+        public double LatestPoseAgeMilliseconds => poseProvider == null
+            ? double.PositiveInfinity
+            : poseProvider.LatestPoseAgeMilliseconds;
+        public string ActiveInferenceBackendLabel => poseProvider == null
+            ? "Missing"
+            : poseProvider.ActiveInferenceBackendLabel;
+        public float PoseProviderCameraStartupTimeoutSeconds => poseProvider == null
+            ? 0f
+            : poseProvider.CameraStartupTimeoutSeconds;
+        public bool CanTryTrackingRecovery => poseProvider != null && poseProvider.CanTryTrackingRecovery;
+        public bool TrackingRecoveryRequested => poseProvider != null && poseProvider.TrackingRecoveryRequested;
+        public bool TrackingRecoveryAccepted => poseProvider != null && poseProvider.TrackingRecoveryAccepted;
+        public bool TrackingRecoveryPerformed => poseProvider != null && poseProvider.TrackingRecoveryPerformed;
+        public int TrackingRecoveryRequestCount => poseProvider == null ? 0 : poseProvider.TrackingRecoveryRequestCount;
+        public int TrackingRecoveryRestartCount => poseProvider == null ? 0 : poseProvider.TrackingRecoveryRestartCount;
         public PlayerHealth Health => playerHealth;
         public Transform LeftWristAnchor => bodyAnchors == null ? null : bodyAnchors.LeftWrist;
         public Transform RightWristAnchor => bodyAnchors == null ? null : bodyAnchors.RightWrist;
@@ -138,6 +164,18 @@ namespace GoldenNeedle.Gameplay.Player
             _rigBindingRecoveryAttempted = true;
             rigBinding.RebuildBinding();
             return rigBinding.IsBound;
+        }
+
+        public void BeginTrackingRecoveryWindow()
+        {
+            ResolveReferences();
+            poseProvider?.BeginTrackingRecoveryWindow();
+        }
+
+        public bool TryRecoverTracking()
+        {
+            ResolveReferences();
+            return poseProvider != null && poseProvider.TryRecoverTracking();
         }
 
         public void BeginCalibration()

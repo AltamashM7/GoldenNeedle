@@ -1062,6 +1062,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private int _preparedFramePublishedFrameCount = -1;
         private int _preparedTextureFrameDiagnosticOccupied;
         private bool _shuttingDown;
+        private bool _trackingRecoveryRestartIssued;
+        private int _trackingRecoveryRequestCount;
+        private int _trackingRecoveryRestartCount;
         private bool _cameraSwitchPending;
         private string _pendingCameraName = string.Empty;
         private string _pendingPreferredCameraName = string.Empty;
@@ -1160,6 +1163,21 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public bool LastOpenVinoDetectorRan { get; private set; }
         public bool CameraSwitchPending => _cameraSwitchPending;
         public string PendingCameraName => _pendingCameraName;
+        public float CameraStartupTimeoutSeconds => Mathf.Max(1f, cameraStartupTimeoutSeconds);
+        public bool IsBootstrapping => _bootstrapCoroutine != null;
+        public bool HasCameraTexture => _webCamTexture != null;
+        public bool IsCameraPlaying => _webCamTexture != null && _webCamTexture.isPlaying;
+        public bool CanTryTrackingRecovery =>
+            _bootstrapCoroutine == null &&
+            !_readbackPending &&
+            Volatile.Read(ref _inferenceOutstanding) == 0 &&
+            !_cameraSwitchPending &&
+            !_activeDirectReadbackRequestValid;
+        public bool TrackingRecoveryRequested { get; private set; }
+        public bool TrackingRecoveryAccepted { get; private set; }
+        public bool TrackingRecoveryPerformed { get; private set; }
+        public int TrackingRecoveryRequestCount => _trackingRecoveryRequestCount;
+        public int TrackingRecoveryRestartCount => _trackingRecoveryRestartCount;
         public bool VideoVerticallyMirrored => _webCamTexture != null && _webCamTexture.videoVerticallyMirrored;
         public CameraOrientationState Orientation => _orientation;
         public int CoordinateConventionVersion => _coordinateConventionVersion;
@@ -3119,6 +3137,44 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 return;
             }
             RestartProvider(invalidateCameraSession: false);
+        }
+
+        public void BeginTrackingRecoveryWindow()
+        {
+            TrackingRecoveryRequested = false;
+            TrackingRecoveryAccepted = false;
+            TrackingRecoveryPerformed = false;
+            _trackingRecoveryRestartIssued = false;
+            _trackingRecoveryRequestCount = 0;
+            _trackingRecoveryRestartCount = 0;
+        }
+
+        public bool TryRecoverTracking()
+        {
+            TrackingRecoveryRequested = true;
+            _trackingRecoveryRequestCount++;
+            if (_trackingRecoveryRestartIssued)
+            {
+                return true;
+            }
+
+            if (!CanTryTrackingRecovery)
+            {
+                StatusMessage = "Tracking recovery waiting for provider idle";
+                return false;
+            }
+
+            if (!RestartProvider(invalidateCameraSession: false))
+            {
+                return false;
+            }
+
+            _trackingRecoveryRestartIssued = true;
+            TrackingRecoveryAccepted = true;
+            TrackingRecoveryPerformed = true;
+            _trackingRecoveryRestartCount++;
+            StatusMessage = "Automatic Hub tracking recovery accepted; restarting provider";
+            return true;
         }
 
         public bool RequestCycleCamera()
