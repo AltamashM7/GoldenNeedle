@@ -28,6 +28,7 @@ No Hub quests, scoring, tutorials, cutscenes, special navigation, activity gamep
 - `b8afaae8a8cf20ec5bf17a45c85d5b494e6f6151`: portal trigger behavior, Hub trigger objects, and Obstacle spawn contract.
 - `6c3f4c365a9730baa87aa5e411337e20bbbe8f47`: follow camera/presets, Hub control-authority correction, editable spawn gizmo, complete-calibration gate, persistent Animator correction, and required Calibration presentation assets.
 - `08b02c24946e5d1ec9a88a168584aaaf0106ce7f`: scene-local Calibration Animator binding repair, bounded Hub motion-readiness diagnostics, one-shot rig-binding recovery, and post-placement Hub TerrainCollider grounding.
+- `b3b9f298abc94c0d2620d4696ae53e3a2cddc3ff`: one-shot automatic tracking recovery through the existing provider restart path, provider failure diagnostics, and camera follow fallback without a live body heading.
 
 ## Hub entry contract
 
@@ -40,7 +41,9 @@ No Hub quests, scoring, tutorials, cutscenes, special navigation, activity gamep
 - Pose/locomotion activation does not depend on command-host discovery.
 - Hub state sets external animation authority OFF, avatar pose drive ON, locomotion ON.
 - If the rig is unbound, Hub permits one narrow `TryEnsureRigBinding` recovery attempt; healthy bindings are never rebuilt and failures are not retried continuously.
-- A bounded 2-second readiness window checks calibration completion, body tracking, live retarget targets, and solved IK chains. If readiness is still absent, one diagnostic is emitted and no provider/calibration/retarget reset is attempted.
+- After structural authority and completed calibration are healthy, Hub observes unavailable body tracking for 0.75 seconds, then makes recovery requests for at most a bounded 1-second window while the provider becomes idle. At most one actual provider restart is performed per Hub entry.
+- Recovery reuses `RestartProvider(invalidateCameraSession: false)`, so the completed calibration and coordinate convention remain intact. On acceptance, the readiness timer restarts and waits for the provider camera startup timeout plus a 1-second margin (approximately 9 seconds with the current 8-second timeout), rather than failing at the old 2-second window.
+- If readiness still fails, one warning reports provider status/message, selected camera, texture/playing state, bootstrap/result freshness, backend, and recovery request/accept/performed counters. No calibration, camera, orientation, retarget, or locomotion reset is attempted.
 
 ## Terrain grounding contract
 
@@ -70,6 +73,9 @@ Rules:
 - resolve only the persistent production session;
 - use facade/root/body-anchor APIs, never provider internals;
 - use retained locomotion world heading;
+- retain the last valid heading during temporary source loss;
+- if no valid heading has ever been acquired, use persistent player-root forward projected to X/Z, with deterministic +Z `(0, 1)` fallback for the existing Back-preset convention;
+- continue resolving focus/preset/root and following the player when heading is absent; smoothly adopt live heading when it returns;
 - update in `LateUpdate`;
 - use existing `CameraViewPreset` and `CameraViewPresetMath`;
 - keep distances, heights, focus offsets, FOV, and response values serialized in the scene;
@@ -129,20 +135,24 @@ The visual portal prefab/mesh is not the trigger. Each portal uses a separate sc
 
 ## Current evidence
 
-The implementation checkpoint `08b02c24946e5d1ec9a88a168584aaaf0106ce7f` was verified through repository/scene inspection, focused invariants, and a clean Unity batch import/reload/script compilation. The serialized Calibration presentation Animator, persistent Animator null override, Hub readiness component, and TerrainCollider assignment all match the contract.
+The latest USER evidence established that Calibration remained complete, Hub drive flags were on, the Humanoid rig was bound, but `bodyTrackingAvailable=False` and all downstream retarget counts were zero. The camera also stopped following because it returned when no live heading was available. The implementation checkpoint `b3b9f298abc94c0d2620d4696ae53e3a2cddc3ff` adds the narrow provider recovery and camera fallback described above.
+
+Focused Unity batch import/domain reload regenerated the script assembly and produced no captured C# compiler diagnostic. The Unity wrapper timed out during repeated Licensing Client initialization/reconnection rather than exiting cleanly, so this is source/import verification only.
 
 Static inspection also confirms serialized presets, camera registration, Hub control calls, trigger destinations, and spawn ids. No Play Mode, player build, webcam/pose test, uneven-terrain test, or fresh runtime portal test was performed; runtime acceptance remains with the USER.
 
 ## Required USER QA
 
-1. Complete Calibration and enter Hub.
-2. Confirm pose following and locomotion.
-3. Confirm spawn at `HubEntry`.
-4. Walk across uneven Hub terrain and confirm the avatar stays grounded.
-5. Confirm Jump/Crouch vertical motion remains relative to the sampled ground.
-6. Confirm camera follow and all presets.
-7. Cross blue trigger and confirm exactly one transition to `ObstacleEntry`.
-8. Confirm yellow remains inert.
-9. Confirm no duplicate persistent objects.
+1. Complete Calibration and enter Hub without pressing a drive-motion/debug key.
+2. Confirm the camera follows immediately even before a live body heading exists.
+3. Confirm the provider recovery is automatic and the avatar leaves the T-pose when body tracking returns.
+4. Confirm pose following and locomotion.
+5. Confirm spawn at `HubEntry`.
+6. Walk across uneven Hub terrain and confirm the avatar stays grounded.
+7. Confirm Jump/Crouch vertical motion remains relative to the sampled ground.
+8. Confirm camera follow and all presets.
+9. Cross blue trigger and confirm exactly one transition to `ObstacleEntry`.
+10. Confirm yellow remains inert.
+11. Confirm no duplicate persistent objects.
 
 Stop and diagnose evidence if this fails; do not broaden into activity implementation.
