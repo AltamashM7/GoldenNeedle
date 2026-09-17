@@ -29,6 +29,7 @@ No Hub quests, scoring, tutorials, cutscenes, special navigation, activity gamep
 - `6c3f4c365a9730baa87aa5e411337e20bbbe8f47`: follow camera/presets, Hub control-authority correction, editable spawn gizmo, complete-calibration gate, persistent Animator correction, and required Calibration presentation assets.
 - `08b02c24946e5d1ec9a88a168584aaaf0106ce7f`: scene-local Calibration Animator binding repair, bounded Hub motion-readiness diagnostics, one-shot rig-binding recovery, and post-placement Hub TerrainCollider grounding.
 - `b3b9f298abc94c0d2620d4696ae53e3a2cddc3ff`: one-shot automatic tracking recovery through the existing provider restart path, provider failure diagnostics, and camera follow fallback without a live body heading.
+- `8026852`: continuous Calibration -> Hub webcam/provider preservation, fresh-camera startup validation, bounded same-texture soft resume, camera-health-gated hard fallback, and stable Hub readiness diagnostics.
 
 ## Hub entry contract
 
@@ -41,9 +42,13 @@ No Hub quests, scoring, tutorials, cutscenes, special navigation, activity gamep
 - Pose/locomotion activation does not depend on command-host discovery.
 - Hub state sets external animation authority OFF, avatar pose drive ON, locomotion ON.
 - If the rig is unbound, Hub permits one narrow `TryEnsureRigBinding` recovery attempt; healthy bindings are never rebuilt and failures are not retried continuously.
-- After structural authority and completed calibration are healthy, Hub observes unavailable body tracking for 0.75 seconds, then makes recovery requests for at most a bounded 1-second window while the provider becomes idle. At most one actual provider restart is performed per Hub entry.
-- Recovery reuses `RestartProvider(invalidateCameraSession: false)`, so the completed calibration and coordinate convention remain intact. On acceptance, the readiness timer restarts and waits for the provider camera startup timeout plus a 1-second margin (approximately 9 seconds with the current 8-second timeout), rather than failing at the old 2-second window.
-- If readiness still fails, one warning reports provider status/message, selected camera, texture/playing state, bootstrap/result freshness, backend, and recovery request/accept/performed counters. No calibration, camera, orientation, retarget, or locomotion reset is attempted.
+- Calibration is scene-local. The persistent `GoldenNeedlePlayerSession` owns the provider and survives the normal `GameFlowManager` `LoadSceneMode.Single` replacement; Hub does not instantiate or rebind a second provider/session and does not use additive loading.
+- After successful camera startup, normal Hub entry does not stop, destroy, reconstruct, switch, or invalidate the existing webcam/provider/OpenVINO session. Fresh-camera continuity is checked from the provider's `_latestFreshFrameObservedAtSeconds`, updated on `WebCamTexture.didUpdateThisFrame`; the fixed freshness threshold is 1 second.
+- A body/result gap alone never requests recovery. Only a stale/missing camera frame after structural authority and completed calibration have become healthy enters the bounded continuity path.
+- After a 0.75-second camera-staleness grace period, Hub requests one soft same-texture resume: `Play` when the existing texture is not playing, or same-object `Stop` -> `Play` when it is playing but stalled. It does not tear down OpenVINO, the worker, scheduler, calibration, or coordinate convention, and waits up to 1 second for a fresh frame.
+- Only after the soft attempt fails may Hub request the existing `RestartProvider(invalidateCameraSession: false)` hard fallback. The request is bounded to a 1-second provider-idle window and at most one actual hard restart is accepted per Hub entry. On acceptance, the readiness timer waits for the provider camera startup timeout plus a 1-second margin (approximately 9 seconds with the current 8-second timeout).
+- `StartCameraAsync` declares Ready only after valid dimensions, `isPlaying`, and a fresh frame observed after `Play`; a timeout without that real frame is a clear CameraFailed state.
+- After the first full runtime readiness result, Hub continues for a 1-second stable camera/readiness window. If readiness still fails, one warning reports calibration/drive flags, provider status/message, selected camera, camera FPS/freshness/age, acquisition/fallback, OpenVINO runtime/worker state, pose freshness, retarget counts, and soft/hard recovery outcomes. No calibration, camera, orientation, retarget, locomotion, or terrain reset is attempted.
 
 ## Terrain grounding contract
 
@@ -135,24 +140,21 @@ The visual portal prefab/mesh is not the trigger. Each portal uses a separate sc
 
 ## Current evidence
 
-The latest USER evidence established that Calibration remained complete, Hub drive flags were on, the Humanoid rig was bound, but `bodyTrackingAvailable=False` and all downstream retarget counts were zero. The camera also stopped following because it returned when no live heading was available. The implementation checkpoint `b3b9f298abc94c0d2620d4696ae53e3a2cddc3ff` adds the narrow provider recovery and camera fallback described above.
+The latest USER continuity evidence recorded Calibration on the selected `HP TrueVision HD Camera` from three devices at `640x480 @ approximately 18.8 fps`, body input `320x240 scaled`, `OpenVINO CPU FP32`, and `WebCamCPU/GetPixels32`, with Ready/live result-callback logs. After the automatic transition, the same persistent player and selected camera remained, but Hub showed `640x480 @ 0.0 fps`, `320x240 scaled`, `OpenVINO CPU FP32`, `ExistingReadback (fallback)`, fallback reason `provider/OpenVINO worker not ready`, T-pose/no locomotion, and no Hub readiness warning.
 
-Focused Unity batch import/domain reload regenerated the script assembly and produced no captured C# compiler diagnostic. The Unity wrapper timed out during repeated Licensing Client initialization/reconnection rather than exiting cleanly, so this is source/import verification only.
+Static inspection identifies the previous failure path: the old Hub coroutine exited on the first `HasRuntimeMotionReadiness()` result, while the previous body-unavailable recovery could call destructive `RestartProvider(false)`. That provider path stopped/destroyed the `WebCamTexture` and tore down OpenVINO before rebuilding. The transition-gap -> destructive-restart -> 0 FPS/T-pose explanation is a strong code-based inference, not a hardware root-cause claim. Checkpoint `8026852` implements the camera-continuity contract above.
 
-Static inspection also confirms serialized presets, camera registration, Hub control calls, trigger destinations, and spawn ids. No Play Mode, player build, webcam/pose test, uneven-terrain test, or fresh runtime portal test was performed; runtime acceptance remains with the USER.
+Focused Unity 6.5 batch import/domain reload rebuilt `Assembly-CSharp.dll` and `Assembly-CSharp-Editor.dll` successfully with no captured C# compiler diagnostic. The wrapper later crashed in native worker/session teardown during shutdown after compilation, so this is source/import verification only.
+
+Static inspection also confirms serialized Hub continuity timing compatibility, persistent-session ownership, non-additive GameFlow loading, existing camera registration, trigger destinations, and spawn ids. No Play Mode, player build, webcam/pose test, uneven-terrain test, or fresh runtime portal test was performed; runtime acceptance remains with the USER.
 
 ## Required USER QA
 
-1. Complete Calibration and enter Hub without pressing a drive-motion/debug key.
-2. Confirm the camera follows immediately even before a live body heading exists.
-3. Confirm the provider recovery is automatic and the avatar leaves the T-pose when body tracking returns.
-4. Confirm pose following and locomotion.
-5. Confirm spawn at `HubEntry`.
-6. Walk across uneven Hub terrain and confirm the avatar stays grounded.
-7. Confirm Jump/Crouch vertical motion remains relative to the sampled ground.
-8. Confirm camera follow and all presets.
-9. Cross blue trigger and confirm exactly one transition to `ObstacleEntry`.
-10. Confirm yellow remains inert.
-11. Confirm no duplicate persistent objects.
+1. Start `Caliberation` and confirm Runtime Camera shows `HP TrueVision HD Camera`, actual FPS above zero, and `WebCamCPU/GetPixels32`.
+2. Complete calibration and enter Hub automatically without pressing Retry or a drive-motion/debug key.
+3. Confirm the same camera remains selected, FPS resumes/remains above zero, acquisition remains or re-enters `WebCamCPU/GetPixels32`, and no persistent worker-not-ready fallback appears.
+4. Confirm the avatar leaves the T-pose, follows pose, and basic locomotion responds.
+5. Only after the continuity gate passes, confirm spawn/terrain/camera presets/portals and duplicate-object invariants.
+6. If continuity fails, capture the one Hub warning and Runtime Camera screenshot with camera name, FPS, acquisition, and fallback reason.
 
 Stop and diagnose evidence if this fails; do not broaden into activity implementation.
