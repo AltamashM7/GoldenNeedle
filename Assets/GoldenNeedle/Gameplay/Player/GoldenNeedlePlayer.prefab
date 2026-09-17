@@ -189,7 +189,7 @@ MonoBehaviour:
     sustainConfidence: 0.25
     stopTimeoutSeconds: 0.5
     virtualStridePerStep: 0.6
-    maximumVirtualSpeed: 4.5
+    maximumVirtualSpeed: 6
   headingResponse: 8
 --- !u!114 &3309675688266352370
 MonoBehaviour:
