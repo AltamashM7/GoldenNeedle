@@ -441,8 +441,8 @@ MonoBehaviour:
   playerFacade: {fileID: 1357967484}
   characterStageAnchor: {fileID: 1505276648}
   placeCharacterAtStageOnStart: 1
-  characterAnimator: {fileID: 1109286411}
-  idleStateName: warmUp
+  characterAnimator: {fileID: 0}
+  idleStateName: 
   idleCrossFadeSeconds: 0.15
   playIdleOnIntro: 1
   cameraRig: {fileID: 931150739}
@@ -523,8 +523,8 @@ MonoBehaviour:
   m_fontMaterials: []
   m_fontColor32:
     serializedVersion: 2
-    rgba: 4290772876
-  m_fontColor: {r: 0.55, g: 1, b: 0.75, a: 1}
+    rgba: 4282536502
+  m_fontColor: {r: 0.21030615, g: 0.3207547, b: 0.2592877, a: 1}
   m_enableVertexGradient: 0
   m_colorMode: 3
   m_fontColorGradient:
@@ -1403,11 +1403,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
---- !u!95 &1109286411 stripped
-Animator:
-  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
-  m_PrefabInstance: {fileID: 1109286410}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1148360794
 GameObject:
   m_ObjectHideFlags: 0

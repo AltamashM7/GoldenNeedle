@@ -1610,6 +1610,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Hub.HubSceneContextController
   readinessGraceSeconds: 2
+  trackingRecoveryDelaySeconds: 0.75
+  softCameraRecoveryWaitSeconds: 1
+  hardCameraRecoveryRequestWindowSeconds: 1
+  stableReadinessWindowSeconds: 1
+  postRecoveryReadinessMarginSeconds: 1
 --- !u!4 &2073892604
 Transform:
   m_ObjectHideFlags: 0
@@ -1618,14 +1623,14 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2073892602}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -186.96573, y: -77.48959, z: -18.455463}
+  m_LocalRotation: {x: 0, y: 1, z: 0, w: 0}
+  m_LocalPosition: {x: -185.55, y: -78.381, z: -17.39}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 426839262}
   m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 180, z: 0}
 --- !u!114 &2073892605
 MonoBehaviour:
   m_ObjectHideFlags: 0

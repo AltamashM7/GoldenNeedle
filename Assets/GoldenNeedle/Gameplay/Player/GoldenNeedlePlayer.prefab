@@ -171,8 +171,8 @@ MonoBehaviour:
     depthMultiplier: 1.2
     maximumDepthFraction: 0.65
   fusion:
-    lateralScale: 0.9
-    depthScale: 1.5
+    lateralScale: 1.5
+    depthScale: 2
     lateralDeadzone: 0.012
     depthDeadzone: 0.012
     physicalVelocityStart: 0.08
@@ -189,7 +189,7 @@ MonoBehaviour:
     sustainConfidence: 0.25
     stopTimeoutSeconds: 0.5
     virtualStridePerStep: 0.6
-    maximumVirtualSpeed: 3
+    maximumVirtualSpeed: 4.5
   headingResponse: 8
 --- !u!114 &3309675688266352370
 MonoBehaviour:
