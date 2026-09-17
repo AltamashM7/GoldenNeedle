@@ -14,15 +14,19 @@ This file is the durable status authority. Historical plans remain useful for ra
 
 Implementation checkpoint immediately preceding this documentation refresh:
 
+`08b02c24946e5d1ec9a88a168584aaaf0106ce7f` — restored scene-local Calibration presentation binding, persistent Hub pose/locomotion readiness and narrow binding recovery, and Hub TerrainCollider grounding after GameFlow placement.
+
+Prior gameplay/foundation checkpoint:
+
 `6c3f4c365a9730baa87aa5e411337e20bbbe8f47` — Hub gameplay camera, camera speech presets, editable Hub spawn presentation, complete-calibration gate, and restoration of persistent-player pose/locomotion authority.
 
 Prior pushed Hub portal checkpoint:
 
 `b8afaae8a8cf20ec5bf17a45c85d5b494e6f6151` — Hub portal trigger infrastructure, blue-to-Obstacle wiring, and `ObstacleEntry` spawn contract.
 
-Before the new commits were pushed, remote refs were independently verified as:
+Before this implementation commit, remote refs were independently verified as:
 
-- `gameplay/foundation`: `b8afaae8a8cf20ec5bf17a45c85d5b494e6f6151`;
+- `gameplay/foundation`: `b1702c04d0c60af598cff4571cad524303048dac`;
 - `main`: `82a8475752826a7e07d446adcbe33b0b67e8f0d0`.
 
 Always verify live refs before new work. `main` has not been modified by this gameplay work.
@@ -34,7 +38,7 @@ Always verify live refs before new work. `main` has not been modified by this ga
 - USER Unity/manual/runtime evidence is the authority for gameplay and visual acceptance.
 - Keep Motion Engine internals separate from scene, camera, Hub, and activity logic.
 - Preserve scene-authored presentation and USER creative edits; do not run broad authoring tools over them.
-- Do not enter Play Mode or run broad Unity test/compile cycles merely to manufacture confidence when the USER has reserved runtime testing for themselves.
+- Do not enter Play Mode or run broad Unity test cycles merely to manufacture confidence when the USER has reserved runtime testing for themselves. Focused batch compilation is appropriate after implementation work when it verifies script and scene integrity.
 - Distinguish implementation completion, static verification, and USER runtime acceptance.
 
 ## Platform and project baseline
@@ -82,6 +86,8 @@ The reusable production foundation exists on `gameplay/foundation`:
 - contextual command/speech routing;
 - separate avatar pose-drive, external animation-authority, and locomotion controls;
 - Calibration and Hub scene-context controllers;
+- bounded Hub motion-readiness diagnostics and one-shot binding recovery;
+- Hub-only TerrainCollider grounding that preserves locomotion-owned X/Z and semantic vertical motion;
 - duplicate persistent-session prevention.
 
 Normal Hub/activity transitions must preserve calibration and must not create another player, provider, command host, or flow manager.
@@ -120,6 +126,8 @@ Required asset state is committed:
 - their Unity `.meta` files and parent folder metadata.
 
 The presentation character retains `calibration_idle.controller`. The persistent player's Animator has an explicit scene override with `m_Controller = null`. This separation is intentional: assigning the idle controller to the persistent player caused it to keep animation authority after Hub transition, producing a looping idle or, after partial workarounds, a T-pose with no pose/locomotion response.
+
+The serialized `CalibrationPresentationController.characterAnimator` reference now points to the scene-local `android01` prefab Animator. The authoring utility verifies that exactly one non-persistent `android01` Animator exists before assigning it, so future authoring cannot silently bind the persistent player's Animator again.
 
 `CalibrationPresentationController` remains responsible for scene-local presentation groups, idle presentation, camera staging, success timing, and control-state requests. `CalibrationSceneController` remains the flow authority.
 
@@ -162,10 +170,24 @@ Scene: `Assets/Scenes/GoldenNeedle_Hub.unity`.
 - Exact spawn id: `HubEntry`.
 - `HubEntry` is a scene-owned `PlayerSpawnPoint` and can be moved/rotated in the Inspector to control where the persistent player appears.
 - `PlayerSpawnPoint` draws a cyan wire-sphere gizmo for authoring visibility; it does not run as gameplay behavior.
-- `HubSceneContextController` applies Hub command context when the command host exists.
+- `HubSceneContextController` applies Hub command context when the command host exists and keeps the scene authority requests idempotent while the persistent facade becomes ready.
 - Enabling player pose drive and locomotion no longer depends on the optional command host. Once the persistent facade exists, Hub disables external animation authority, enables avatar pose drive, and enables locomotion.
+- If the rig binding is not healthy, Hub permits one narrow `TryEnsureRigBinding` recovery attempt; a healthy binding is never rebuilt and failed recovery is not retried continuously.
+- The context controller marks structural application separately from runtime readiness, then allows a bounded 2-second readiness window. If calibration, body tracking, retarget targets, or IK chains are not live, it emits one diagnostic containing those states and stops without resetting provider, calibration, retarget, or locomotion state.
 
 This addresses the observed Hub T-pose/nonresponsive movement failure without modifying Motion Engine algorithms.
+
+### Hub terrain grounding
+
+`HubTerrainGroundingController` is scene-local on `GoldenNeedle_HubIntegration`, runs at execution order 200 after the accepted locomotion controller, and is assigned the actual `GoldenNeedle_Island` `TerrainCollider`.
+
+It waits for the persistent player root and for GameFlow placement/transition completion before capturing the neutral root-to-terrain offset. A short direct-scene fallback is used only when Hub was opened outside the normal transition path. Each `LateUpdate` samples only the assigned TerrainCollider and applies:
+
+`semanticVerticalOffset = FinalWorldPositionY - VerticalOriginY`
+
+`targetY = currentGroundY + rootToGroundOffset + semanticVerticalOffset`
+
+Only the player root's world Y is changed. Locomotion remains the owner of X/Z and cadence/threshold behavior. A large explicit X/Z relocation recaptures the neutral terrain offset; a missing terrain sample leaves the accepted locomotion Y untouched and emits one bounded warning rather than falling back to arbitrary scene colliders. Jump/Crouch semantic vertical motion is therefore preserved relative to the newly sampled ground.
 
 ### Gameplay camera
 
@@ -252,28 +274,30 @@ Portal meshes, VFX, materials, and visual transforms remain presentation-owned. 
 - Gameplay: not started.
 - Portal transition: awaits fresh USER runtime acceptance.
 
-## Verification record for `6c3f4c3...`
+## Verification record for `08b02c24946e5d1ec9a88a168584aaaf0106ce7f`
 
 Performed:
 
 - repository, branch, package, Unity version, URP, Build Settings, and remote-ref inspection;
 - focused source/scene diff review;
-- serialized verification that the presentation Animator keeps `calibration_idle.controller` and the persistent Animator override is null;
+- clean Unity batch import/reload and script compilation after scene wiring; no current C# compilation errors were reported;
+- serialized verification that the presentation Animator keeps `calibration_idle.controller`, the persistent Animator override is null, and Hub grounding references `GoldenNeedle_Island`'s TerrainCollider;
 - static verification of Hub camera presets, portal contracts, spawn ids, and control-context behavior;
 - `git diff --check` on source files passed. Unity scene YAML includes normal empty serialized `value:` lines that Git flags as trailing whitespace.
 
 Intentionally not performed:
 
 - Play Mode;
-- Unity compilation/build;
+- Unity player build;
 - broad EditMode suite;
 - physical webcam/pose QA;
 - visual preset QA;
-- portal runtime QA.
+- portal runtime QA;
+- uneven-terrain, Jump/Crouch, or cross-scene runtime QA.
 
-This follows the USER's request to minimize low-value testing and leave Unity runtime testing to them. Do not report the latest checkpoint as runtime accepted.
+The focused batch compilation verifies source and scene import integrity only. This follows the USER's request to leave Unity runtime testing to them. Do not report the latest checkpoint as runtime accepted.
 
-Earlier accepted/reported evidence remains historical only, including the prior full EditMode `286/286` result and focused portal/presentation checks. It does not substitute for manual QA of the new camera and Animator correction.
+Earlier accepted/reported evidence remains historical only, including the prior full EditMode `286/286` result and focused portal/presentation checks. It does not substitute for manual QA of this scene integration, terrain behavior, or the latest pose/locomotion path.
 
 ## Immediate USER QA boundary
 
@@ -283,11 +307,13 @@ Earlier accepted/reported evidence remains historical only, including the prior 
 4. Confirm the persistent avatar follows body poses rather than looping idle or remaining in a T-pose.
 5. Confirm locomotion responds.
 6. Confirm spawn occurs at `HubEntry`; move that object if a different spawn is desired.
-7. Confirm the camera follows.
-8. Try all eight camera phrases/presets.
-9. Cross the blue portal and confirm one transition to `Obstacle Course` at `ObstacleEntry`.
-10. Confirm the yellow portal remains inert.
-11. Confirm no duplicate player/session/provider/flow objects.
+7. Confirm the avatar stays grounded on uneven Hub terrain while walking.
+8. Confirm Jump/Crouch vertical motion remains visible and returns to the sampled ground baseline.
+9. Confirm the camera follows.
+10. Try all eight camera phrases/presets.
+11. Cross the blue portal and confirm one transition to `Obstacle Course` at `ObstacleEntry`.
+12. Confirm the yellow portal remains inert.
+13. Confirm no duplicate player/session/provider/flow objects.
 
 If pose or locomotion still fails, capture the first relevant Console error/warning and inspect the persistent player's `HumanoidRetargeter`, locomotion drive flag, and pose-source availability before changing Motion Engine code.
 

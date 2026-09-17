@@ -18,7 +18,7 @@ Integration branch: `main`
 
 Implementation base for this handoff:
 
-`6c3f4c365a9730baa87aa5e411337e20bbbe8f47`
+`08b02c24946e5d1ec9a88a168584aaaf0106ce7f`
 
 ## Current truth in one page
 
@@ -27,9 +27,11 @@ Implementation base for this handoff:
 - Calibration -> Hub previously worked end-to-end.
 - Calibration now waits for full `IsCalibrationComplete`, not early `IsCalibrationUsable`.
 - Calibration contains a separate presentation `android01` with the idle controller.
-- The persistent player's scene Animator override is null so the retargeter can control it after transition.
+- The serialized Calibration presentation reference points to the scene-local `android01` Animator; the persistent player's scene Animator override is null so the retargeter can control it after transition.
 - Hub places the persistent player at editable `HubEntry`.
-- Hub enables external-animation OFF, pose drive ON, and locomotion ON without requiring the command host.
+- Hub enables external-animation OFF, pose drive ON, and locomotion ON without requiring the command host, with bounded readiness diagnostics and one narrow unbound-rig recovery attempt.
+- Hub has a scene-local `HubTerrainGroundingController` on `GoldenNeedle_HubIntegration`, assigned to `GoldenNeedle_Island`'s `TerrainCollider`, running after locomotion and modifying only root world Y.
+- Terrain grounding waits until GameFlow placement/transition completion, preserves `FinalWorldPositionY - VerticalOriginY` Jump/Crouch semantics, recaptures after explicit X/Z relocation, and preserves locomotion Y when sampling is unavailable.
 - Hub Main Camera has `GameplayCameraController` and eight authored presets.
 - USER has observed camera follow working.
 - Yellow portal means Boxing and is intentionally disabled until Boxing exists.
@@ -41,9 +43,9 @@ Implementation base for this handoff:
 
 Implemented does not mean runtime accepted.
 
-USER evidence currently establishes that Calibration waited longer after the gate fix and that the Hub camera followed before the final Animator correction. The final end-to-end pose/locomotion behavior, every camera preset, and the blue portal transition still require USER manual QA.
+USER evidence currently establishes that Calibration waited longer after the gate fix and that the Hub camera followed before this latest correction. The new scene wiring, terrain component, and scripts have passed focused static checks and clean Unity batch compilation, but end-to-end pose/locomotion behavior, uneven-terrain grounding, every camera preset, and the blue portal transition still require USER manual QA.
 
-No Play Mode, compile/build, or broad tests were run for the latest checkpoint because the USER explicitly asked to minimize testing and perform Unity runtime QA personally.
+No Play Mode, player build, broad tests, webcam/pose test, or runtime terrain/portal test was run. The focused batch compilation was performed only to verify source and scene import integrity; the USER remains the authority for runtime acceptance.
 
 ## Hard boundaries
 
@@ -53,6 +55,9 @@ No Play Mode, compile/build, or broad tests were run for the latest checkpoint b
 - Do not create duplicate player/session/provider/command/flow objects.
 - Do not add a gameplay follow camera to Calibration.
 - Do not assign the Calibration idle controller to the persistent player.
+- Do not make Hub terrain grounding a second locomotion owner: it may sample only the assigned TerrainCollider and change only root world Y after locomotion.
+- Do not replace the accepted Jump/Crouch semantics; preserve them through `FinalWorldPositionY - VerticalOriginY`.
+- Do not turn bounded binding recovery/readiness diagnostics into continuous rebuild or retry loops.
 - Do not fabricate Boxing or guess its scene/spawn names.
 - Do not infer portal mapping: yellow is Boxing; blue is Obstacle.
 - Do not modify portal visuals to implement collision.
@@ -60,7 +65,7 @@ No Play Mode, compile/build, or broad tests were run for the latest checkpoint b
 
 ## Immediate next action
 
-Wait for the USER's manual Calibration -> Hub test. If the USER reports success, record acceptance and proceed only to the next explicitly approved phase. If the USER reports failure, request the first relevant Console message and diagnose the narrow player authority/path issue before changing Motion Engine.
+The implementation commit above is the code checkpoint for this handoff. After the branch is pushed, wait for the USER's manual Calibration -> Hub test. If the USER reports success, record acceptance and proceed only to the next explicitly approved phase. If the USER reports failure, request the first relevant Console message and diagnose the narrow player authority/grounding path issue before changing Motion Engine.
 
 Manual QA sequence is in `Docs/current-state.md`.
 
@@ -69,11 +74,14 @@ Manual QA sequence is in `Docs/current-state.md`.
 - `Assets/GoldenNeedle/Gameplay/Calibration/CalibrationSceneController.cs`
 - `Assets/GoldenNeedle/Gameplay/Calibration/CalibrationPresentationController.cs`
 - `Assets/GoldenNeedle/Gameplay/Hub/HubSceneContextController.cs`
+- `Assets/GoldenNeedle/Gameplay/Hub/HubTerrainGroundingController.cs`
 - `Assets/GoldenNeedle/Gameplay/Hub/HubPortalTrigger.cs`
 - `Assets/GoldenNeedle/Gameplay/Presentation/GameplayCameraController.cs`
 - `Assets/GoldenNeedle/Gameplay/Flow/GameFlowManager.cs`
 - `Assets/GoldenNeedle/Gameplay/Flow/PlayerSpawnPoint.cs`
 - `Assets/GoldenNeedle/Gameplay/Player/GoldenNeedlePlayerFacade.cs`
+- `Assets/GoldenNeedle/Editor/GoldenNeedleCalibrationPresentationAuthoring.cs`
+- `Assets/GoldenNeedle/Editor/GoldenNeedleCalibrationHubAuthoring.cs`
 - `Assets/Scenes/Caliberation.unity`
 - `Assets/Scenes/GoldenNeedle_Hub.unity`
 - `Assets/Scenes/Obstacle Course.unity`

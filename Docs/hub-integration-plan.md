@@ -15,6 +15,7 @@ Approved responsibilities:
 - receive the existing persistent calibrated player;
 - place it at an authored Hub spawn;
 - enable pose drive and locomotion immediately;
+- conform the persistent player to the authored Hub TerrainCollider without taking ownership of locomotion;
 - keep a gameplay camera following it;
 - expose authored camera views;
 - route portals through shared GameFlow;
@@ -26,6 +27,7 @@ No Hub quests, scoring, tutorials, cutscenes, special navigation, activity gamep
 
 - `b8afaae8a8cf20ec5bf17a45c85d5b494e6f6151`: portal trigger behavior, Hub trigger objects, and Obstacle spawn contract.
 - `6c3f4c365a9730baa87aa5e411337e20bbbe8f47`: follow camera/presets, Hub control-authority correction, editable spawn gizmo, complete-calibration gate, persistent Animator correction, and required Calibration presentation assets.
+- `08b02c24946e5d1ec9a88a168584aaaf0106ce7f`: scene-local Calibration Animator binding repair, bounded Hub motion-readiness diagnostics, one-shot rig-binding recovery, and post-placement Hub TerrainCollider grounding.
 
 ## Hub entry contract
 
@@ -33,10 +35,29 @@ No Hub quests, scoring, tutorials, cutscenes, special navigation, activity gamep
 - Spawn id: `HubEntry`.
 - `HubEntry` is a scene-owned `PlayerSpawnPoint`; its transform is the authoring control for spawn placement.
 - `GameFlowManager` resolves exactly one matching id and asks `GoldenNeedlePlayerFacade.TryPlacePlayerAt` to relocate/rebase the persistent player.
-- `HubSceneContextController` retries until the persistent facade exists.
+- `HubSceneContextController` waits for the persistent facade, applies idempotent Hub authority requests, and marks structural application separately from runtime readiness.
 - Command context is applied when `GameplayCommandHost` exists.
 - Pose/locomotion activation does not depend on command-host discovery.
 - Hub state sets external animation authority OFF, avatar pose drive ON, locomotion ON.
+- If the rig is unbound, Hub permits one narrow `TryEnsureRigBinding` recovery attempt; healthy bindings are never rebuilt and failures are not retried continuously.
+- A bounded 2-second readiness window checks calibration completion, body tracking, live retarget targets, and solved IK chains. If readiness is still absent, one diagnostic is emitted and no provider/calibration/retarget reset is attempted.
+
+## Terrain grounding contract
+
+Component: `Assets/GoldenNeedle/Gameplay/Hub/HubTerrainGroundingController.cs`.
+
+Scene owner: `GoldenNeedle_HubIntegration` in `GoldenNeedle_Hub`.
+
+Rules:
+
+- use the explicitly assigned `GoldenNeedle_Island` `TerrainCollider`; do not scan arbitrary scene colliders;
+- run at execution order 200, after the accepted locomotion controller's order 150;
+- wait for GameFlow placement/transition completion before capturing the neutral root-to-ground offset, with a short direct-scene fallback only for direct Hub opening;
+- after locomotion, sample terrain and compute `semanticVerticalOffset = FinalWorldPositionY - VerticalOriginY`;
+- set `targetY = currentGroundY + rootToGroundOffset + semanticVerticalOffset`;
+- modify only the persistent player root's world Y; locomotion remains the owner of X/Z, cadence, thresholds, and semantic vertical state;
+- recapture the neutral offset after a large explicit X/Z relocation;
+- when the assigned terrain cannot be sampled, preserve the accepted locomotion Y and emit one bounded diagnostic; never substitute arbitrary geometry.
 
 ## Camera contract
 
@@ -108,18 +129,20 @@ The visual portal prefab/mesh is not the trigger. Each portal uses a separate sc
 
 ## Current evidence
 
-USER confirmed Hub camera follow before the latest player-authority correction.
+The implementation checkpoint `08b02c24946e5d1ec9a88a168584aaaf0106ce7f` was verified through repository/scene inspection, focused invariants, and a clean Unity batch import/reload/script compilation. The serialized Calibration presentation Animator, persistent Animator null override, Hub readiness component, and TerrainCollider assignment all match the contract.
 
-Static inspection confirms serialized presets, camera registration, Hub control calls, trigger destinations, and spawn ids. No Play Mode, compile, build, or fresh runtime portal test was performed for `6c3f4c3...`, per USER request.
+Static inspection also confirms serialized presets, camera registration, Hub control calls, trigger destinations, and spawn ids. No Play Mode, player build, webcam/pose test, uneven-terrain test, or fresh runtime portal test was performed; runtime acceptance remains with the USER.
 
 ## Required USER QA
 
 1. Complete Calibration and enter Hub.
 2. Confirm pose following and locomotion.
 3. Confirm spawn at `HubEntry`.
-4. Confirm camera follow and all presets.
-5. Cross blue trigger and confirm exactly one transition to `ObstacleEntry`.
-6. Confirm yellow remains inert.
-7. Confirm no duplicate persistent objects.
+4. Walk across uneven Hub terrain and confirm the avatar stays grounded.
+5. Confirm Jump/Crouch vertical motion remains relative to the sampled ground.
+6. Confirm camera follow and all presets.
+7. Cross blue trigger and confirm exactly one transition to `ObstacleEntry`.
+8. Confirm yellow remains inert.
+9. Confirm no duplicate persistent objects.
 
 Stop and diagnose evidence if this fails; do not broaden into activity implementation.
