@@ -245,9 +245,17 @@ namespace GoldenNeedle.Editor.Gameplay
             AddPersistentListenerIfMissing(retryButton, controller, controller.RetryHubTransition);
 
             var presentation = EnsureComponent<CalibrationPresentationController>(calibrationRoot, out _);
+            var presentationCharacterAnimators = FindAnimatorsOnObjectsNamed(scene, "android01", player.transform);
+            if (presentationCharacterAnimators.Count != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Caliberation contains {presentationCharacterAnimators.Count} android01 Animator components; expected exactly one.");
+            }
+
             SetObjectReferenceIfMissing(presentation, "flowController", controller);
             SetObjectReferenceIfMissing(presentation, "playerFacade", facade);
             SetObjectReferenceIfMissing(presentation, "characterStageAnchor", characterStage.transform);
+            SetObjectReferenceIfMissing(presentation, "characterAnimator", presentationCharacterAnimators[0]);
             SetObjectReferenceIfMissing(presentation, "cameraRig", cameraRig);
             SetObjectReferenceIfMissing(presentation, "introPromptGroup", intro.GetComponent<WorldSpacePresentationGroup>());
             SetObjectReferenceIfMissing(presentation, "webcamGroup", webcam.GetComponent<WorldSpacePresentationGroup>());
@@ -565,6 +573,37 @@ namespace GoldenNeedle.Editor.Gameplay
             for (var rootIndex = 0; rootIndex < roots.Length; rootIndex++)
             {
                 matches.AddRange(roots[rootIndex].GetComponentsInChildren<T>(true));
+            }
+
+            return matches;
+        }
+
+        private static List<Animator> FindAnimatorsOnObjectsNamed(
+            Scene scene,
+            string objectName,
+            Transform excludedHierarchyRoot)
+        {
+            var matches = new List<Animator>();
+            var roots = scene.GetRootGameObjects();
+            for (var rootIndex = 0; rootIndex < roots.Length; rootIndex++)
+            {
+                var transforms = roots[rootIndex].GetComponentsInChildren<Transform>(true);
+                for (var transformIndex = 0; transformIndex < transforms.Length; transformIndex++)
+                {
+                    var transform = transforms[transformIndex];
+                    if (transform.name != objectName ||
+                        transform == excludedHierarchyRoot ||
+                        transform.IsChildOf(excludedHierarchyRoot))
+                    {
+                        continue;
+                    }
+
+                    var animator = transform.GetComponentInChildren<Animator>(true);
+                    if (animator != null)
+                    {
+                        matches.Add(animator);
+                    }
+                }
             }
 
             return matches;

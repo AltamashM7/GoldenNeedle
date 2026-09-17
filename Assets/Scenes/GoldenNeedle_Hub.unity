@@ -1589,6 +1589,7 @@ GameObject:
   m_Component:
   - component: {fileID: 2073892604}
   - component: {fileID: 2073892603}
+  - component: {fileID: 2073892605}
   m_Layer: 0
   m_Name: GoldenNeedle_HubIntegration
   m_TagString: Untagged
@@ -1608,6 +1609,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b1c210c1dfdeb3f4f9518aee70a5af9b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Hub.HubSceneContextController
+  readinessGraceSeconds: 2
 --- !u!4 &2073892604
 Transform:
   m_ObjectHideFlags: 0
@@ -1624,6 +1626,24 @@ Transform:
   - {fileID: 426839262}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2073892605
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2073892602}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 242f5af2c6924e33ba053ee293082dc7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Hub.HubTerrainGroundingController
+  groundCollider: {fileID: 1739193559}
+  rayStartHeight: 4
+  raycastDistance: 50
+  directSceneFallbackDelaySeconds: 0.5
+  relocationTeleportThreshold: 4
+  missingGroundGraceSeconds: 0.25
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

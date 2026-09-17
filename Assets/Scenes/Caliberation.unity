@@ -441,7 +441,7 @@ MonoBehaviour:
   playerFacade: {fileID: 1357967484}
   characterStageAnchor: {fileID: 1505276648}
   placeCharacterAtStageOnStart: 1
-  characterAnimator: {fileID: 879532836}
+  characterAnimator: {fileID: 1109286411}
   idleStateName: warmUp
   idleCrossFadeSeconds: 0.15
   playIdleOnIntro: 1
@@ -929,11 +929,6 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   blocksRaycastsWhenVisible: 1
---- !u!95 &879532836 stripped
-Animator:
-  m_CorrespondingSourceObject: {fileID: 3145380145148304317, guid: e1b1c37768d30ba489446f4baaab1cc9, type: 3}
-  m_PrefabInstance: {fileID: 1357967483}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &931150734
 GameObject:
   m_ObjectHideFlags: 0
@@ -1408,6 +1403,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+--- !u!95 &1109286411 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 94c438338a55e8d45a5c24764491ffd8, type: 3}
+  m_PrefabInstance: {fileID: 1109286410}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1148360794
 GameObject:
   m_ObjectHideFlags: 0

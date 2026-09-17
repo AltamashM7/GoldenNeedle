@@ -36,6 +36,8 @@ namespace GoldenNeedle.Gameplay.Player
         [SerializeField] private PlayerHealth playerHealth;
         [SerializeField] private GoldenNeedleBodyAnchors bodyAnchors;
 
+        private bool _rigBindingRecoveryAttempted;
+
         public bool IsCalibrationUsable => motionRuntime != null && motionRuntime.Calibration != null && motionRuntime.Calibration.IsValid;
         public bool IsCalibrationComplete => motionRuntime != null && motionRuntime.Calibration != null && motionRuntime.Calibration.IsComplete;
         public bool IsBodyTrackingAvailable => motionRuntime != null && motionRuntime.IsSourceReady && motionRuntime.StabilizedFrame != null && motionRuntime.StabilizedFrame.hasMeaningfulPose;
@@ -47,10 +49,23 @@ namespace GoldenNeedle.Gameplay.Player
         public bool IsAvatarAnimationAuthorityEnabled => humanoidRetargeter != null && humanoidRetargeter.ExternalAnimationAuthority;
         public bool IsLocomotionEnabled => locomotionController != null && locomotionController.DriveLocomotion;
         public bool IsMotionControlEnabled => IsAvatarPoseDriveEnabled && IsLocomotionEnabled;
+        public bool IsRigBound => rigBinding != null && rigBinding.IsBound;
+        public string RigBindingModeName => rigBinding == null ? "Missing" : rigBinding.BindingModeName;
+        public bool AreRetargetTargetsLive => humanoidRetargeter != null && humanoidRetargeter.KinematicTargetsLive;
+        public int RetargetSourceChainsValid => humanoidRetargeter == null ? 0 : humanoidRetargeter.SourceChainsValid;
+        public int RetargetTargetsGenerated => humanoidRetargeter == null ? 0 : humanoidRetargeter.TargetsGenerated;
+        public int RetargetIkChainsSolved => humanoidRetargeter == null ? 0 : humanoidRetargeter.IkChainsSolved;
         public bool HasWorldHeading => locomotionController != null && locomotionController.HasWorldHeading;
         public Vector2 WorldHeadingXZ => locomotionController == null
             ? Vector2.zero
             : locomotionController.WorldHeadingXZ;
+        public bool HasLocomotionVerticalOrigin => locomotionController != null && locomotionController.HasVerticalOrigin;
+        public float LocomotionVerticalOriginY => locomotionController == null
+            ? 0f
+            : locomotionController.VerticalOriginY;
+        public float LocomotionFinalWorldPositionY => locomotionController == null
+            ? 0f
+            : locomotionController.FinalWorldPositionY;
         public PlayerHealth Health => playerHealth;
         public Transform LeftWristAnchor => bodyAnchors == null ? null : bodyAnchors.LeftWrist;
         public Transform RightWristAnchor => bodyAnchors == null ? null : bodyAnchors.RightWrist;
@@ -96,6 +111,33 @@ namespace GoldenNeedle.Gameplay.Player
         {
             ResolveReferences();
             return locomotionController != null && locomotionController.TryPlacePlayerRoot(worldPosition);
+        }
+
+        /// <summary>
+        /// Performs one narrow binding recovery attempt for scene integration. A healthy binding
+        /// is never rebuilt, and a failed recovery is not retried continuously by callers.
+        /// </summary>
+        public bool TryEnsureRigBinding()
+        {
+            ResolveReferences();
+            if (rigBinding == null)
+            {
+                return false;
+            }
+
+            if (rigBinding.IsBound)
+            {
+                return true;
+            }
+
+            if (_rigBindingRecoveryAttempted)
+            {
+                return false;
+            }
+
+            _rigBindingRecoveryAttempted = true;
+            rigBinding.RebuildBinding();
+            return rigBinding.IsBound;
         }
 
         public void BeginCalibration()

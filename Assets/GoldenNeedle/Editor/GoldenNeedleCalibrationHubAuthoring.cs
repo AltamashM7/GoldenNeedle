@@ -312,6 +312,15 @@ namespace GoldenNeedle.Editor.Gameplay
             SetString(spawnPoint, "spawnId", CalibrationSceneController.HubSpawnId);
 
             var contextController = EnsureComponent<HubSceneContextController>(integrationRoot);
+            var terrainColliders = FindComponentsInScene<TerrainCollider>(scene);
+            if (terrainColliders.Count != 1)
+            {
+                throw new InvalidOperationException(
+                    $"GoldenNeedle_Hub contains {terrainColliders.Count} TerrainCollider components; expected exactly one.");
+            }
+
+            var groundingController = EnsureComponent<HubTerrainGroundingController>(integrationRoot);
+            SetObjectReference(groundingController, "groundCollider", terrainColliders[0]);
             UnityEngine.Debug.Log($"Golden Needle: HubEntry authored at world position {HubEntryPosition}; context={contextController.GetType().FullName}.");
             EditorSceneManager.MarkSceneDirty(scene);
         }
