@@ -75,6 +75,12 @@ namespace GoldenNeedle.Gameplay.Player
         public string SelectedCameraName => poseProvider == null ? string.Empty : poseProvider.SelectedCameraName;
         public bool PoseProviderHasCameraTexture => poseProvider != null && poseProvider.HasCameraTexture;
         public bool PoseProviderCameraPlaying => poseProvider != null && poseProvider.IsCameraPlaying;
+        public bool PoseProviderHasSeenFreshCameraFrame => poseProvider != null && poseProvider.HasSeenFreshCameraFrame;
+        public double LatestCameraFrameAgeMilliseconds => poseProvider == null
+            ? double.PositiveInfinity
+            : poseProvider.LatestCameraFrameAgeMilliseconds;
+        public bool PoseProviderCameraFrameFresh => poseProvider != null && poseProvider.IsCameraFrameFresh;
+        public bool PoseProviderIsUsable => poseProvider != null && poseProvider.IsProviderUsable;
         public bool PoseProviderIsBootstrapping => poseProvider != null && poseProvider.IsBootstrapping;
         public bool PoseProviderHasReceivedResult => poseProvider != null && poseProvider.HasReceivedResult;
         public double LatestPoseAgeMilliseconds => poseProvider == null
@@ -83,6 +89,16 @@ namespace GoldenNeedle.Gameplay.Player
         public string ActiveInferenceBackendLabel => poseProvider == null
             ? "Missing"
             : poseProvider.ActiveInferenceBackendLabel;
+        public string ActiveBodyFrameAcquisitionModeLabel => poseProvider == null
+            ? "Missing"
+            : poseProvider.ActiveBodyFrameAcquisitionModeLabel;
+        public string WebCamCpuAcquisitionFallbackReason => poseProvider == null
+            ? "Pose provider reference is missing"
+            : poseProvider.WebCamCpuAcquisitionFallbackReason;
+        public float PoseProviderCameraFramesPerSecond => poseProvider == null ? 0f : poseProvider.CameraFramesPerSecond;
+        public bool OpenVinoRuntimeAvailable => poseProvider != null && poseProvider.OpenVinoRuntimeAvailable;
+        public bool OpenVinoWorkerTaskAvailable => poseProvider != null && poseProvider.OpenVinoWorkerTaskAvailable;
+        public bool OpenVinoWorkerSignalAvailable => poseProvider != null && poseProvider.OpenVinoWorkerSignalAvailable;
         public float PoseProviderCameraStartupTimeoutSeconds => poseProvider == null
             ? 0f
             : poseProvider.CameraStartupTimeoutSeconds;
@@ -92,6 +108,12 @@ namespace GoldenNeedle.Gameplay.Player
         public bool TrackingRecoveryPerformed => poseProvider != null && poseProvider.TrackingRecoveryPerformed;
         public int TrackingRecoveryRequestCount => poseProvider == null ? 0 : poseProvider.TrackingRecoveryRequestCount;
         public int TrackingRecoveryRestartCount => poseProvider == null ? 0 : poseProvider.TrackingRecoveryRestartCount;
+        public bool SoftCameraRecoveryRequested => poseProvider != null && poseProvider.SoftCameraRecoveryRequested;
+        public bool SoftCameraRecoveryPerformed => poseProvider != null && poseProvider.SoftCameraRecoveryPerformed;
+        public bool SoftCameraRecoverySucceeded => poseProvider != null && poseProvider.SoftCameraRecoverySucceeded;
+        public bool HardCameraRecoveryRequested => poseProvider != null && poseProvider.HardCameraRecoveryRequested;
+        public bool HardCameraRecoveryAccepted => poseProvider != null && poseProvider.HardCameraRecoveryAccepted;
+        public bool HardCameraRecoveryPerformed => poseProvider != null && poseProvider.HardCameraRecoveryPerformed;
         public PlayerHealth Health => playerHealth;
         public Transform LeftWristAnchor => bodyAnchors == null ? null : bodyAnchors.LeftWrist;
         public Transform RightWristAnchor => bodyAnchors == null ? null : bodyAnchors.RightWrist;
@@ -166,16 +188,32 @@ namespace GoldenNeedle.Gameplay.Player
             return rigBinding.IsBound;
         }
 
-        public void BeginTrackingRecoveryWindow()
+        public void BeginHubContinuityWindow()
         {
             ResolveReferences();
-            poseProvider?.BeginTrackingRecoveryWindow();
+            poseProvider?.BeginHubContinuityWindow();
+        }
+
+        public void BeginTrackingRecoveryWindow()
+        {
+            BeginHubContinuityWindow();
+        }
+
+        public bool TryBeginSoftCameraRecovery()
+        {
+            ResolveReferences();
+            return poseProvider != null && poseProvider.TryBeginSoftCameraRecovery();
+        }
+
+        public bool TryHardRecoverTracking()
+        {
+            ResolveReferences();
+            return poseProvider != null && poseProvider.TryHardRecoverTracking();
         }
 
         public bool TryRecoverTracking()
         {
-            ResolveReferences();
-            return poseProvider != null && poseProvider.TryRecoverTracking();
+            return TryHardRecoverTracking();
         }
 
         public void BeginCalibration()

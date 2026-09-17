@@ -1065,6 +1065,9 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         private bool _trackingRecoveryRestartIssued;
         private int _trackingRecoveryRequestCount;
         private int _trackingRecoveryRestartCount;
+        private bool _softCameraRecoveryIssued;
+        private bool _softCameraRecoveryPerformed;
+        private bool _softCameraRecoverySucceeded;
         private bool _cameraSwitchPending;
         private string _pendingCameraName = string.Empty;
         private string _pendingPreferredCameraName = string.Empty;
@@ -1167,6 +1170,35 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public bool IsBootstrapping => _bootstrapCoroutine != null;
         public bool HasCameraTexture => _webCamTexture != null;
         public bool IsCameraPlaying => _webCamTexture != null && _webCamTexture.isPlaying;
+        public const double CameraFreshnessThresholdSeconds = 1d;
+        public bool HasSeenFreshCameraFrame => _latestFreshFrameObservedAtSeconds > 0d;
+        public double LatestCameraFrameAgeMilliseconds
+        {
+            get
+            {
+                if (!HasSeenFreshCameraFrame)
+                {
+                    return double.PositiveInfinity;
+                }
+
+                return Math.Max(0d, (NowSeconds() - _latestFreshFrameObservedAtSeconds) * 1000d);
+            }
+        }
+        public bool IsCameraFrameFresh =>
+            HasCameraTexture &&
+            IsCameraPlaying &&
+            HasSeenFreshCameraFrame &&
+            LatestCameraFrameAgeMilliseconds <= CameraFreshnessThresholdSeconds * 1000d;
+        public bool IsProviderUsable =>
+            Status == PoseProviderStatus.Ready &&
+            HasCameraTexture &&
+            IsCameraPlaying &&
+            IsActiveBackendReady() &&
+            (_activeInferenceBackend != PoseInferenceBackend.OpenVinoCpuFp32 ||
+             (_openVinoWorkerTask != null && _openVinoWorkerSignal != null));
+        public bool OpenVinoRuntimeAvailable => _openVinoPoseRuntime != null;
+        public bool OpenVinoWorkerTaskAvailable => _openVinoWorkerTask != null;
+        public bool OpenVinoWorkerSignalAvailable => _openVinoWorkerSignal != null;
         public bool CanTryTrackingRecovery =>
             _bootstrapCoroutine == null &&
             !_readbackPending &&
@@ -1178,6 +1210,12 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
         public bool TrackingRecoveryPerformed { get; private set; }
         public int TrackingRecoveryRequestCount => _trackingRecoveryRequestCount;
         public int TrackingRecoveryRestartCount => _trackingRecoveryRestartCount;
+        public bool SoftCameraRecoveryRequested { get; private set; }
+        public bool SoftCameraRecoveryPerformed => _softCameraRecoveryPerformed;
+        public bool SoftCameraRecoverySucceeded => _softCameraRecoverySucceeded;
+        public bool HardCameraRecoveryRequested => TrackingRecoveryRequested;
+        public bool HardCameraRecoveryAccepted => TrackingRecoveryAccepted;
+        public bool HardCameraRecoveryPerformed => TrackingRecoveryPerformed;
         public bool VideoVerticallyMirrored => _webCamTexture != null && _webCamTexture.videoVerticallyMirrored;
         public CameraOrientationState Orientation => _orientation;
         public int CoordinateConventionVersion => _coordinateConventionVersion;
@@ -1405,6 +1443,10 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
                 _cameraFramesInWindow++;
                 _freshCameraFramePending = true;
                 _latestFreshFrameObservedAtSeconds = now;
+                if (_softCameraRecoveryPerformed)
+                {
+                    _softCameraRecoverySucceeded = true;
+                }
             }
 
             UpdateInputTransform();
@@ -2402,14 +2444,28 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _webCamTexture.Play();
 
             var deadline = Time.realtimeSinceStartup + Mathf.Max(1f, cameraStartupTimeoutSeconds);
-            while (Time.realtimeSinceStartup < deadline && (_webCamTexture.width <= 16 || _webCamTexture.height <= 16 || !_webCamTexture.didUpdateThisFrame))
+            var freshFrameObservedAfterPlay = false;
+            while (Time.realtimeSinceStartup < deadline &&
+                   (_webCamTexture.width <= 16 || _webCamTexture.height <= 16 ||
+                    !_webCamTexture.isPlaying || !freshFrameObservedAfterPlay))
             {
+                if (_webCamTexture.didUpdateThisFrame)
+                {
+                    freshFrameObservedAfterPlay = true;
+                    _latestFreshFrameObservedAtSeconds = NowSeconds();
+                }
                 yield return null;
             }
 
-            if (_webCamTexture.width <= 16 || _webCamTexture.height <= 16 || !_webCamTexture.isPlaying)
+            if (_webCamTexture.width <= 16 ||
+                _webCamTexture.height <= 16 ||
+                !_webCamTexture.isPlaying ||
+                !freshFrameObservedAfterPlay)
             {
-                SetFailure(PoseProviderStatus.CameraFailed, $"Selected webcam did not produce a valid frame: {_selectedDevice.name}");
+                var failureReason = !freshFrameObservedAfterPlay
+                    ? $"Selected webcam opened but produced no fresh frame before timeout: {_selectedDevice.name}"
+                    : $"Selected webcam did not produce a valid playing frame: {_selectedDevice.name}";
+                SetFailure(PoseProviderStatus.CameraFailed, failureReason);
                 StopCamera();
                 yield break;
             }
@@ -3139,7 +3195,7 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             RestartProvider(invalidateCameraSession: false);
         }
 
-        public void BeginTrackingRecoveryWindow()
+        public void BeginHubContinuityWindow()
         {
             TrackingRecoveryRequested = false;
             TrackingRecoveryAccepted = false;
@@ -3147,9 +3203,52 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             _trackingRecoveryRestartIssued = false;
             _trackingRecoveryRequestCount = 0;
             _trackingRecoveryRestartCount = 0;
+            SoftCameraRecoveryRequested = false;
+            _softCameraRecoveryIssued = false;
+            _softCameraRecoveryPerformed = false;
+            _softCameraRecoverySucceeded = false;
         }
 
-        public bool TryRecoverTracking()
+        public void BeginTrackingRecoveryWindow()
+        {
+            BeginHubContinuityWindow();
+        }
+
+        public bool TryBeginSoftCameraRecovery()
+        {
+            SoftCameraRecoveryRequested = true;
+            if (_softCameraRecoveryIssued)
+            {
+                return _softCameraRecoveryPerformed;
+            }
+
+            _softCameraRecoveryIssued = true;
+            if (_webCamTexture == null)
+            {
+                StatusMessage = "Soft camera continuity recovery unavailable: existing webcam texture is missing";
+                return false;
+            }
+
+            try
+            {
+                if (_webCamTexture.isPlaying)
+                {
+                    _webCamTexture.Stop();
+                }
+
+                _webCamTexture.Play();
+                _softCameraRecoveryPerformed = true;
+                StatusMessage = "Soft camera continuity recovery resumed the existing webcam texture";
+                return true;
+            }
+            catch (Exception exception)
+            {
+                StatusMessage = $"Soft camera continuity recovery failed: {exception.Message}";
+                return false;
+            }
+        }
+
+        public bool TryHardRecoverTracking()
         {
             TrackingRecoveryRequested = true;
             _trackingRecoveryRequestCount++;
@@ -3173,8 +3272,13 @@ namespace GoldenNeedle.Core.Motion.Providers.MediaPipe
             TrackingRecoveryAccepted = true;
             TrackingRecoveryPerformed = true;
             _trackingRecoveryRestartCount++;
-            StatusMessage = "Automatic Hub tracking recovery accepted; restarting provider";
+            StatusMessage = "Hub camera continuity hard fallback accepted; restarting provider";
             return true;
+        }
+
+        public bool TryRecoverTracking()
+        {
+            return TryHardRecoverTracking();
         }
 
         public bool RequestCycleCamera()

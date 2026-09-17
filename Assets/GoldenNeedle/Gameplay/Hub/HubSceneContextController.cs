@@ -15,20 +15,25 @@ namespace GoldenNeedle.Gameplay.Hub
         [Tooltip("Bounded time to allow tracking and retarget runtime state to become live before one diagnostic warning is emitted.")]
         [Min(0.1f), SerializeField] private float readinessGraceSeconds = 2f;
 
-        [Header("Automatic tracking recovery")]
-        [Tooltip("Time that completed-calibration Hub entry may observe unavailable body tracking before requesting the existing provider restart path.")]
+        [Header("Camera continuity")]
+        [Tooltip("Grace period for a completed-calibration Hub entry to observe a genuinely stale camera frame before attempting same-texture soft recovery.")]
         [Min(0.1f), SerializeField] private float trackingRecoveryDelaySeconds = 0.75f;
-        [Tooltip("Bounded time during which a busy provider may accept the one recovery request once it becomes safe.")]
-        [Min(0.1f), SerializeField] private float trackingRecoveryRequestWindowSeconds = 1f;
+        [Tooltip("Bounded time to wait for a fresh frame after soft recovery of the existing WebCamTexture.")]
+        [Min(0.1f), SerializeField] private float softCameraRecoveryWaitSeconds = 1f;
+        [Tooltip("Bounded time during which the one hard fallback may be accepted once the provider becomes idle.")]
+        [Min(0.1f), SerializeField] private float hardCameraRecoveryRequestWindowSeconds = 1f;
+        [Tooltip("Fresh-camera and full-motion-readiness stabilization window after Hub entry or recovery.")]
+        [Min(0.1f), SerializeField] private float stableReadinessWindowSeconds = 1f;
         [Tooltip("Additional readiness time after an accepted provider restart, added to the provider camera startup timeout.")]
         [Min(0.1f), SerializeField] private float postRecoveryReadinessMarginSeconds = 1f;
 
         private bool _applied;
         private bool _diagnosticEmitted;
         private bool _bindingRecoveryAttempted;
-        private bool _trackingRecoveryWindowPrepared;
-        private bool _trackingRecoveryRequested;
-        private bool _trackingRecoveryAccepted;
+        private bool _continuityWindowPrepared;
+        private bool _softCameraRecoveryRequested;
+        private bool _hardCameraRecoveryRequested;
+        private bool _hardCameraRecoveryAccepted;
         private Coroutine _applyCoroutine;
         private GameplayCommandHost _gameplayCommandHost;
         private GoldenNeedlePlayerFacade _playerFacade;
@@ -40,9 +45,10 @@ namespace GoldenNeedle.Gameplay.Hub
             _applied = false;
             _diagnosticEmitted = false;
             _bindingRecoveryAttempted = false;
-            _trackingRecoveryWindowPrepared = false;
-            _trackingRecoveryRequested = false;
-            _trackingRecoveryAccepted = false;
+            _continuityWindowPrepared = false;
+            _softCameraRecoveryRequested = false;
+            _hardCameraRecoveryRequested = false;
+            _hardCameraRecoveryAccepted = false;
             _applyCoroutine = StartCoroutine(ApplyWhenAvailable());
         }
 
@@ -60,9 +66,14 @@ namespace GoldenNeedle.Gameplay.Hub
         private IEnumerator ApplyWhenAvailable()
         {
             var readinessElapsed = 0f;
-            var trackingUnavailableElapsed = 0f;
-            var recoveryRequestElapsed = 0f;
+            var cameraUnavailableElapsed = 0f;
+            var softRecoveryElapsed = 0f;
+            var hardRecoveryElapsed = 0f;
+            var stableReadinessElapsed = 0f;
             var readinessBudgetSeconds = Mathf.Max(0.1f, readinessGraceSeconds);
+            var softRecoveryAttempted = false;
+            var hardRecoveryAttempted = false;
+
             while (isActiveAndEnabled)
             {
                 ResolveReferences();
@@ -72,10 +83,10 @@ namespace GoldenNeedle.Gameplay.Hub
                     continue;
                 }
 
-                if (!_trackingRecoveryWindowPrepared)
+                if (!_continuityWindowPrepared)
                 {
-                    _playerFacade.BeginTrackingRecoveryWindow();
-                    _trackingRecoveryWindowPrepared = true;
+                    _playerFacade.BeginHubContinuityWindow();
+                    _continuityWindowPrepared = true;
                 }
 
                 _gameplayCommandHost?.SetContext(GameplayCommandContext.Hub);
@@ -96,22 +107,39 @@ namespace GoldenNeedle.Gameplay.Hub
                     _applied = true;
                 }
 
-                if (HasRuntimeMotionReadiness(_playerFacade))
-                {
-                    _applyCoroutine = null;
-                    yield break;
-                }
-
                 var deltaTime = Mathf.Max(0f, Time.unscaledDeltaTime);
-                if (TryRecoverTrackingIfNeeded(
+                if (TryMaintainCameraContinuity(
                         _playerFacade,
                         deltaTime,
-                        ref trackingUnavailableElapsed,
-                        ref recoveryRequestElapsed))
+                        ref cameraUnavailableElapsed,
+                        ref softRecoveryElapsed,
+                        ref hardRecoveryElapsed,
+                        ref softRecoveryAttempted,
+                        ref hardRecoveryAttempted))
                 {
-                    _trackingRecoveryAccepted = true;
                     readinessElapsed = 0f;
-                    readinessBudgetSeconds = GetPostRecoveryReadinessBudget(_playerFacade);
+                    stableReadinessElapsed = 0f;
+                    readinessBudgetSeconds = _hardCameraRecoveryAccepted
+                        ? GetPostRecoveryReadinessBudget(_playerFacade)
+                        : Mathf.Max(0.1f, readinessGraceSeconds);
+                }
+
+                var runtimeReady = HasRuntimeMotionReadiness(_playerFacade);
+                var cameraAndProviderReady =
+                    _playerFacade.PoseProviderCameraFrameFresh &&
+                    _playerFacade.PoseProviderIsUsable;
+                if (runtimeReady && cameraAndProviderReady)
+                {
+                    stableReadinessElapsed += deltaTime;
+                    if (stableReadinessElapsed >= Mathf.Max(0.1f, stableReadinessWindowSeconds))
+                    {
+                        _applyCoroutine = null;
+                        yield break;
+                    }
+                }
+                else
+                {
+                    stableReadinessElapsed = 0f;
                 }
 
                 if (readinessElapsed >= readinessBudgetSeconds)
@@ -164,43 +192,86 @@ namespace GoldenNeedle.Gameplay.Hub
                    facade.RetargetIkChainsSolved > 0;
         }
 
-        private bool TryRecoverTrackingIfNeeded(
+        private bool TryMaintainCameraContinuity(
             GoldenNeedlePlayerFacade facade,
             float deltaTime,
-            ref float trackingUnavailableElapsed,
-            ref float recoveryRequestElapsed)
+            ref float cameraUnavailableElapsed,
+            ref float softRecoveryElapsed,
+            ref float hardRecoveryElapsed,
+            ref bool softRecoveryAttempted,
+            ref bool hardRecoveryAttempted)
         {
-            if (_trackingRecoveryAccepted ||
-                facade == null ||
+            if (facade == null ||
                 !HasStructuralMotionControl(facade) ||
                 !facade.IsCalibrationComplete)
             {
-                trackingUnavailableElapsed = 0f;
-                recoveryRequestElapsed = 0f;
+                cameraUnavailableElapsed = 0f;
+                softRecoveryElapsed = 0f;
+                hardRecoveryElapsed = 0f;
                 return false;
             }
 
-            if (facade.IsBodyTrackingAvailable)
+            // A body/result gap is not a camera failure. If the provider is still seeing fresh
+            // frames, leave its camera, OpenVINO runtime, worker, convention, and calibration alone.
+            if (facade.PoseProviderCameraFrameFresh)
             {
-                trackingUnavailableElapsed = 0f;
-                recoveryRequestElapsed = 0f;
+                cameraUnavailableElapsed = 0f;
+                softRecoveryElapsed = 0f;
+                hardRecoveryElapsed = 0f;
                 return false;
             }
 
-            trackingUnavailableElapsed += deltaTime;
-            if (trackingUnavailableElapsed < Mathf.Max(0.1f, trackingRecoveryDelaySeconds))
-            {
-                return false;
-            }
-
-            recoveryRequestElapsed += deltaTime;
-            if (recoveryRequestElapsed > Mathf.Max(0.1f, trackingRecoveryRequestWindowSeconds))
+            cameraUnavailableElapsed += deltaTime;
+            if (_hardCameraRecoveryAccepted || hardRecoveryAttempted)
             {
                 return false;
             }
 
-            _trackingRecoveryRequested = true;
-            return facade.TryRecoverTracking();
+            var continuityGrace = Mathf.Max(0.1f, trackingRecoveryDelaySeconds);
+            if (!softRecoveryAttempted)
+            {
+                if (cameraUnavailableElapsed < continuityGrace)
+                {
+                    return false;
+                }
+
+                softRecoveryAttempted = true;
+                _softCameraRecoveryRequested = true;
+                softRecoveryElapsed = 0f;
+                facade.TryBeginSoftCameraRecovery();
+                return true;
+            }
+
+            if (!facade.SoftCameraRecoverySucceeded)
+            {
+                softRecoveryElapsed += deltaTime;
+                if (softRecoveryElapsed < Mathf.Max(0.1f, softCameraRecoveryWaitSeconds))
+                {
+                    return false;
+                }
+            }
+            else if (cameraUnavailableElapsed < continuityGrace)
+            {
+                // The one soft attempt succeeded earlier, but a later bounded stabilization
+                // loss must still be observed for the same grace period before hard fallback.
+                return false;
+            }
+
+            hardRecoveryElapsed += deltaTime;
+            if (hardRecoveryElapsed > Mathf.Max(0.1f, hardCameraRecoveryRequestWindowSeconds))
+            {
+                return false;
+            }
+
+            _hardCameraRecoveryRequested = true;
+            if (!facade.TryHardRecoverTracking())
+            {
+                return false;
+            }
+
+            hardRecoveryAttempted = true;
+            _hardCameraRecoveryAccepted = facade.HardCameraRecoveryAccepted;
+            return _hardCameraRecoveryAccepted;
         }
 
         private float GetPostRecoveryReadinessBudget(GoldenNeedlePlayerFacade facade)
@@ -222,33 +293,46 @@ namespace GoldenNeedle.Gameplay.Hub
 
             _diagnosticEmitted = true;
             UnityEngine.Debug.LogWarning(
-                $"[GoldenNeedle Hub] Motion readiness not confirmed after {elapsed:0.00}s: " +
+                $"[GoldenNeedle Hub] Motion/camera continuity not confirmed after {elapsed:0.00}s: " +
                 $"calibrationUsable={facade.IsCalibrationUsable}, " +
                 $"calibrationComplete={facade.IsCalibrationComplete}, " +
+                $"poseDrive={facade.IsAvatarPoseDriveEnabled}, " +
+                $"locomotionDrive={facade.IsLocomotionEnabled}, " +
                 $"bodyTrackingAvailable={facade.IsBodyTrackingAvailable}, " +
                 $"providerStatus={facade.ProviderStatus}, " +
                 $"providerStatusMessage={facade.ProviderStatusMessage}, " +
                 $"selectedCamera={facade.SelectedCameraName}, " +
                 $"cameraTexture={facade.PoseProviderHasCameraTexture}, " +
                 $"webcamPlaying={facade.PoseProviderCameraPlaying}, " +
+                $"cameraFramesPerSecond={facade.PoseProviderCameraFramesPerSecond:0.0}, " +
+                $"hasSeenFreshCameraFrame={facade.PoseProviderHasSeenFreshCameraFrame}, " +
+                $"latestCameraFrameAgeMs={facade.LatestCameraFrameAgeMilliseconds:0.0}, " +
+                $"cameraFrameFresh={facade.PoseProviderCameraFrameFresh}, " +
+                $"providerUsable={facade.PoseProviderIsUsable}, " +
                 $"providerBootstrapping={facade.PoseProviderIsBootstrapping}, " +
                 $"poseResultReceived={facade.PoseProviderHasReceivedResult}, " +
                 $"latestPoseAgeMs={facade.LatestPoseAgeMilliseconds:0.0}, " +
                 $"activeInferenceBackend={facade.ActiveInferenceBackendLabel}, " +
+                $"activeBodyAcquisition={facade.ActiveBodyFrameAcquisitionModeLabel}, " +
+                $"webCamCpuFallbackReason={facade.WebCamCpuAcquisitionFallbackReason}, " +
+                $"openVinoRuntimeAvailable={facade.OpenVinoRuntimeAvailable}, " +
+                $"openVinoWorkerTaskAvailable={facade.OpenVinoWorkerTaskAvailable}, " +
+                $"openVinoWorkerSignalAvailable={facade.OpenVinoWorkerSignalAvailable}, " +
                 $"rigBound={facade.IsRigBound}, " +
                 $"bindingMode={facade.RigBindingModeName}, " +
                 $"externalAnimationAuthority={facade.IsAvatarAnimationAuthorityEnabled}, " +
-                $"poseDrive={facade.IsAvatarPoseDriveEnabled}, " +
-                $"locomotionDrive={facade.IsLocomotionEnabled}, " +
                 $"kinematicTargetsLive={facade.AreRetargetTargetsLive}, " +
                 $"sourceChainsValid={facade.RetargetSourceChainsValid}, " +
                 $"targetsGenerated={facade.RetargetTargetsGenerated}, " +
                 $"ikChainsSolved={facade.RetargetIkChainsSolved}, " +
-                $"trackingRecoveryRequested={_trackingRecoveryRequested && facade.TrackingRecoveryRequested}, " +
-                $"trackingRecoveryAccepted={_trackingRecoveryAccepted && facade.TrackingRecoveryAccepted}, " +
-                $"trackingRecoveryPerformed={facade.TrackingRecoveryPerformed}, " +
-                $"trackingRecoveryRequests={facade.TrackingRecoveryRequestCount}, " +
-                $"trackingRecoveryRestarts={facade.TrackingRecoveryRestartCount}.",
+                $"softCameraRecoveryRequested={_softCameraRecoveryRequested && facade.SoftCameraRecoveryRequested}, " +
+                $"softCameraRecoveryPerformed={facade.SoftCameraRecoveryPerformed}, " +
+                $"softCameraRecoverySucceeded={facade.SoftCameraRecoverySucceeded}, " +
+                $"hardCameraRecoveryRequested={_hardCameraRecoveryRequested && facade.HardCameraRecoveryRequested}, " +
+                $"hardCameraRecoveryAccepted={_hardCameraRecoveryAccepted && facade.HardCameraRecoveryAccepted}, " +
+                $"hardCameraRecoveryPerformed={facade.HardCameraRecoveryPerformed}, " +
+                $"hardRecoveryRequests={facade.TrackingRecoveryRequestCount}, " +
+                $"hardRecoveryRestarts={facade.TrackingRecoveryRestartCount}.",
                 this);
         }
     }
