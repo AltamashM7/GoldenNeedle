@@ -118,3 +118,39 @@ Do not invent Boxing content to satisfy the roadmap.
 ## Branch rule
 
 Gameplay work remains on `gameplay/foundation`. Merge to `main` only after explicit USER approval.
+
+
+---
+
+## 2026-10-02 strategic roadmap insertion — Motion Engine product separation
+
+The historical phase sequence above is preserved. The USER has now set a new strategic priority before further major gameplay expansion: formalize the Motion Engine as an independent reusable product while keeping Mocap Adventure as the SIH game that consumes it.
+
+### Motion Engine product separation
+
+**NEXT PLANNING PHASE — IMPLEMENTATION NOT YET STARTED**
+
+Intent:
+
+- preserve the accepted Motion Engine behavior and the currently stable Mocap Adventure integration;
+- define the exact technical boundary between reusable Motion Engine code, Mocap Adventure/game-specific code, mixed adapters, and third-party dependencies;
+- separate the Motion Engine into an independently maintainable reusable software product;
+- keep the truthful development chronology: the Motion Engine was created during this project and is now being separated; it must not be represented as pre-existing background IP;
+- preserve Git history and prior documentation rather than rewriting history;
+- have Mocap Adventure consume the separated Motion Engine under a permanent licence;
+- allow other applications, including a separately funded rehabilitation application, to license the same Motion Engine;
+- preserve all third-party licence obligations and exclude third-party technology from proprietary ownership claims.
+
+Planned sequence:
+
+```text
+documentation checkpoint
+-> read-only technical boundary audit
+-> USER discussion/selection of separation architecture
+-> implementation plan
+-> USER-approved extraction/productization
+-> reconnect Mocap Adventure through the defined Motion Engine interface/package
+-> regression and runtime QA proving accepted behavior was preserved
+```
+
+This roadmap entry authorizes **documentation and future discussion only**. Do not begin extraction, repository moves, DLL/package work, or gameplay restructuring until the USER explicitly approves the technical plan.

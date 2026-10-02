@@ -374,3 +374,42 @@ If pose or locomotion still fails, capture the first relevant Console error/warn
 8. Merge to `main` only with explicit USER approval.
 
 Do not begin activity gameplay merely because infrastructure exists.
+
+
+---
+
+## 2026-10-02 strategic addendum — Motion Engine product separation
+
+This addendum records a new USER-directed product/IP boundary without deleting or rewriting the historical implementation record above.
+
+### Product identity and intended ownership boundary
+
+- The SIH product is **Mocap Adventure**, the Unity fitness game/application.
+- Mocap Adventure uses the Motion Engine as its underlying motion-control technology.
+- The Motion Engine was developed during the Golden Needle/Mocap Adventure project. **Do not describe it as pre-existing or historical background IP.**
+- The USER states that they solely developed the Motion Engine, using AI-assisted development tools, and that teammates did not contribute to the Motion Engine.
+- The intended structure is to separate the Motion Engine into an independently maintained, reusable software product under the USER's ownership.
+- Mocap Adventure is intended to continue using the separated Motion Engine under a **permanent licence** rather than owning the underlying Motion Engine.
+- Other products, including a separately funded rehabilitation application, may use the Motion Engine under their own licences.
+- Exact legal/licence terms, team acknowledgement, and any required SIH/funding-party recognition remain to be formalized. This documentation records project direction; it is not itself a substitute for those agreements.
+- Third-party components and dependencies remain subject to their own licences and are not included in claims of exclusive Motion Engine ownership.
+
+### Current implementation boundary
+
+The accepted Motion Engine and Mocap Adventure remain integrated in this repository at this checkpoint. No extraction, DLL/package reorganization, repository split, dependency migration, or licensing implementation has been performed by this documentation update.
+
+The current architecture already preserves an important technical boundary: gameplay consumes project-owned motion/player contracts rather than directly depending on MediaPipe internals. The exact standalone Motion Engine package/repository boundary is **not yet decided** and must be established through a read-only boundary audit before implementation.
+
+### New next direction
+
+The current Motion Engine V1 and Mocap Adventure foundation are considered sufficiently stable for the next planning phase to be **Motion Engine product separation**.
+
+The next Orchestrator must first:
+
+1. verify the live repository state;
+2. read `Docs/motion-engine-product-separation.md`;
+3. perform a read-only boundary audit of Motion Engine, Mocap Adventure, mixed integration code, and third-party dependencies;
+4. discuss separation options with the USER;
+5. make **no extraction or code changes** until the USER explicitly approves an implementation approach.
+
+All earlier technical history, acceptance evidence, rejected experiments, and QA boundaries above remain preserved as historical/project evidence.

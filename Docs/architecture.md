@@ -182,3 +182,46 @@ Batch 1: documentation synchronization
 ```
 
 Phase 6, Hub and course implementation have **not** begun simply because the Motion Engine roadmap is synchronized.
+
+
+---
+
+## 2026-10-02 architectural direction — planned Motion Engine product boundary
+
+The architecture above remains the historical description of the integrated Golden Needle/Mocap Adventure implementation. A new productization direction is now recorded without changing runtime code at this checkpoint.
+
+The intended long-term relationship is:
+
+```text
+camera / pose-provider dependencies
+            |
+            v
++----------------------------------+
+| reusable Motion Engine product   |
+| canonical body                   |
+| stabilization / calibration      |
+| retargeting / motion semantics   |
+| locomotion interpretation        |
++----------------------------------+
+            |
+            | defined integration/licence boundary
+            v
++----------------------------------+
+| Mocap Adventure                  |
+| player/session integration       |
+| game flow / Hub / activities     |
+| game-specific UI and rules       |
++----------------------------------+
+```
+
+This diagram is **conceptual, not a final extraction specification**. The exact placement of provider code, Unity adapters, commands/presentation code, native OpenVINO integration, player-facing adapters, and other mixed responsibilities must be determined through a read-only boundary audit before implementation.
+
+Architectural constraints for that future work:
+
+- preserve accepted Motion Engine V1 behavior rather than redesigning algorithms during extraction;
+- preserve the provider-independent canonical boundary;
+- keep gameplay isolated from MediaPipe/provider internals;
+- keep Mocap Adventure-specific scene/game rules outside the reusable engine;
+- preserve third-party licence/provenance boundaries;
+- preserve Git chronology showing that the Motion Engine was developed during this project and separated afterward;
+- require USER approval of the separation design before code movement or packaging begins.
