@@ -1,6 +1,12 @@
-# Golden Needle — Current State
+# Golden Needle â€” Current State
 
-Authoritative refresh: 2026-09-17
+SDK connection refresh: 2026-10-05 — isolated codex/motion-sdk-integration checkout
+
+The product now consumes the source-free HD Motion Engine SDK preview 2. Private SDK release published and assets verified on 2026-10-04: [v0.1.0-preview.2](https://github.com/AltamashM7/hd-motion-engine/releases/tag/v0.1.0-preview.2). Read [motion-sdk-integration.md](motion-sdk-integration.md) and its evidence files for current boundaries/setup/verification. The historical gameplay snapshot below describes preserved behavior; engine source paths/build tools below are historical and are removed from this checkout. USER ACCEPTED — PASS: the USER reports the isolated Unity Editor game and newly built Windows executable both worked. Downloads/GoldenNeedle_MotionSDK payload inspection confirms all eight native DLL/four model hashes and both SDK runtime DLL hashes match, with no Pipeline/Roslyn/engine Editor/Lab/test assemblies. Read motion-sdk-user-acceptance.json for evidence. Earlier packaging failure is superseded by this accepted USER build; no new BuildReport or measured latency is claimed. Full builds and similar long-running checks are USER owned; Codex should not launch or wait for them. Original GoldenNeedle checkout is unchanged; no merge to main has occurred.
+
+Git checkpoint scope: USER-authorized accepted SDK migration on `codex/motion-sdk-integration`. Preserve copied pre-existing asset/settings edits and Unity recovery backups outside this commit. No branch merge or push is part of this action. Next: USER discussion before licensing or activation design.
+
+Historical authoritative refresh: 2026-09-17
 
 Repository: `AltamashM7/GoldenNeedle`
 
@@ -14,23 +20,23 @@ This file is the durable status authority. Historical plans remain useful for ra
 
 Implementation checkpoint immediately preceding this documentation refresh:
 
-`8026852` — preserves the persistent webcam/provider across normal Calibration -> Hub entry, adds camera-freshness continuity diagnostics, bounded same-texture soft resume, and one hard restart fallback only after camera continuity recovery fails.
+`8026852` â€” preserves the persistent webcam/provider across normal Calibration -> Hub entry, adds camera-freshness continuity diagnostics, bounded same-texture soft resume, and one hard restart fallback only after camera continuity recovery fails.
 
 The preceding implementation checkpoint was:
 
-`b3b9f298abc94c0d2620d4696ae53e3a2cddc3ff` — added one-shot automatic Hub tracking recovery through the existing provider restart path, provider diagnostics for a failed recovery, and camera follow fallback when no live body heading exists.
+`b3b9f298abc94c0d2620d4696ae53e3a2cddc3ff` â€” added one-shot automatic Hub tracking recovery through the existing provider restart path, provider diagnostics for a failed recovery, and camera follow fallback when no live body heading exists.
 
 Previous gameplay implementation checkpoint:
 
-`08b02c24946e5d1ec9a88a168584aaaf0106ce7f` — restored scene-local Calibration presentation binding, persistent Hub pose/locomotion readiness and narrow binding recovery, and Hub TerrainCollider grounding after GameFlow placement.
+`08b02c24946e5d1ec9a88a168584aaaf0106ce7f` â€” restored scene-local Calibration presentation binding, persistent Hub pose/locomotion readiness and narrow binding recovery, and Hub TerrainCollider grounding after GameFlow placement.
 
 Prior gameplay/foundation checkpoint:
 
-`6c3f4c365a9730baa87aa5e411337e20bbbe8f47` — Hub gameplay camera, camera speech presets, editable Hub spawn presentation, complete-calibration gate, and restoration of persistent-player pose/locomotion authority.
+`6c3f4c365a9730baa87aa5e411337e20bbbe8f47` â€” Hub gameplay camera, camera speech presets, editable Hub spawn presentation, complete-calibration gate, and restoration of persistent-player pose/locomotion authority.
 
 Prior pushed Hub portal checkpoint:
 
-`b8afaae8a8cf20ec5bf17a45c85d5b494e6f6151` — Hub portal trigger infrastructure, blue-to-Obstacle wiring, and `ObstacleEntry` spawn contract.
+`b8afaae8a8cf20ec5bf17a45c85d5b494e6f6151` â€” Hub portal trigger infrastructure, blue-to-Obstacle wiring, and `ObstacleEntry` spawn contract.
 
 Before the webcam-continuity implementation commit, remote refs were independently verified as:
 
@@ -63,7 +69,7 @@ Always verify live refs before new work. `main` has not been modified by this ga
   - `Assets/Scenes/Obstacle Course.unity`.
 - `SampleScene` is present but disabled.
 
-## Motion Engine V1 — USER ACCEPTED / FROZEN
+## Motion Engine V1 â€” USER ACCEPTED / FROZEN
 
 Accepted Motion Engine implementation baseline:
 
@@ -83,7 +89,7 @@ Preserved invariants:
 
 Crouch/ground contact is approximate but accepted. Do not reopen Motion Engine work unless the USER explicitly requests it or a concrete gameplay-blocking defect is demonstrated.
 
-## Gameplay/session foundation — IMPLEMENTED
+## Gameplay/session foundation â€” IMPLEMENTED
 
 The reusable production foundation exists on `gameplay/foundation`:
 
@@ -118,7 +124,7 @@ The yellow portal has trigger infrastructure but intentionally remains disabled 
 
 Returning from an activity to Hub and activity-specific gameplay are later phases.
 
-## Calibration scene — current architecture
+## Calibration scene â€” current architecture
 
 Scene: `Assets/Scenes/Caliberation.unity` (the repository intentionally uses the `Caliberation` spelling).
 
@@ -170,7 +176,7 @@ Still awaiting a fresh end-to-end USER retest after the persistent Animator corr
 - persistent player follows body pose;
 - persistent player locomotion responds normally.
 
-## Hub scene — current architecture
+## Hub scene â€” current architecture
 
 Scene: `Assets/Scenes/GoldenNeedle_Hub.unity`.
 
@@ -349,7 +355,7 @@ The focused batch compilation verifies source and scene import integrity only. T
 
 Earlier accepted/reported evidence remains historical only, including the prior full EditMode `286/286` result and focused portal/presentation checks. It does not substitute for manual QA of this scene integration, terrain behavior, or the latest pose/locomotion path.
 
-## Immediate USER QA boundary — webcam continuity gate
+## Immediate USER QA boundary â€” webcam continuity gate
 
 1. Open `Caliberation`.
 2. Begin Calibration and confirm Runtime Camera shows the selected `HP TrueVision HD Camera`, actual FPS above zero, and `WebCamCPU/GetPixels32`.

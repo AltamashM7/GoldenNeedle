@@ -1,0 +1,255 @@
+<?xml version="1.0" encoding="utf-8"?>
+<test-run id="2" testcasecount="33" result="Passed" total="33" passed="33" failed="0" inconclusive="0" skipped="0" asserts="0" engine-version="3.5.0.0" clr-version="4.0.30319.42000" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:02Z" duration="1.0187466">
+  <test-suite type="TestSuite" id="1000" name="GoldenNeedle" fullname="GoldenNeedle" runstate="Runnable" testcasecount="33" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:02Z" duration="1.018747" total="33" passed="33" failed="0" inconclusive="0" skipped="0" asserts="0">
+    <properties>
+      <property name="platform" value="EditMode" />
+    </properties>
+    <test-suite type="Assembly" id="1044" name="Assembly-CSharp-Editor.dll" fullname="C:/Users/user/.codex/worktrees/motion-sdk-integration/GoldenNeedle/Library/ScriptAssemblies/Assembly-CSharp-Editor.dll" runstate="Runnable" testcasecount="33" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:02Z" duration="0.971597" total="33" passed="33" failed="0" inconclusive="0" skipped="0" asserts="0">
+      <properties>
+        <property name="_PID" value="22408" />
+        <property name="_APPDOMAIN" value="Unity Child Domain" />
+        <property name="platform" value="EditMode" />
+        <property name="EditorOnly" value="True" />
+      </properties>
+      <test-suite type="TestSuite" id="1045" name="GoldenNeedle" fullname="GoldenNeedle" runstate="Runnable" testcasecount="33" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:02Z" duration="0.968940" total="33" passed="33" failed="0" inconclusive="0" skipped="0" asserts="0">
+        <properties />
+        <test-suite type="TestSuite" id="1046" name="Tests" fullname="GoldenNeedle.Tests" runstate="Runnable" testcasecount="33" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:02Z" duration="0.966805" total="33" passed="33" failed="0" inconclusive="0" skipped="0" asserts="0">
+          <properties />
+          <test-suite type="TestFixture" id="1001" name="CalibrationCameraPresentationGeometryTests" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" testcasecount="9" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.309543" total="9" passed="9" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1009" name="PresentationMirrorAndVerticalCorrectionRemainSeparateFromGeometry" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.PresentationMirrorAndVerticalCorrectionRemainSeparateFromGeometry" methodname="PresentationMirrorAndVerticalCorrectionRemainSeparateFromGeometry" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="1078277706" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.169434" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1007" name="RawTextureAspectRemainsSourceAspectAtEveryQuarterTurn" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.RawTextureAspectRemainsSourceAspectAtEveryQuarterTurn" methodname="RawTextureAspectRemainsSourceAspectAtEveryQuarterTurn" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="827993649" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.013251" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1008" name="RotatedRawTextureFootprintMatchesOrientedContentSize" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.RotatedRawTextureFootprintMatchesOrientedContentSize" methodname="RotatedRawTextureFootprintMatchesOrientedContentSize" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="193594744" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.001292" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1006" name="RotationFitsOrientedContentAndPreservesRawTextureFootprint" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.RotationFitsOrientedContentAndPreservesRawTextureFootprint" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.011206" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1002" name="RotationFitsOrientedContentAndPreservesRawTextureFootprint(0,666.6667f,500.0f,666.6667f,500.0f)" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.RotationFitsOrientedContentAndPreservesRawTextureFootprint(0,666.6667f,500.0f,666.6667f,500.0f)" methodname="RotationFitsOrientedContentAndPreservesRawTextureFootprint" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="857419467" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.002645" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1003" name="RotationFitsOrientedContentAndPreservesRawTextureFootprint(90,375.0f,500.0f,500.0f,375.0f)" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.RotationFitsOrientedContentAndPreservesRawTextureFootprint(90,375.0f,500.0f,500.0f,375.0f)" methodname="RotationFitsOrientedContentAndPreservesRawTextureFootprint" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="301876319" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.000345" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1004" name="RotationFitsOrientedContentAndPreservesRawTextureFootprint(180,666.6667f,500.0f,666.6667f,500.0f)" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.RotationFitsOrientedContentAndPreservesRawTextureFootprint(180,666.6667f,500.0f,666.6667f,500.0f)" methodname="RotationFitsOrientedContentAndPreservesRawTextureFootprint" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="467081636" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.000337" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1005" name="RotationFitsOrientedContentAndPreservesRawTextureFootprint(270,375.0f,500.0f,500.0f,375.0f)" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.RotationFitsOrientedContentAndPreservesRawTextureFootprint(270,375.0f,500.0f,500.0f,375.0f)" methodname="RotationFitsOrientedContentAndPreservesRawTextureFootprint" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="58762516" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.000345" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-case id="1010" name="ZeroSourceDimensionsProduceInvalidGeometry" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.ZeroSourceDimensionsProduceInvalidGeometry" methodname="ZeroSourceDimensionsProduceInvalidGeometry" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="2026177850" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.001920" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1011" name="ZeroTargetDimensionsProduceInvalidGeometry" fullname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests.ZeroTargetDimensionsProduceInvalidGeometry" methodname="ZeroTargetDimensionsProduceInvalidGeometry" classname="GoldenNeedle.Tests.CalibrationCameraPresentationGeometryTests" runstate="Runnable" seed="556469883" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.001323" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+          </test-suite>
+          <test-suite type="TestSuite" id="1047" name="Editor" fullname="GoldenNeedle.Tests.Editor" runstate="Runnable" testcasecount="15" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:02Z" duration="0.591129" total="15" passed="15" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-suite type="TestFixture" id="1024" name="CalibrationPresentationTests" fullname="GoldenNeedle.Tests.Editor.CalibrationPresentationTests" classname="GoldenNeedle.Tests.Editor.CalibrationPresentationTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:02Z" duration="0.067818" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1027" name="CalibrationSceneControllerDoesNotTransitionWithoutPresentationRequest" fullname="GoldenNeedle.Tests.Editor.CalibrationPresentationTests.CalibrationSceneControllerDoesNotTransitionWithoutPresentationRequest" methodname="CalibrationSceneControllerDoesNotTransitionWithoutPresentationRequest" classname="GoldenNeedle.Tests.Editor.CalibrationPresentationTests" runstate="Runnable" seed="1513845679" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.032266" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1026" name="CalibrationSceneControllerStateChangedFiresOnlyOnActualChange" fullname="GoldenNeedle.Tests.Editor.CalibrationPresentationTests.CalibrationSceneControllerStateChangedFiresOnlyOnActualChange" methodname="CalibrationSceneControllerStateChangedFiresOnlyOnActualChange" classname="GoldenNeedle.Tests.Editor.CalibrationPresentationTests" runstate="Runnable" seed="1860545130" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:01Z" duration="0.011340" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1025" name="WorldSpacePresentationGroupImmediateVisibilityReachesExactAlpha" fullname="GoldenNeedle.Tests.Editor.CalibrationPresentationTests.WorldSpacePresentationGroupImmediateVisibilityReachesExactAlpha" methodname="WorldSpacePresentationGroupImmediateVisibilityReachesExactAlpha" classname="GoldenNeedle.Tests.Editor.CalibrationPresentationTests" runstate="Runnable" seed="1700531344" result="Passed" start-time="2026-10-03 17:38:01Z" end-time="2026-10-03 17:38:02Z" duration="0.021018" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="TestFixture" id="1028" name="GameplayFlowFoundationTests" fullname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests" classname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests" runstate="Runnable" testcasecount="4" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.360592" total="4" passed="4" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1031" name="SpawnResolution_DuplicateRequestedIdFailsExplicitly" fullname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests.SpawnResolution_DuplicateRequestedIdFailsExplicitly" methodname="SpawnResolution_DuplicateRequestedIdFailsExplicitly" classname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests" runstate="Runnable" seed="688028260" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.333527" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1032" name="SpawnResolution_EmptyRequestedIdFailsExplicitly" fullname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests.SpawnResolution_EmptyRequestedIdFailsExplicitly" methodname="SpawnResolution_EmptyRequestedIdFailsExplicitly" classname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests" runstate="Runnable" seed="1803836073" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.001898" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1029" name="SpawnResolution_IsScopedToDestinationScene" fullname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests.SpawnResolution_IsScopedToDestinationScene" methodname="SpawnResolution_IsScopedToDestinationScene" classname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests" runstate="Runnable" seed="84115159" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.015518" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1030" name="SpawnResolution_MissingRequestedIdFailsExplicitly" fullname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests.SpawnResolution_MissingRequestedIdFailsExplicitly" methodname="SpawnResolution_MissingRequestedIdFailsExplicitly" classname="GoldenNeedle.Tests.Editor.GameplayFlowFoundationTests" runstate="Runnable" seed="1499980127" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.002404" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="TestFixture" id="1033" name="GameplayPlayerFoundationTests" fullname="GoldenNeedle.Tests.Editor.GameplayPlayerFoundationTests" classname="GoldenNeedle.Tests.Editor.GameplayPlayerFoundationTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.079695" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1035" name="MotionEngineRuntime_GameplayPresentationSetterAcceptsOnlyRawOrStabilized" fullname="GoldenNeedle.Tests.Editor.GameplayPlayerFoundationTests.MotionEngineRuntime_GameplayPresentationSetterAcceptsOnlyRawOrStabilized" methodname="MotionEngineRuntime_GameplayPresentationSetterAcceptsOnlyRawOrStabilized" classname="GoldenNeedle.Tests.Editor.GameplayPlayerFoundationTests" runstate="Runnable" seed="1237731563" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.013436" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1036" name="PlayerFacade_SplitsAvatarPoseDriveAndLocomotionControls" fullname="GoldenNeedle.Tests.Editor.GameplayPlayerFoundationTests.PlayerFacade_SplitsAvatarPoseDriveAndLocomotionControls" methodname="PlayerFacade_SplitsAvatarPoseDriveAndLocomotionControls" classname="GoldenNeedle.Tests.Editor.GameplayPlayerFoundationTests" runstate="Runnable" seed="2029680393" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.048745" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1034" name="PlayerHealth_ClampsDamageAndNotifiesDeathOnAliveToDeadTransition" fullname="GoldenNeedle.Tests.Editor.GameplayPlayerFoundationTests.PlayerHealth_ClampsDamageAndNotifiesDeathOnAliveToDeadTransition" methodname="PlayerHealth_ClampsDamageAndNotifiesDeathOnAliveToDeadTransition" classname="GoldenNeedle.Tests.Editor.GameplayPlayerFoundationTests" runstate="Runnable" seed="45919645" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.011618" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="TestFixture" id="1037" name="GameplayPlayerPrefabBuilderTests" fullname="GoldenNeedle.Tests.Editor.GameplayPlayerPrefabBuilderTests" classname="GoldenNeedle.Tests.Editor.GameplayPlayerPrefabBuilderTests" runstate="Runnable" testcasecount="3" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.018757" total="3" passed="3" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1040" name="DebugClassification_IsExplicitAndRejectsUnknownPoseTrackingSpikeDebugTypes" fullname="GoldenNeedle.Tests.Editor.GameplayPlayerPrefabBuilderTests.DebugClassification_IsExplicitAndRejectsUnknownPoseTrackingSpikeDebugTypes" methodname="DebugClassification_IsExplicitAndRejectsUnknownPoseTrackingSpikeDebugTypes" classname="GoldenNeedle.Tests.Editor.GameplayPlayerPrefabBuilderTests" runstate="Runnable" seed="2047675706" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.004054" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1038" name="ExactRequiredCounts_AcceptsOneOfEveryRequiredComponent" fullname="GoldenNeedle.Tests.Editor.GameplayPlayerPrefabBuilderTests.ExactRequiredCounts_AcceptsOneOfEveryRequiredComponent" methodname="ExactRequiredCounts_AcceptsOneOfEveryRequiredComponent" classname="GoldenNeedle.Tests.Editor.GameplayPlayerPrefabBuilderTests" runstate="Runnable" seed="1420599424" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.003325" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1039" name="ExactRequiredCounts_RejectsMissingOrDuplicateComponents" fullname="GoldenNeedle.Tests.Editor.GameplayPlayerPrefabBuilderTests.ExactRequiredCounts_RejectsMissingOrDuplicateComponents" methodname="ExactRequiredCounts_RejectsMissingOrDuplicateComponents" classname="GoldenNeedle.Tests.Editor.GameplayPlayerPrefabBuilderTests" runstate="Runnable" seed="981323295" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.007594" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="TestFixture" id="1041" name="HubPortalTriggerTests" fullname="GoldenNeedle.Tests.Editor.HubPortalTriggerTests" classname="GoldenNeedle.Tests.Editor.HubPortalTriggerTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.060900" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1043" name="PointInsideBox_ReturnsFalseForMissingVolume" fullname="GoldenNeedle.Tests.Editor.HubPortalTriggerTests.PointInsideBox_ReturnsFalseForMissingVolume" methodname="PointInsideBox_ReturnsFalseForMissingVolume" classname="GoldenNeedle.Tests.Editor.HubPortalTriggerTests" runstate="Runnable" seed="1353816910" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.003081" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1042" name="PointInsideBox_UsesTheAuthoredRotatedVolume" fullname="GoldenNeedle.Tests.Editor.HubPortalTriggerTests.PointInsideBox_UsesTheAuthoredRotatedVolume" methodname="PointInsideBox_UsesTheAuthoredRotatedVolume" classname="GoldenNeedle.Tests.Editor.HubPortalTriggerTests" runstate="Runnable" seed="1092916703" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.055300" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+          </test-suite>
+          <test-suite type="TestFixture" id="1012" name="GameplayCommandBridgeTests" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" testcasecount="9" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.061204" total="9" passed="9" failed="0" inconclusive="0" skipped="0" asserts="0">
+            <properties />
+            <test-case id="1020" name="ContextPolicyAllowsOnlyTheIntendedProductionCommands" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.ContextPolicyAllowsOnlyTheIntendedProductionCommands" methodname="ContextPolicyAllowsOnlyTheIntendedProductionCommands" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="578998260" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.001986" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1023" name="GameplayCommandHostRaisesCommandProcessedOnceAfterRememberingResult" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.GameplayCommandHostRaisesCommandProcessedOnceAfterRememberingResult" methodname="GameplayCommandHostRaisesCommandProcessedOnceAfterRememberingResult" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="1859153064" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.014188" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1022" name="MissingPresentationTargetsFailSafely" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.MissingPresentationTargetsFailSafely" methodname="MissingPresentationTargetsFailSafely" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="443063678" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.022618" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1021" name="PresentationCommandsRouteToTheCorrectNarrowTarget" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.PresentationCommandsRouteToTheCorrectNarrowTarget" methodname="PresentationCommandsRouteToTheCorrectNarrowTarget" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="166496833" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.001800" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-case id="1013" name="ProductionSpeechConfigurationContainsOnlyApprovedGameplayPhrases" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.ProductionSpeechConfigurationContainsOnlyApprovedGameplayPhrases" methodname="ProductionSpeechConfigurationContainsOnlyApprovedGameplayPhrases" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="579205923" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.007608" asserts="0">
+              <properties>
+                <property name="retryIteration" value="0" />
+                <property name="repeatIteration" value="0" />
+              </properties>
+            </test-case>
+            <test-suite type="ParameterizedMethod" id="1016" name="RawAliasesResolveToRawAvatarPresentation" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.RawAliasesResolveToRawAvatarPresentation" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.004446" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1014" name="RawAliasesResolveToRawAvatarPresentation(&quot;reduce latency&quot;)" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.RawAliasesResolveToRawAvatarPresentation(&quot;reduce latency&quot;)" methodname="RawAliasesResolveToRawAvatarPresentation" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="1091375919" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.001937" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1015" name="RawAliasesResolveToRawAvatarPresentation(&quot;low latency mode&quot;)" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.RawAliasesResolveToRawAvatarPresentation(&quot;low latency mode&quot;)" methodname="RawAliasesResolveToRawAvatarPresentation" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="480920676" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.000331" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+            </test-suite>
+            <test-suite type="ParameterizedMethod" id="1019" name="SmoothAliasesResolveToStabilizedAvatarPresentation" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.SmoothAliasesResolveToStabilizedAvatarPresentation" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" testcasecount="2" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.002907" total="2" passed="2" failed="0" inconclusive="0" skipped="0" asserts="0">
+              <properties />
+              <test-case id="1017" name="SmoothAliasesResolveToStabilizedAvatarPresentation(&quot;smooth motion&quot;)" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.SmoothAliasesResolveToStabilizedAvatarPresentation(&quot;smooth motion&quot;)" methodname="SmoothAliasesResolveToStabilizedAvatarPresentation" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="17023220" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.001029" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+              </test-case>
+              <test-case id="1018" name="SmoothAliasesResolveToStabilizedAvatarPresentation(&quot;stabilized mode&quot;)" fullname="GoldenNeedle.Tests.GameplayCommandBridgeTests.SmoothAliasesResolveToStabilizedAvatarPresentation(&quot;stabilized mode&quot;)" methodname="SmoothAliasesResolveToStabilizedAvatarPresentation" classname="GoldenNeedle.Tests.GameplayCommandBridgeTests" runstate="Runnable" seed="1234195689" result="Passed" start-time="2026-10-03 17:38:02Z" end-time="2026-10-03 17:38:02Z" duration="0.000309" asserts="0">
+                <properties>
+                  <property name="retryIteration" value="0" />
+                  <property name="repeatIteration" value="0" />
+                </properties>
+                <output><![CDATA[Saving results to: C:/Users/user/AppData/LocalLow/DefaultCompany/GoldenNeedle\TestResults.xml
+]]></output>
+              </test-case>
+            </test-suite>
+          </test-suite>
+        </test-suite>
+      </test-suite>
+    </test-suite>
+  </test-suite>
+</test-run>

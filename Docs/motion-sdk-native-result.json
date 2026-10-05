@@ -1,0 +1,6 @@
+{
+    "passed": true,
+    "backend": "OPENVINO_CPU_FP32",
+    "timestamp": 1,
+    "hasPose": false
+}

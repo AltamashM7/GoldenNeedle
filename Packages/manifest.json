@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.hd.motion-engine": "file:HDMotionEngine/hd-motion-engine-sdk-0.1.0-preview.2-windows-x64.tgz",
     "com.unity.ai.inference": "2.6.1",
     "com.unity.ai.navigation": "2.0.13",
     "com.unity.collab-proxy": "2.12.4",
@@ -7,6 +8,7 @@
     "com.unity.ide.visualstudio": "2.0.26",
     "com.unity.inputsystem": "1.19.0",
     "com.unity.multiplayer.center": "1.0.1",
+    "com.unity.pipeline": "0.5.0-exp.1",
     "com.unity.render-pipelines.universal": "17.5.0",
     "com.unity.test-framework": "1.7.0",
     "com.unity.timeline": "1.8.12",
@@ -45,8 +47,6 @@
     "com.unity.modules.vehicles": "1.0.0",
     "com.unity.modules.video": "1.0.0",
     "com.unity.modules.wind": "1.0.0",
-    "com.unity.modules.xr": "1.0.0",
-    "com.github.homuler.mediapipe": "file:com.github.homuler.mediapipe",
-    "com.unity.pipeline": "0.5.0-exp.1"
+    "com.unity.modules.xr": "1.0.0"
   }
 }

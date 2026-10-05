@@ -19,6 +19,7 @@ GameObject:
   - component: {fileID: 5257845932881846978}
   - component: {fileID: 4577490965382958149}
   - component: {fileID: 4525455413659312401}
+  - component: {fileID: 4708450843235256788}
   m_Layer: 0
   m_Name: GoldenNeedlePlayer
   m_TagString: Untagged
@@ -51,7 +52,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2194655507004021010}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3e996a3ef80a5604d83d4239d8c1770a, type: 3}
+  m_Script: {fileID: -1673210318, guid: 24b06768b27aa344ea95c8be5960ff42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Debug.PoseTrackingSpike.MediaPipePoseProvider
   preferredCameraName: 
@@ -84,7 +85,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2194655507004021010}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d09, type: 3}
+  m_Script: {fileID: 644532742, guid: 24b06768b27aa344ea95c8be5960ff42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Retargeting.HumanoidRigBinding
   animator: {fileID: 3145380145148304317}
@@ -113,7 +114,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2194655507004021010}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d11, type: 3}
+  m_Script: {fileID: 1667519388, guid: 24b06768b27aa344ea95c8be5960ff42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Retargeting.HumanoidRetargeter
   runtime: {fileID: 0}
@@ -132,7 +133,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2194655507004021010}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 7b5f3c9e2d1a4f6b8c0e1234567890a6, type: 3}
+  m_Script: {fileID: -859578138, guid: 24b06768b27aa344ea95c8be5960ff42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Locomotion.EmbodiedLocomotionController
   runtime: {fileID: 0}
@@ -200,7 +201,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2194655507004021010}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d12, type: 3}
+  m_Script: {fileID: -451497318, guid: 24b06768b27aa344ea95c8be5960ff42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Providers.MediaPipe.MediaPipeCanonicalPoseSource
   provider: {fileID: 0}
@@ -213,7 +214,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2194655507004021010}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8f8a7c9b2a0d4f0f9e7f7a4b9c4b6d03, type: 3}
+  m_Script: {fileID: 1660510988, guid: 24b06768b27aa344ea95c8be5960ff42, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Core.Motion.Runtime.MotionEngineRuntime
   canonicalSourceBehaviour: {fileID: 0}
@@ -261,7 +262,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d40b6fc281ae4539d24830516f7e8d94, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Player.GoldenNeedleBodyAnchors
-  rigBinding: {fileID: 0}
+  motionEngine: {fileID: 4708450843235256788}
 --- !u!114 &4577490965382958149
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -274,12 +275,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f62d81e4a3c0475bf46a52738190afb6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Player.GoldenNeedlePlayerFacade
-  poseProvider: {fileID: 0}
-  canonicalPoseSource: {fileID: 0}
-  motionRuntime: {fileID: 0}
-  rigBinding: {fileID: 0}
-  humanoidRetargeter: {fileID: 0}
-  locomotionController: {fileID: 0}
+  motionEngine: {fileID: 4708450843235256788}
   playerHealth: {fileID: 0}
   bodyAnchors: {fileID: 0}
 --- !u!114 &4525455413659312401
@@ -294,6 +290,23 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e51c70d392bf464ae3594162708f9ea5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GoldenNeedle.Gameplay.Player.GoldenNeedlePlayerSession
+--- !u!114 &4708450843235256788
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2194655507004021010}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: -1909319394, guid: 24b06768b27aa344ea95c8be5960ff42, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: HDMotionEngine.Runtime.dll::HDMotionEngine.MotionEngineController
+  poseProvider: {fileID: 2247315249189701490}
+  motionRuntime: {fileID: 3602236802825227709}
+  rigBinding: {fileID: 1165869582235488744}
+  retargeter: {fileID: 2355810574917646479}
+  locomotion: {fileID: 2079731260482824690}
 --- !u!1001 &8848508091212310060
 PrefabInstance:
   m_ObjectHideFlags: 0

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HDMotionEngine;
 using GoldenNeedle.Core.Motion.Locomotion;
 using GoldenNeedle.Core.Motion.Providers.MediaPipe;
 using GoldenNeedle.Core.Motion.Retargeting;
@@ -326,6 +327,7 @@ namespace GoldenNeedle.Editor.Gameplay
 
             EnsureExactlyOneRootComponent<MediaPipeCanonicalPoseSource>(root, true, "MediaPipeCanonicalPoseSource", errors);
             EnsureExactlyOneRootComponent<MotionEngineRuntime>(root, true, "MotionEngineRuntime", errors);
+            EnsureExactlyOneRootComponent<MotionEngineController>(root, true, "MotionEngineController", errors);
             EnsureExactlyOneRootComponent<PlayerHealth>(root, true, "PlayerHealth", errors);
             EnsureExactlyOneRootComponent<GoldenNeedleBodyAnchors>(root, true, "GoldenNeedleBodyAnchors", errors);
             EnsureExactlyOneRootComponent<GoldenNeedlePlayerFacade>(root, true, "GoldenNeedlePlayerFacade", errors);

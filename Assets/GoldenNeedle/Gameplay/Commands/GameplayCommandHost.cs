@@ -1,6 +1,6 @@
 using System;
 using GoldenNeedle.Core.Commands;
-using GoldenNeedle.Core.Commands.Providers;
+using HDMotionEngine;
 using GoldenNeedle.Gameplay.Player;
 using UnityEngine;
 
@@ -19,11 +19,12 @@ namespace GoldenNeedle.Gameplay.Commands
 
         private GoldenNeedlePlayerFacade _boundFacade;
         private GoldenNeedleCommandRouter _boundRouter;
-        private SpeechCommandInput _speechInput;
+        private SpeechCommandService _speechInput;
+        private CommandRegistry _commands;
 
         public GameplayCommandContext CommandContext => commandContext;
         public bool SpeechEnabled => speechEnabled;
-        public SpeechCommandInput SpeechInput => _speechInput;
+        public SpeechCommandService SpeechInput => _speechInput;
         public GoldenNeedleCommandResult LastResult { get; private set; }
         public event Action<GoldenNeedleCommandResult> CommandProcessed;
 
@@ -37,9 +38,11 @@ namespace GoldenNeedle.Gameplay.Commands
             if (speechEnabled)
             {
                 EnsureSpeechInput();
-                _speechInput?.Start();
+                _speechInput?.Start(GameplaySpeechCommandConfiguration.CreateProduction());
             }
         }
+
+        private void Update() => _speechInput?.Pump();
 
         private void OnDisable()
         {
@@ -72,7 +75,7 @@ namespace GoldenNeedle.Gameplay.Commands
             EnsureSpeechInput();
             if (speechEnabled && isActiveAndEnabled)
             {
-                _speechInput?.Start();
+                _speechInput?.Start(GameplaySpeechCommandConfiguration.CreateProduction());
             }
         }
 
@@ -172,13 +175,18 @@ namespace GoldenNeedle.Gameplay.Commands
         private void InitializeSpeechInput()
         {
             _speechInput?.Dispose();
-            var configuration = GameplaySpeechCommandConfiguration.CreateProduction();
-            configuration.speechEnabled = speechEnabled;
-            _speechInput = new SpeechCommandInput(
-                configuration,
-                this,
-                phrases => new WindowsKeywordSpeechProvider(phrases),
-                () => Time.unscaledTimeAsDouble);
+            _commands = new CommandRegistry();
+            foreach (GoldenNeedleCommand command in Enum.GetValues(typeof(GoldenNeedleCommand)))
+            {
+                if (!GameplayCommandContextPolicy.IsProductionGameplayCommand(command)) continue;
+                var captured = command;
+                _commands.Register("game." + command, parameter =>
+                {
+                    var result = Execute(new GoldenNeedleCommandRequest(captured, parameter));
+                    return result.Succeeded ? CommandResult.Executed() : CommandResult.Rejected(result.Message);
+                });
+            }
+            _speechInput = new SpeechCommandService(_commands, () => Time.unscaledTimeAsDouble);
         }
     }
 }

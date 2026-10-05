@@ -1,0 +1,36 @@
+{
+  "assets": [
+    {
+      "digest": "sha256:f3fec3e5e55355d936d4eebe54d715a2806845243968d7495ed13659fa3da859",
+      "name": "hd-motion-engine-sdk-0.1.0-preview.2-windows-x64.tgz",
+      "size": 45568786,
+      "state": "uploaded"
+    },
+    {
+      "digest": "sha256:3d6f957fa05e999a110a0d2af95566151a02d9842034cf555a6cfbe2ad876176",
+      "name": "sdk-build-receipt-0.1.0-preview.2.json",
+      "size": 2060,
+      "state": "uploaded"
+    },
+    {
+      "digest": "sha256:81e358782574d9f1df8342da98a70e310afe59aa777b53389db33b7464db91dd",
+      "name": "sdk-content-manifest-0.1.0-preview.2.json",
+      "size": 19111,
+      "state": "uploaded"
+    }
+  ],
+  "draft": false,
+  "html_url": "https://github.com/AltamashM7/hd-motion-engine/releases/tag/v0.1.0-preview.2",
+  "id": 402752106,
+  "prerelease": true,
+  "published_at": "2026-10-04T00:35:08Z",
+  "tag_name": "v0.1.0-preview.2",
+  "target_commitish": "9dce2c1103e6c6515a2b0a954f6af1f324b4ca19",
+  "repository": "AltamashM7/hd-motion-engine",
+  "repository_private_verified": true,
+  "asset_hashes_match_local": true,
+  "runtime_source_baseline": "d453c3563319151f82ddc8d020011597046c23ee",
+  "user_game_qa": "PENDING",
+  "user_windows_rebuild": "PENDING",
+  "long_running_checks": "USER OWNED"
+}

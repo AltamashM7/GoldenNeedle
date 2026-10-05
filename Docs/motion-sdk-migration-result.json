@@ -1,0 +1,36 @@
+{
+    "passed": true,
+    "packageVersion": "0.1.0-preview.2",
+    "assets": [
+        {
+            "path": "Assets/GoldenNeedle/Gameplay/Player/GoldenNeedlePlayer.prefab",
+            "migratedComponents": 0,
+            "fieldsPreserved": 633,
+            "missingBefore": 0
+        },
+        {
+            "path": "Assets/Scenes/Caliberation.unity",
+            "migratedComponents": 0,
+            "fieldsPreserved": 633,
+            "missingBefore": 0
+        },
+        {
+            "path": "Assets/Scenes/GoldenNeedle_Hub.unity",
+            "migratedComponents": 0,
+            "fieldsPreserved": 0,
+            "missingBefore": 0
+        },
+        {
+            "path": "Assets/Scenes/Obstacle Course.unity",
+            "migratedComponents": 0,
+            "fieldsPreserved": 0,
+            "missingBefore": 0
+        },
+        {
+            "path": "Assets/Scenes/BoxingArena_Baked.unity",
+            "migratedComponents": 0,
+            "fieldsPreserved": 0,
+            "missingBefore": 0
+        }
+    ]
+}

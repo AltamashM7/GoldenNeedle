@@ -1,4 +1,5 @@
 using GoldenNeedle.Core.Commands;
+using HDMotionEngine;
 
 namespace GoldenNeedle.Gameplay.Commands
 {
@@ -8,85 +9,79 @@ namespace GoldenNeedle.Gameplay.Commands
     /// </summary>
     public static class GameplaySpeechCommandConfiguration
     {
-        public static SpeechCommandConfiguration CreateProduction()
+        public static SpeechBinding[] CreateProduction()
         {
-            return new SpeechCommandConfiguration
-            {
-                speechEnabled = true,
-                commandCooldownSeconds = 0.75f,
-                wakePrefix = string.Empty,
-                mappings = new[]
+            return new[]
                 {
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "begin calibration",
-                        GoldenNeedleCommand.BeginCalibration,
+                        "game.BeginCalibration",
                         minimumConfidence: SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "recenter",
-                        GoldenNeedleCommand.Recenter,
+                        "game.Recenter",
                         minimumConfidence: SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "retry tracking",
-                        GoldenNeedleCommand.RetryTracking,
+                        "game.RetryTracking",
                         minimumConfidence: SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "back view",
-                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "game.SelectCameraViewPreset",
                         "Back",
                         SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "front view",
-                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "game.SelectCameraViewPreset",
                         "Front",
                         SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "left view",
-                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "game.SelectCameraViewPreset",
                         "Left",
                         SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "right view",
-                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "game.SelectCameraViewPreset",
                         "Right",
                         SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "full body view",
-                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "game.SelectCameraViewPreset",
                         "FullBody",
                         SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "hands view",
-                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "game.SelectCameraViewPreset",
                         "Hands",
                         SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "left hand view",
-                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "game.SelectCameraViewPreset",
                         "LeftHand",
                         SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "right hand view",
-                        GoldenNeedleCommand.SelectCameraViewPreset,
+                        "game.SelectCameraViewPreset",
                         "RightHand",
                         SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "reduce latency",
-                        GoldenNeedleCommand.SetRawAvatarPresentation,
+                        "game.SetRawAvatarPresentation",
                         minimumConfidence: SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "low latency mode",
-                        GoldenNeedleCommand.SetRawAvatarPresentation,
+                        "game.SetRawAvatarPresentation",
                         minimumConfidence: SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "smooth motion",
-                        GoldenNeedleCommand.SetStabilizedAvatarPresentation,
+                        "game.SetStabilizedAvatarPresentation",
                         minimumConfidence: SpeechRecognitionConfidence.Low),
-                    new SpeechCommandMapping(
+                    new SpeechBinding(
                         "stabilized mode",
-                        GoldenNeedleCommand.SetStabilizedAvatarPresentation,
+                        "game.SetStabilizedAvatarPresentation",
                         minimumConfidence: SpeechRecognitionConfidence.Low),
-                },
-            };
+                };
         }
     }
 }

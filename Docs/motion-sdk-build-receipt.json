@@ -1,0 +1,58 @@
+{
+  "source_sha": "d453c3563319151f82ddc8d020011597046c23ee",
+  "package_version": "0.1.0-preview.2",
+  "unity": "6000.5.0f1",
+  "runtime_target": "StandaloneWindows64 / ScriptCompilationOptions.None",
+  "archive": "hd-motion-engine-sdk-0.1.0-preview.2-windows-x64.tgz",
+  "size": 45568786,
+  "sha256": "f3fec3e5e55355d936d4eebe54d715a2806845243968d7495ed13659fa3da859",
+  "verified_files": 93,
+  "implementation_source_files": 0,
+  "native_plugin_sha256": "f259186a84dd1762da99a02381cb8db7ec668f548054429476fb6bb5d580f550",
+  "runtime_assembly_editor_references": 0,
+  "verification": {
+    "source_tests": {
+      "passed": 243,
+      "failed": 0,
+      "skipped": 0
+    },
+    "compiled_player_sdk_tests": {
+      "passed": 243,
+      "failed": 0,
+      "skipped": 0
+    },
+    "product_tests": {
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "runner_shutdown": "Initial CLI timed out after PASS XML; clean rerun delegated to USER"
+    },
+    "player_prefab": {
+      "serialized_engine_fields_preserved": 633,
+      "compared_to": "untouched authored GoldenNeedle prefab"
+    },
+    "enabled_scenes_missing_scripts": 0,
+    "native_backend": "OPENVINO_CPU_FP32; blank frame timestamp 1 PASS",
+    "runtime_editor_assembly_references": 0,
+    "windows_build": {
+      "result": "Succeeded",
+      "errors": 0,
+      "warnings": 504,
+      "bytes": 1124093058
+    },
+    "user_game_qa": "PENDING",
+    "windows_payload": {
+      "passed": false,
+      "native_library_hashes_verified": 8,
+      "model_hashes_verified": 4,
+      "development_assemblies_found": [
+        "Microsoft.CodeAnalysis.CSharp.dll",
+        "Microsoft.CodeAnalysis.dll",
+        "Unity.Pipeline.dll"
+      ],
+      "source_fix": "IFilterBuildAssemblies exclusion added; compiled against installed Unity Editor APIs PASS",
+      "rebuild": "USER OWNED / PENDING"
+    },
+    "long_running_checks": "USER owns full Windows builds and similar long-running tasks; do not launch or wait for them in Codex"
+  }
+}

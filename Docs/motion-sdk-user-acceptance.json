@@ -1,0 +1,126 @@
+{
+  "date": "2026-10-05",
+  "sdk_version": "0.1.0-preview.2",
+  "status": "USER ACCEPTED - PASS",
+  "user_report": "USER reports testing the isolated project inside Unity: everything worked. USER then built it into Downloads/GoldenNeedle_MotionSDK and tested the executable: everything worked.",
+  "editor_gameplay": "PASS - USER reported",
+  "windows_gameplay": "PASS - USER reported",
+  "acceptance_scope": "Overall previously requested SDK/game workflow, including the carried sideways-step change. No individual measured latency/FPS or per-action trace was supplied.",
+  "build_path": "C:\\Users\\user\\Downloads\\GoldenNeedle_MotionSDK",
+  "executable": "GoldenNeedle.exe",
+  "build_report": "No new Unity BuildReport captured; build/test success is USER reported.",
+  "packaging_verification": {
+    "passed": true,
+    "verified_native_libraries": 8,
+    "verified_models": 4,
+    "sdk_runtime_dll_hashes_match": true,
+    "development_assemblies": [],
+    "payload_hash_checks": [
+      {
+        "path": "GoldenNeedle_Data/Plugins/x86_64/mediapipe_c.dll",
+        "category": "native",
+        "size": 16517120,
+        "sha256": "b9b620f2707dea371be3fcef9f2d05468ca1471faee3be6637bbd7da77e21c54",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/Plugins/x86_64/golden_needle_openvino_pose.dll",
+        "category": "native",
+        "size": 11194368,
+        "sha256": "f259186a84dd1762da99a02381cb8db7ec668f548054429476fb6bb5d580f550",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/Plugins/x86_64/openvino.dll",
+        "category": "native",
+        "size": 16179984,
+        "sha256": "e6415645ab63a3adb3e257c91bd77f910fc36db64e4356d0c69da660e5863890",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/Plugins/x86_64/openvino_intel_cpu_plugin.dll",
+        "category": "native",
+        "size": 46298384,
+        "sha256": "7757d2d496f02133f6660c4f5b478806902f8f71adb5d2e3ab30b9cd60c31f38",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/Plugins/x86_64/openvino_tensorflow_lite_frontend.dll",
+        "category": "native",
+        "size": 1263376,
+        "sha256": "745114f91088940c54bd099ae588fc3527a353c875cbc8d77cb0b8e28892dbdd",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/Plugins/x86_64/tbb12.dll",
+        "category": "native",
+        "size": 225552,
+        "sha256": "a8e69ff0f536c86e7b77a3289a842ff4ddff0050cd496970da3316ca233059d0",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/Plugins/x86_64/tbbbind_2_5.dll",
+        "category": "native",
+        "size": 208656,
+        "sha256": "582fa06fdb6477f3515634bdd908c9efeb2a5cc58a52a3374cef84604bfc8880",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/Plugins/x86_64/tbbmalloc.dll",
+        "category": "native",
+        "size": 121104,
+        "sha256": "3c9f75836a4c23f01f7f3ea7b228551005d4bf9f18a8075dda9399798861b5c6",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/pose_detector.tflite",
+        "category": "model",
+        "size": 2959078,
+        "sha256": "46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/pose_landmarks_detector.tflite",
+        "category": "model",
+        "size": 2818390,
+        "sha256": "ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task",
+        "category": "model",
+        "size": 7819105,
+        "sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes",
+        "category": "model",
+        "size": 5777746,
+        "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a",
+        "matches_sdk": true
+      }
+    ],
+    "runtime_hash_checks": [
+      {
+        "path": "GoldenNeedle_Data/Managed/HDMotionEngine.Runtime.dll",
+        "category": "runtime",
+        "size": 334848,
+        "sha256": "0e9ad3f48969832fd3e55b20ec8348fc81e51d3cce08680290680657c4446e21",
+        "matches_sdk": true
+      },
+      {
+        "path": "GoldenNeedle_Data/Managed/Mediapipe.Runtime.dll",
+        "category": "runtime",
+        "size": 2277888,
+        "sha256": "63567ea46488492f971c875d4d62abbce11213d27ff63474065de68762d80996",
+        "matches_sdk": true
+      }
+    ]
+  },
+  "source_branch": "codex/motion-sdk-integration",
+  "source_baseline": "07f1e7fa0ca0046e9a365b27bcb00a5e7ed8243a",
+  "original_eight_dirty_hashes_match_prior_snapshot": true,
+  "codex_builds_or_test_suites_started": 0,
+  "remaining": "Accepted product changes remain uncommitted in the isolated checkout. No product-main merge performed. Earlier CLI runner shutdown remains a historical unverified process result; no new runner completion is claimed."
+}

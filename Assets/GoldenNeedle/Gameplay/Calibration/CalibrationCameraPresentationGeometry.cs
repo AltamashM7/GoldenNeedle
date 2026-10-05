@@ -1,4 +1,4 @@
-using GoldenNeedle.Core.Motion.Providers.MediaPipe;
+using HDMotionEngine;
 using UnityEngine;
 
 namespace GoldenNeedle.Gameplay.Calibration
@@ -54,7 +54,7 @@ namespace GoldenNeedle.Gameplay.Calibration
             bool presentationHorizontalMirror,
             bool displayVerticalCorrection)
         {
-            var rotation = CameraOrientationState.NormalizeRotation(displayRotationDegrees);
+            var rotation = PreviewGeometry.NormalizeRotation(displayRotationDegrees);
             var hasValidSource = sourceWidth > 0 && sourceHeight > 0;
             var hasValidTarget = targetWidth > 0f && targetHeight > 0f;
             var quarterTurn = rotation == 90 || rotation == 270;

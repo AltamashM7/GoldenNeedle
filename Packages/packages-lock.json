@@ -1,12 +1,11 @@
 {
   "dependencies": {
-    "com.github.homuler.mediapipe": {
-      "version": "file:com.github.homuler.mediapipe",
+    "com.hd.motion-engine": {
+      "version": "file:HDMotionEngine/hd-motion-engine-sdk-0.1.0-preview.2-windows-x64.tgz",
       "depth": 0,
-      "source": "embedded",
+      "source": "local-tarball",
       "dependencies": {
-        "com.unity.ugui": "1.0.0",
-        "com.unity.test-framework": "1.0.0"
+        "com.unity.collections": "6.5.0"
       }
     },
     "com.unity.ai.inference": {

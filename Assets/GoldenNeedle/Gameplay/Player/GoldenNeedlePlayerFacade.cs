@@ -1,7 +1,4 @@
-using GoldenNeedle.Core.Motion.Locomotion;
-using GoldenNeedle.Core.Motion.Providers.MediaPipe;
-using GoldenNeedle.Core.Motion.Retargeting;
-using GoldenNeedle.Core.Motion.Runtime;
+using HDMotionEngine;
 using UnityEngine;
 
 namespace GoldenNeedle.Gameplay.Player
@@ -24,279 +21,99 @@ namespace GoldenNeedle.Gameplay.Player
     [DisallowMultipleComponent]
     public sealed class GoldenNeedlePlayerFacade : MonoBehaviour
     {
-        [Header("Accepted production motion stack")]
-        [SerializeField] private MediaPipePoseProvider poseProvider;
-        [SerializeField] private MediaPipeCanonicalPoseSource canonicalPoseSource;
-        [SerializeField] private MotionEngineRuntime motionRuntime;
-        [SerializeField] private HumanoidRigBinding rigBinding;
-        [SerializeField] private HumanoidRetargeter humanoidRetargeter;
-        [SerializeField] private EmbodiedLocomotionController locomotionController;
-
-        [Header("Gameplay-facing components")]
+        [SerializeField] private MotionEngineController motionEngine;
         [SerializeField] private PlayerHealth playerHealth;
         [SerializeField] private GoldenNeedleBodyAnchors bodyAnchors;
-
-        private bool _rigBindingRecoveryAttempted;
-
-        public bool IsCalibrationUsable => motionRuntime != null && motionRuntime.Calibration != null && motionRuntime.Calibration.IsValid;
-        public bool IsCalibrationComplete => motionRuntime != null && motionRuntime.Calibration != null && motionRuntime.Calibration.IsComplete;
-        public bool IsBodyTrackingAvailable => motionRuntime != null && motionRuntime.IsSourceReady && motionRuntime.StabilizedFrame != null && motionRuntime.StabilizedFrame.hasMeaningfulPose;
-        public Transform PlayerRoot => locomotionController != null && locomotionController.PlayerRoot != null
-            ? locomotionController.PlayerRoot
-            : rigBinding != null && rigBinding.IsBound ? rigBinding.AvatarRoot : null;
-        public GoldenNeedlePlayerVerticalState VerticalState => MapVerticalState(locomotionController == null ? default : locomotionController.VerticalSample);
-        public bool IsAvatarPoseDriveEnabled => humanoidRetargeter != null && humanoidRetargeter.DriveRig;
-        public bool IsAvatarAnimationAuthorityEnabled => humanoidRetargeter != null && humanoidRetargeter.ExternalAnimationAuthority;
-        public bool IsLocomotionEnabled => locomotionController != null && locomotionController.DriveLocomotion;
-        public bool IsMotionControlEnabled => IsAvatarPoseDriveEnabled && IsLocomotionEnabled;
-        public bool IsRigBound => rigBinding != null && rigBinding.IsBound;
-        public string RigBindingModeName => rigBinding == null ? "Missing" : rigBinding.BindingModeName;
-        public bool AreRetargetTargetsLive => humanoidRetargeter != null && humanoidRetargeter.KinematicTargetsLive;
-        public int RetargetSourceChainsValid => humanoidRetargeter == null ? 0 : humanoidRetargeter.SourceChainsValid;
-        public int RetargetTargetsGenerated => humanoidRetargeter == null ? 0 : humanoidRetargeter.TargetsGenerated;
-        public int RetargetIkChainsSolved => humanoidRetargeter == null ? 0 : humanoidRetargeter.IkChainsSolved;
-        public bool HasWorldHeading => locomotionController != null && locomotionController.HasWorldHeading;
-        public Vector2 WorldHeadingXZ => locomotionController == null
-            ? Vector2.zero
-            : locomotionController.WorldHeadingXZ;
-        public bool HasLocomotionVerticalOrigin => locomotionController != null && locomotionController.HasVerticalOrigin;
-        public float LocomotionVerticalOriginY => locomotionController == null
-            ? 0f
-            : locomotionController.VerticalOriginY;
-        public float LocomotionFinalWorldPositionY => locomotionController == null
-            ? 0f
-            : locomotionController.FinalWorldPositionY;
-        public PoseProviderStatus ProviderStatus => poseProvider == null
-            ? PoseProviderStatus.Stopped
-            : poseProvider.Status;
-        public string ProviderStatusMessage => poseProvider == null
-            ? "Pose provider reference is missing"
-            : poseProvider.StatusMessage;
-        public string SelectedCameraName => poseProvider == null ? string.Empty : poseProvider.SelectedCameraName;
-        public bool PoseProviderHasCameraTexture => poseProvider != null && poseProvider.HasCameraTexture;
-        public bool PoseProviderCameraPlaying => poseProvider != null && poseProvider.IsCameraPlaying;
-        public bool PoseProviderHasSeenFreshCameraFrame => poseProvider != null && poseProvider.HasSeenFreshCameraFrame;
-        public double LatestCameraFrameAgeMilliseconds => poseProvider == null
-            ? double.PositiveInfinity
-            : poseProvider.LatestCameraFrameAgeMilliseconds;
-        public bool PoseProviderCameraFrameFresh => poseProvider != null && poseProvider.IsCameraFrameFresh;
-        public bool PoseProviderIsUsable => poseProvider != null && poseProvider.IsProviderUsable;
-        public bool PoseProviderIsBootstrapping => poseProvider != null && poseProvider.IsBootstrapping;
-        public bool PoseProviderHasReceivedResult => poseProvider != null && poseProvider.HasReceivedResult;
-        public double LatestPoseAgeMilliseconds => poseProvider == null
-            ? double.PositiveInfinity
-            : poseProvider.LatestPoseAgeMilliseconds;
-        public string ActiveInferenceBackendLabel => poseProvider == null
-            ? "Missing"
-            : poseProvider.ActiveInferenceBackendLabel;
-        public string ActiveBodyFrameAcquisitionModeLabel => poseProvider == null
-            ? "Missing"
-            : poseProvider.ActiveBodyFrameAcquisitionModeLabel;
-        public string WebCamCpuAcquisitionFallbackReason => poseProvider == null
-            ? "Pose provider reference is missing"
-            : poseProvider.WebCamCpuAcquisitionFallbackReason;
-        public float PoseProviderCameraFramesPerSecond => poseProvider == null ? 0f : poseProvider.CameraFramesPerSecond;
-        public bool OpenVinoRuntimeAvailable => poseProvider != null && poseProvider.OpenVinoRuntimeAvailable;
-        public bool OpenVinoWorkerTaskAvailable => poseProvider != null && poseProvider.OpenVinoWorkerTaskAvailable;
-        public bool OpenVinoWorkerSignalAvailable => poseProvider != null && poseProvider.OpenVinoWorkerSignalAvailable;
-        public float PoseProviderCameraStartupTimeoutSeconds => poseProvider == null
-            ? 0f
-            : poseProvider.CameraStartupTimeoutSeconds;
-        public bool CanTryTrackingRecovery => poseProvider != null && poseProvider.CanTryTrackingRecovery;
-        public bool TrackingRecoveryRequested => poseProvider != null && poseProvider.TrackingRecoveryRequested;
-        public bool TrackingRecoveryAccepted => poseProvider != null && poseProvider.TrackingRecoveryAccepted;
-        public bool TrackingRecoveryPerformed => poseProvider != null && poseProvider.TrackingRecoveryPerformed;
-        public int TrackingRecoveryRequestCount => poseProvider == null ? 0 : poseProvider.TrackingRecoveryRequestCount;
-        public int TrackingRecoveryRestartCount => poseProvider == null ? 0 : poseProvider.TrackingRecoveryRestartCount;
-        public bool SoftCameraRecoveryRequested => poseProvider != null && poseProvider.SoftCameraRecoveryRequested;
-        public bool SoftCameraRecoveryPerformed => poseProvider != null && poseProvider.SoftCameraRecoveryPerformed;
-        public bool SoftCameraRecoverySucceeded => poseProvider != null && poseProvider.SoftCameraRecoverySucceeded;
-        public bool HardCameraRecoveryRequested => poseProvider != null && poseProvider.HardCameraRecoveryRequested;
-        public bool HardCameraRecoveryAccepted => poseProvider != null && poseProvider.HardCameraRecoveryAccepted;
-        public bool HardCameraRecoveryPerformed => poseProvider != null && poseProvider.HardCameraRecoveryPerformed;
+        public MotionEngineController MotionEngine => motionEngine;
+        public bool IsCalibrationUsable => motionEngine == null ? default : motionEngine.IsCalibrationUsable;
+        public bool IsCalibrationComplete => motionEngine == null ? default : motionEngine.IsCalibrationComplete;
+        public bool IsBodyTrackingAvailable => motionEngine != null && motionEngine.IsTrackingAvailable;
+        public Transform PlayerRoot => motionEngine == null ? null : motionEngine.AvatarRoot;
+        public GoldenNeedlePlayerVerticalState VerticalState => motionEngine == null ? GoldenNeedlePlayerVerticalState.Unavailable : (GoldenNeedlePlayerVerticalState)(int)motionEngine.VerticalState;
+        public bool IsAvatarPoseDriveEnabled => motionEngine != null && motionEngine.IsPoseDriveEnabled;
+        public bool IsAvatarAnimationAuthorityEnabled => motionEngine != null && motionEngine.IsAvatarAnimationAuthorityEnabled;
+        public bool IsLocomotionEnabled => motionEngine == null ? default : motionEngine.IsLocomotionEnabled;
+        public bool IsMotionControlEnabled => motionEngine != null && motionEngine.IsPoseDriveEnabled && motionEngine.IsLocomotionEnabled;
+        public bool IsRigBound => motionEngine == null ? default : motionEngine.IsRigBound;
+        public string RigBindingModeName => motionEngine == null ? string.Empty : motionEngine.RigBindingModeName;
+        public bool AreRetargetTargetsLive => motionEngine == null ? default : motionEngine.AreRetargetTargetsLive;
+        public int RetargetSourceChainsValid => motionEngine == null ? default : motionEngine.RetargetSourceChainsValid;
+        public int RetargetTargetsGenerated => motionEngine == null ? default : motionEngine.RetargetTargetsGenerated;
+        public int RetargetIkChainsSolved => motionEngine == null ? default : motionEngine.RetargetIkChainsSolved;
+        public bool HasWorldHeading => motionEngine == null ? default : motionEngine.HasWorldHeading;
+        public Vector2 WorldHeadingXZ => motionEngine == null ? default : motionEngine.WorldHeadingXZ;
+        public bool HasLocomotionVerticalOrigin => motionEngine == null ? default : motionEngine.HasLocomotionVerticalOrigin;
+        public float LocomotionVerticalOriginY => motionEngine == null ? default : motionEngine.LocomotionVerticalOriginY;
+        public float LocomotionFinalWorldPositionY => motionEngine == null ? default : motionEngine.LocomotionFinalWorldPositionY;
+        public string ProviderStatus => motionEngine == null ? string.Empty : motionEngine.ProviderStatus;
+        public string ProviderStatusMessage => motionEngine == null ? string.Empty : motionEngine.ProviderStatusMessage;
+        public string SelectedCameraName => motionEngine == null ? string.Empty : motionEngine.SelectedCameraName;
+        public bool PoseProviderHasCameraTexture => motionEngine == null ? default : motionEngine.PoseProviderHasCameraTexture;
+        public bool PoseProviderCameraPlaying => motionEngine == null ? default : motionEngine.PoseProviderCameraPlaying;
+        public bool PoseProviderHasSeenFreshCameraFrame => motionEngine == null ? default : motionEngine.PoseProviderHasSeenFreshCameraFrame;
+        public double LatestCameraFrameAgeMilliseconds => motionEngine == null ? double.PositiveInfinity : motionEngine.LatestCameraFrameAgeMilliseconds;
+        public bool PoseProviderCameraFrameFresh => motionEngine == null ? default : motionEngine.PoseProviderCameraFrameFresh;
+        public bool PoseProviderIsUsable => motionEngine == null ? default : motionEngine.PoseProviderIsUsable;
+        public bool PoseProviderIsBootstrapping => motionEngine == null ? default : motionEngine.PoseProviderIsBootstrapping;
+        public bool PoseProviderHasReceivedResult => motionEngine == null ? default : motionEngine.PoseProviderHasReceivedResult;
+        public double LatestPoseAgeMilliseconds => motionEngine == null ? double.PositiveInfinity : motionEngine.LatestPoseAgeMilliseconds;
+        public string ActiveInferenceBackendLabel => motionEngine == null ? string.Empty : motionEngine.ActiveInferenceBackendLabel;
+        public string ActiveBodyFrameAcquisitionModeLabel => motionEngine == null ? string.Empty : motionEngine.ActiveBodyFrameAcquisitionModeLabel;
+        public string WebCamCpuAcquisitionFallbackReason => motionEngine == null ? string.Empty : motionEngine.WebCamCpuAcquisitionFallbackReason;
+        public float PoseProviderCameraFramesPerSecond => motionEngine == null ? default : motionEngine.PoseProviderCameraFramesPerSecond;
+        public bool OpenVinoRuntimeAvailable => motionEngine == null ? default : motionEngine.OpenVinoRuntimeAvailable;
+        public bool OpenVinoWorkerTaskAvailable => motionEngine == null ? default : motionEngine.OpenVinoWorkerTaskAvailable;
+        public bool OpenVinoWorkerSignalAvailable => motionEngine == null ? default : motionEngine.OpenVinoWorkerSignalAvailable;
+        public float PoseProviderCameraStartupTimeoutSeconds => motionEngine == null ? default : motionEngine.PoseProviderCameraStartupTimeoutSeconds;
+        public bool CanTryTrackingRecovery => motionEngine == null ? default : motionEngine.CanTryTrackingRecovery;
+        public bool TrackingRecoveryRequested => motionEngine == null ? default : motionEngine.TrackingRecoveryRequested;
+        public bool TrackingRecoveryAccepted => motionEngine == null ? default : motionEngine.TrackingRecoveryAccepted;
+        public bool TrackingRecoveryPerformed => motionEngine == null ? default : motionEngine.TrackingRecoveryPerformed;
+        public int TrackingRecoveryRequestCount => motionEngine == null ? default : motionEngine.TrackingRecoveryRequestCount;
+        public int TrackingRecoveryRestartCount => motionEngine == null ? default : motionEngine.TrackingRecoveryRestartCount;
+        public bool SoftCameraRecoveryRequested => motionEngine == null ? default : motionEngine.SoftCameraRecoveryRequested;
+        public bool SoftCameraRecoveryPerformed => motionEngine == null ? default : motionEngine.SoftCameraRecoveryPerformed;
+        public bool SoftCameraRecoverySucceeded => motionEngine == null ? default : motionEngine.SoftCameraRecoverySucceeded;
+        public bool HardCameraRecoveryRequested => motionEngine == null ? default : motionEngine.HardCameraRecoveryRequested;
+        public bool HardCameraRecoveryAccepted => motionEngine == null ? default : motionEngine.HardCameraRecoveryAccepted;
+        public bool HardCameraRecoveryPerformed => motionEngine == null ? default : motionEngine.HardCameraRecoveryPerformed;
         public PlayerHealth Health => playerHealth;
         public Transform LeftWristAnchor => bodyAnchors == null ? null : bodyAnchors.LeftWrist;
         public Transform RightWristAnchor => bodyAnchors == null ? null : bodyAnchors.RightWrist;
         public Transform LeftFootAnchor => bodyAnchors == null ? null : bodyAnchors.LeftFoot;
         public Transform RightFootAnchor => bodyAnchors == null ? null : bodyAnchors.RightFoot;
-
-        public Texture CameraPreviewTexture => poseProvider == null ? null : poseProvider.CameraTexture;
-        public int CameraPreviewSourceWidth => poseProvider == null ? 0 : poseProvider.ActualCameraWidth;
-        public int CameraPreviewSourceHeight => poseProvider == null ? 0 : poseProvider.ActualCameraHeight;
-        public int CameraPreviewRotationDegrees => poseProvider == null ? 0 : poseProvider.Orientation.DisplayRotationDegrees;
-        public bool CameraPreviewPresentationHorizontalMirror => poseProvider != null && poseProvider.Orientation.PresentationHorizontalMirror;
-        public bool CameraPreviewDisplayVerticalCorrection => poseProvider != null && poseProvider.Orientation.DisplayVerticalCorrection;
-
-        public GoldenNeedleAvatarDriveMode AvatarDriveMode
-        {
-            get
-            {
-                if (motionRuntime == null)
-                {
-                    return GoldenNeedleAvatarDriveMode.Unsupported;
-                }
-
-                return motionRuntime.AvatarDriveSource switch
-                {
-                    AvatarDrivePoseSource.StabilizedCanonical => GoldenNeedleAvatarDriveMode.StabilizedCanonical,
-                    AvatarDrivePoseSource.RawCanonical => GoldenNeedleAvatarDriveMode.RawCanonical,
-                    _ => GoldenNeedleAvatarDriveMode.Unsupported,
-                };
-            }
-        }
-
-        private void Awake()
-        {
-            ResolveReferences();
-        }
-
-        public void Recenter()
-        {
-            locomotionController?.Recenter();
-        }
-
-        public bool TryPlacePlayerAt(Vector3 worldPosition)
-        {
-            ResolveReferences();
-            return locomotionController != null && locomotionController.TryPlacePlayerRoot(worldPosition);
-        }
-
-        /// <summary>
-        /// Performs one narrow binding recovery attempt for scene integration. A healthy binding
-        /// is never rebuilt, and a failed recovery is not retried continuously by callers.
-        /// </summary>
-        public bool TryEnsureRigBinding()
-        {
-            ResolveReferences();
-            if (rigBinding == null)
-            {
-                return false;
-            }
-
-            if (rigBinding.IsBound)
-            {
-                return true;
-            }
-
-            if (_rigBindingRecoveryAttempted)
-            {
-                return false;
-            }
-
-            _rigBindingRecoveryAttempted = true;
-            rigBinding.RebuildBinding();
-            return rigBinding.IsBound;
-        }
-
-        public void BeginHubContinuityWindow()
-        {
-            ResolveReferences();
-            poseProvider?.BeginHubContinuityWindow();
-        }
-
-        public void BeginTrackingRecoveryWindow()
-        {
-            BeginHubContinuityWindow();
-        }
-
-        public bool TryBeginSoftCameraRecovery()
-        {
-            ResolveReferences();
-            return poseProvider != null && poseProvider.TryBeginSoftCameraRecovery();
-        }
-
-        public bool TryHardRecoverTracking()
-        {
-            ResolveReferences();
-            return poseProvider != null && poseProvider.TryHardRecoverTracking();
-        }
-
-        public bool TryRecoverTracking()
-        {
-            return TryHardRecoverTracking();
-        }
-
-        public void BeginCalibration()
-        {
-            motionRuntime?.BeginCalibration();
-        }
-
-        public void RetryTracking()
-        {
-            poseProvider?.Retry();
-        }
-
-        public void SetMotionControlEnabled(bool enabled)
-        {
-            SetAvatarPoseDriveEnabled(enabled);
-            SetLocomotionEnabled(enabled);
-        }
-
-        public void SetAvatarPoseDriveEnabled(bool enabled)
-        {
-            if (humanoidRetargeter != null)
-            {
-                humanoidRetargeter.DriveRig = enabled;
-            }
-        }
-
-        public void SetAvatarAnimationAuthorityEnabled(bool enabled)
-        {
-            if (humanoidRetargeter != null)
-            {
-                humanoidRetargeter.SetExternalAnimationAuthority(enabled);
-            }
-        }
-
-        public void SetLocomotionEnabled(bool enabled)
-        {
-            if (locomotionController != null)
-            {
-                locomotionController.DriveLocomotion = enabled;
-            }
-        }
-
+        public Texture CameraPreviewTexture => motionEngine == null ? default : motionEngine.CameraPreviewTexture;
+        public int CameraPreviewSourceWidth => motionEngine == null ? default : motionEngine.CameraPreviewSourceWidth;
+        public int CameraPreviewSourceHeight => motionEngine == null ? default : motionEngine.CameraPreviewSourceHeight;
+        public int CameraPreviewRotationDegrees => motionEngine == null ? default : motionEngine.CameraPreviewRotationDegrees;
+        public bool CameraPreviewPresentationHorizontalMirror => motionEngine == null ? default : motionEngine.CameraPreviewPresentationHorizontalMirror;
+        public bool CameraPreviewDisplayVerticalCorrection => motionEngine == null ? default : motionEngine.CameraPreviewDisplayVerticalCorrection;
+        public GoldenNeedleAvatarDriveMode AvatarDriveMode => motionEngine == null || !motionEngine.HasAvatarPresentation ? GoldenNeedleAvatarDriveMode.Unsupported : motionEngine.IsRawAvatarPresentation ? GoldenNeedleAvatarDriveMode.RawCanonical : GoldenNeedleAvatarDriveMode.StabilizedCanonical;
+        private void Awake() => ResolveReferences();
+        public void Recenter() { ResolveReferences(); motionEngine?.Recenter(); }
+        public bool TryPlacePlayerAt(Vector3 position) { ResolveReferences(); return motionEngine != null && motionEngine.TryPlaceAvatarRoot(position); }
+        public bool TryEnsureRigBinding() { ResolveReferences(); return motionEngine != null && motionEngine.TryEnsureRigBinding(); }
+        public void BeginHubContinuityWindow() { ResolveReferences(); motionEngine?.BeginTrackingRecoveryWindow(); }
+        public void BeginTrackingRecoveryWindow() => BeginHubContinuityWindow();
+        public bool TryBeginSoftCameraRecovery() { ResolveReferences(); return motionEngine != null && motionEngine.TryRecoverCameraContinuity(); }
+        public bool TryHardRecoverTracking() { ResolveReferences(); return motionEngine != null && motionEngine.TryHardRecoverTracking(); }
+        public bool TryRecoverTracking() => TryHardRecoverTracking();
+        public void BeginCalibration() { ResolveReferences(); motionEngine?.BeginCalibration(); }
+        public void RetryTracking() { ResolveReferences(); motionEngine?.RetryTracking(); }
+        public void SetMotionControlEnabled(bool enabled) { SetAvatarPoseDriveEnabled(enabled); SetLocomotionEnabled(enabled); }
+        public void SetAvatarPoseDriveEnabled(bool enabled) { ResolveReferences(); motionEngine?.SetPoseDriveEnabled(enabled); }
+        public void SetAvatarAnimationAuthorityEnabled(bool enabled) { ResolveReferences(); motionEngine?.SetAnimationAuthorityEnabled(enabled); }
+        public void SetLocomotionEnabled(bool enabled) { ResolveReferences(); motionEngine?.SetLocomotionEnabled(enabled); }
         public bool SetAvatarDriveMode(GoldenNeedleAvatarDriveMode mode)
         {
-            if (motionRuntime == null)
-            {
-                return false;
-            }
-
-            return mode switch
-            {
-                GoldenNeedleAvatarDriveMode.StabilizedCanonical => motionRuntime.TrySetAvatarDriveSource(AvatarDrivePoseSource.StabilizedCanonical),
-                GoldenNeedleAvatarDriveMode.RawCanonical => motionRuntime.TrySetAvatarDriveSource(AvatarDrivePoseSource.RawCanonical),
-                _ => false,
-            };
+            ResolveReferences();
+            return motionEngine != null && (mode == GoldenNeedleAvatarDriveMode.RawCanonical || mode == GoldenNeedleAvatarDriveMode.StabilizedCanonical) && motionEngine.SetRawAvatarPresentation(mode == GoldenNeedleAvatarDriveMode.RawCanonical);
         }
-
-        private static GoldenNeedlePlayerVerticalState MapVerticalState(VerticalLocomotionSample sample)
-        {
-            if (!sample.isAvailable)
-            {
-                return GoldenNeedlePlayerVerticalState.Unavailable;
-            }
-
-            return sample.state switch
-            {
-                VerticalLocomotionState.Crouch => GoldenNeedlePlayerVerticalState.Crouch,
-                VerticalLocomotionState.Jump => GoldenNeedlePlayerVerticalState.Jump,
-                VerticalLocomotionState.Standing => GoldenNeedlePlayerVerticalState.Standing,
-                _ => GoldenNeedlePlayerVerticalState.Unavailable,
-            };
-        }
-
         private void ResolveReferences()
         {
-            poseProvider = poseProvider == null ? GetComponent<MediaPipePoseProvider>() : poseProvider;
-            canonicalPoseSource = canonicalPoseSource == null ? GetComponent<MediaPipeCanonicalPoseSource>() : canonicalPoseSource;
-            motionRuntime = motionRuntime == null ? GetComponent<MotionEngineRuntime>() : motionRuntime;
-            rigBinding = rigBinding == null ? GetComponent<HumanoidRigBinding>() : rigBinding;
-            humanoidRetargeter = humanoidRetargeter == null ? GetComponent<HumanoidRetargeter>() : humanoidRetargeter;
-            locomotionController = locomotionController == null ? GetComponent<EmbodiedLocomotionController>() : locomotionController;
-            playerHealth = playerHealth == null ? GetComponent<PlayerHealth>() : playerHealth;
-            bodyAnchors = bodyAnchors == null ? GetComponent<GoldenNeedleBodyAnchors>() : bodyAnchors;
+            if (motionEngine == null) motionEngine = GetComponent<MotionEngineController>();
+            if (playerHealth == null) playerHealth = GetComponent<PlayerHealth>();
+            if (bodyAnchors == null) bodyAnchors = GetComponent<GoldenNeedleBodyAnchors>();
         }
     }
 }

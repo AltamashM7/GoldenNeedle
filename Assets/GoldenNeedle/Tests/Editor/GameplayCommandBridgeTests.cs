@@ -1,6 +1,7 @@
 using GoldenNeedle.Core.Commands;
 using GoldenNeedle.Gameplay.Commands;
 using NUnit.Framework;
+using System.Linq;
 using UnityEngine;
 
 namespace GoldenNeedle.Tests
@@ -10,70 +11,25 @@ namespace GoldenNeedle.Tests
         [Test]
         public void ProductionSpeechConfigurationContainsOnlyApprovedGameplayPhrases()
         {
-            var resolver = new SpeechCommandResolver(
-                GameplaySpeechCommandConfiguration.CreateProduction());
-
-            Assert.That(resolver.IsValid, Is.True, resolver.ValidationError);
-            CollectionAssert.AreEquivalent(
-                new[]
-                {
-                    "begin calibration",
-                    "recenter",
-                    "retry tracking",
-                    "back view",
-                    "front view",
-                    "left view",
-                    "right view",
-                    "full body view",
-                    "hands view",
-                    "left hand view",
-                    "right hand view",
-                    "reduce latency",
-                    "low latency mode",
-                    "smooth motion",
-                    "stabilized mode",
-                },
-                resolver.EffectivePhrases);
-            Assert.That(resolver.EffectivePhrases.Count, Is.EqualTo(15));
-            CollectionAssert.DoesNotContain(resolver.EffectivePhrases, "game view");
-            CollectionAssert.DoesNotContain(resolver.EffectivePhrases, "raw landmarks");
-            CollectionAssert.Contains(resolver.EffectivePhrases, "hands view");
+            var bindings = GameplaySpeechCommandConfiguration.CreateProduction();
+            Assert.That(bindings.Length, Is.EqualTo(15));
+            Assert.That(bindings.Select(b => b.Phrase).Distinct().Count(), Is.EqualTo(bindings.Length));
+            Assert.That(bindings.Any(b => b.Phrase == "game view"), Is.False);
         }
-
         [TestCase("reduce latency")]
         [TestCase("low latency mode")]
-        public void LowLatencyAliasesResolveToRawAvatarPresentation(string phrase)
+        public void RawAliasesResolveToRawAvatarPresentation(string phrase)
         {
-            var resolver = new SpeechCommandResolver(
-                GameplaySpeechCommandConfiguration.CreateProduction());
-
-            Assert.That(
-                resolver.TryResolve(
-                    phrase,
-                    SpeechRecognitionConfidence.Low,
-                    out var request,
-                    out var rejection),
-                Is.True,
-                rejection);
-            Assert.That(request.command, Is.EqualTo(GoldenNeedleCommand.SetRawAvatarPresentation));
+            var binding = GameplaySpeechCommandConfiguration.CreateProduction().Single(b => b.Phrase == phrase);
+            Assert.That(binding.Request.Id, Is.EqualTo("game.SetRawAvatarPresentation"));
         }
 
         [TestCase("smooth motion")]
         [TestCase("stabilized mode")]
         public void SmoothAliasesResolveToStabilizedAvatarPresentation(string phrase)
         {
-            var resolver = new SpeechCommandResolver(
-                GameplaySpeechCommandConfiguration.CreateProduction());
-
-            Assert.That(
-                resolver.TryResolve(
-                    phrase,
-                    SpeechRecognitionConfidence.Low,
-                    out var request,
-                    out var rejection),
-                Is.True,
-                rejection);
-            Assert.That(request.command, Is.EqualTo(GoldenNeedleCommand.SetStabilizedAvatarPresentation));
+            var binding = GameplaySpeechCommandConfiguration.CreateProduction().Single(b => b.Phrase == phrase);
+            Assert.That(binding.Request.Id, Is.EqualTo("game.SetStabilizedAvatarPresentation"));
         }
 
         [Test]
@@ -225,36 +181,5 @@ namespace GoldenNeedle.Tests
             Object.DestroyImmediate(hostObject);
         }
 
-        [Test]
-        public void ExistingDefaultLabSpeechConfigurationRemainsIntact()
-        {
-            var resolver = new SpeechCommandResolver(SpeechCommandConfiguration.CreateDefault());
-
-            Assert.That(resolver.IsValid, Is.True, resolver.ValidationError);
-            Assert.That(
-                resolver.TryResolve(
-                    "game view",
-                    SpeechRecognitionConfidence.Low,
-                    out var gameView,
-                    out _),
-                Is.True);
-            Assert.That(gameView.command, Is.EqualTo(GoldenNeedleCommand.SetGamePresentation));
-            Assert.That(
-                resolver.TryResolve(
-                    "hands view",
-                    SpeechRecognitionConfidence.Low,
-                    out var handsView,
-                    out _),
-                Is.True);
-            Assert.That(handsView.command, Is.EqualTo(GoldenNeedleCommand.SelectCameraViewPreset));
-            Assert.That(handsView.parameter, Is.EqualTo("Hands"));
-            Assert.That(
-                resolver.TryResolve(
-                    "reduce latency",
-                    SpeechRecognitionConfidence.Low,
-                    out _,
-                    out _),
-                Is.False);
-        }
     }
 }

@@ -1,4 +1,5 @@
 using System.Reflection;
+using HDMotionEngine;
 using GoldenNeedle.Core.Motion.Locomotion;
 using GoldenNeedle.Core.Motion.Retargeting;
 using GoldenNeedle.Core.Motion.Runtime;
@@ -81,11 +82,13 @@ namespace GoldenNeedle.Tests.Editor
                 gameObject.SetActive(false);
                 var retargeter = gameObject.AddComponent<HumanoidRetargeter>();
                 var locomotion = gameObject.AddComponent<EmbodiedLocomotionController>();
+                var engine = gameObject.AddComponent<MotionEngineController>();
                 var facade = gameObject.AddComponent<GoldenNeedlePlayerFacade>();
                 retargeter.DriveRig = false;
                 locomotion.DriveLocomotion = false;
-                SetPrivateField(facade, "humanoidRetargeter", retargeter);
-                SetPrivateField(facade, "locomotionController", locomotion);
+                SetPrivateField(engine, "retargeter", retargeter);
+                SetPrivateField(engine, "locomotion", locomotion);
+                SetPrivateField(facade, "motionEngine", engine);
 
                 facade.SetAvatarAnimationAuthorityEnabled(true);
                 Assert.IsTrue(facade.IsAvatarAnimationAuthorityEnabled);

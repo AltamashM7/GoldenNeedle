@@ -1,8 +1,0 @@
-*.dll
-*.dll.meta
-*.pdb
-*.pdb.meta
-plugins.xml
-plugins.xml.meta
-ThirdPartyNotices/
-ThirdPartyNotices.meta

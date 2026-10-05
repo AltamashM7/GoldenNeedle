@@ -1,0 +1,518 @@
+{
+  "files": [
+    {
+      "path": "Documentation~/architecture.md",
+      "size": 3946,
+      "sha256": "d03d50626fc5a7e257cfe9cea24dedd9115e64e57cc39794dd6397e32fb1b2d6"
+    },
+    {
+      "path": "Documentation~/native-bundle-manifest.json",
+      "size": 11757,
+      "sha256": "e585aa0bacff76d719039ecbbf95675c9aec145355cc997546afba74e82409ce"
+    },
+    {
+      "path": "Editor/HDMotionEngine.Editor.dll",
+      "size": 17920,
+      "sha256": "49e93207cf8dd8402ac0053262b6ef86c1bb0cedad247625a8bea09d58a5899a"
+    },
+    {
+      "path": "Editor/HDMotionEngine.Editor.dll.meta",
+      "size": 59,
+      "sha256": "31b2374c475eaeb705b2d804bf14d9274646abb934eb9c05712ee5cf81e7ba6e"
+    },
+    {
+      "path": "Editor.meta",
+      "size": 172,
+      "sha256": "657bb4e1a6ef9d949b83fe6096a73ae834b2d98404777badde0eeb9ecf7450b5"
+    },
+    {
+      "path": "Notices/MediaPipe/LICENSE",
+      "size": 12331,
+      "sha256": "8707eef0533987efc5b155d64761eeb6e20793f50b9bd1a68dad1cf4719d0ed8"
+    },
+    {
+      "path": "Notices/MediaPipe/LICENSE.meta",
+      "size": 155,
+      "sha256": "8574f33d583ce3e8d3dc55ab85afecf0af4ff59960b2b131ca54cb4bcb4efa0e"
+    },
+    {
+      "path": "Notices/MediaPipe.meta",
+      "size": 172,
+      "sha256": "f435f4cd5314e71be1a271987411e7fb874eab196147de6ce31fc72b5a7d4e59"
+    },
+    {
+      "path": "Notices/MediaPipeUnityPlugin/LICENSE.md",
+      "size": 1064,
+      "sha256": "60c7ddab66e94444bf79e126dfc63fd76e8c59e679e0981917eda2f48712bfc3"
+    },
+    {
+      "path": "Notices/MediaPipeUnityPlugin/LICENSE.md.meta",
+      "size": 158,
+      "sha256": "e5fe4c229e837e7fd073095d092e6a735068e60b8406cc5fbf8a35aaf7973c4c"
+    },
+    {
+      "path": "Notices/MediaPipeUnityPlugin/Third Party Notices.md",
+      "size": 136450,
+      "sha256": "075bc0da2c5e9da5fa25fe823cdbca62bae4d490883810b207f99673718fc3c0"
+    },
+    {
+      "path": "Notices/MediaPipeUnityPlugin/Third Party Notices.md.meta",
+      "size": 158,
+      "sha256": "ae17e86066716a9c0098a85ea1f4b99c3d1fb3c467e1e20b911fc08148408ba4"
+    },
+    {
+      "path": "Notices/MediaPipeUnityPlugin.meta",
+      "size": 172,
+      "sha256": "4fb13c399e48994d584ee16c6127cc92a91133479807fd9b28c9fb67eb728839"
+    },
+    {
+      "path": "Notices/OpenVINO/Apache_license.txt",
+      "size": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "Notices/OpenVINO/Apache_license.txt.meta",
+      "size": 158,
+      "sha256": "cb71ab8cbc59f2dc1140ba66db2abe4d035e48c9b373d8ff3de11c2e3b3f564a"
+    },
+    {
+      "path": "Notices/OpenVINO/documentation-third-party-programs.txt",
+      "size": 38807,
+      "sha256": "413561ece8a76b7ee9bb3f2f255589689c8615aead1dca9b6e9aaa6effd244b8"
+    },
+    {
+      "path": "Notices/OpenVINO/documentation-third-party-programs.txt.meta",
+      "size": 158,
+      "sha256": "06ae66c7a2b03ea79be3df1f1151f3d7a4b4df42304f911cba6dae03d6f26dea"
+    },
+    {
+      "path": "Notices/OpenVINO/EULA.htm",
+      "size": 9412,
+      "sha256": "e733f8ad078e6eefe5b9870d3914f6696327b373fd4b99df16c3fda8cb2e715d"
+    },
+    {
+      "path": "Notices/OpenVINO/EULA.htm.meta",
+      "size": 158,
+      "sha256": "049997c94cbd39012918c10e30d21033d6a3db014830ef6bed69da334a30e77c"
+    },
+    {
+      "path": "Notices/OpenVINO/EULA.rtf",
+      "size": 9702,
+      "sha256": "0f85950202f88001daafe82234e57b78036e2e9d4bfd0eae568b2d0253c8185f"
+    },
+    {
+      "path": "Notices/OpenVINO/EULA.rtf.meta",
+      "size": 155,
+      "sha256": "b5f230235b41e4df55d50abf021f3f3f3fff33265f9a6f6ba53d3dc96f8c92a3"
+    },
+    {
+      "path": "Notices/OpenVINO/EULA.txt",
+      "size": 7741,
+      "sha256": "2ef6a5d67fc91a095fe753745c02be03e91847816add25bf82a02752aa1be151"
+    },
+    {
+      "path": "Notices/OpenVINO/EULA.txt.meta",
+      "size": 158,
+      "sha256": "b94bb1b8fc1669a1e2d997f32204efc7f60e9b11cb3d9c43b5977fe703529e28"
+    },
+    {
+      "path": "Notices/OpenVINO/LICENSE",
+      "size": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "path": "Notices/OpenVINO/LICENSE.meta",
+      "size": 155,
+      "sha256": "ed8b3390300d39c9de6d180fb90047da9982f16aeec69c2e4f161131679bd055"
+    },
+    {
+      "path": "Notices/OpenVINO/onednn_third-party-programs.txt",
+      "size": 28475,
+      "sha256": "f1b16991dfe8488f3f5f07cccba575c31c91175a9f2c8d9e1569665f86e0b2f6"
+    },
+    {
+      "path": "Notices/OpenVINO/onednn_third-party-programs.txt.meta",
+      "size": 158,
+      "sha256": "541c138e442495aa2a66c2e96d58ade6cd6d96ec2e1c82e0b412b929331dfe36"
+    },
+    {
+      "path": "Notices/OpenVINO/onetbb_third-party-programs.txt",
+      "size": 46979,
+      "sha256": "b10997cc50652ba6ab365e3bc43e13057681cd4a56533b46171529bd249749f3"
+    },
+    {
+      "path": "Notices/OpenVINO/onetbb_third-party-programs.txt.meta",
+      "size": 158,
+      "sha256": "e0202e776dbfc7a928629b74bf392f34afaebf80f02918131050e79517cf7f7d"
+    },
+    {
+      "path": "Notices/OpenVINO/OpenVINOsupport.txt",
+      "size": 628,
+      "sha256": "a001e1e6b1f92fc9e04ebd6fd74b91195fb0773af61b85ddd0cd1f81772f764a"
+    },
+    {
+      "path": "Notices/OpenVINO/OpenVINOsupport.txt.meta",
+      "size": 158,
+      "sha256": "03b22860375e85ba6085782ff6ac327834c64efc8e477af2ca4d620b5db3de0e"
+    },
+    {
+      "path": "Notices/OpenVINO/readme.txt",
+      "size": 1957,
+      "sha256": "86ee3bb13c5781c3c245a8ac87b5e6c68434c77b0048599374bdfd4570c8de04"
+    },
+    {
+      "path": "Notices/OpenVINO/readme.txt.meta",
+      "size": 158,
+      "sha256": "2179c17334cc28e4a442c727a0088a175b0fe96fbe150b9038bbd224ab9c59a6"
+    },
+    {
+      "path": "Notices/OpenVINO/redist.txt",
+      "size": 1808,
+      "sha256": "ee34242c138f42d2d24399c72212fb88be4dd46bee9f5845380acb6c19355d1d"
+    },
+    {
+      "path": "Notices/OpenVINO/redist.txt.meta",
+      "size": 158,
+      "sha256": "c89c433cfee7c569cffaeb053a0a3a1b65cb05771bb413de9dc176f8f8e781a8"
+    },
+    {
+      "path": "Notices/OpenVINO/runtime-third-party-programs.txt",
+      "size": 118919,
+      "sha256": "21ccba6916a7f99278d7b111ce2ce448377750362341f638e24fc336aaf85806"
+    },
+    {
+      "path": "Notices/OpenVINO/runtime-third-party-programs.txt.meta",
+      "size": 158,
+      "sha256": "351d5d34ac5cfd86a786c2f9a9c8159021c64dab1b6e54080190614fdac8834c"
+    },
+    {
+      "path": "Notices/OpenVINO.meta",
+      "size": 172,
+      "sha256": "5cdf5ccab8d17f8dfb77a6f6f4211428fe8a52f56b7fb2e2af6534048241fabf"
+    },
+    {
+      "path": "Notices.meta",
+      "size": 172,
+      "sha256": "648ed080c2d36de11e67ac5eebc633bb2289dcf5c0787d9a2bd0ce015ffc665c"
+    },
+    {
+      "path": "package.json",
+      "size": 305,
+      "sha256": "412e1fbda93bbc1cedeb0e97a44a1c3f143b392baf59eea8d1e30c5ae65ee48c"
+    },
+    {
+      "path": "package.json.meta",
+      "size": 163,
+      "sha256": "bc295279af83c27f0fea0c36fb7bdd2c39d0691d1aee70ddb0a762a58accb6f4"
+    },
+    {
+      "path": "README.md",
+      "size": 464,
+      "sha256": "2d3040a4c5834dc79010de0b31bf1f5b23e9d87ff6633bd47553ed36140d1c5e"
+    },
+    {
+      "path": "README.md.meta",
+      "size": 158,
+      "sha256": "f4dcaf6bfc71283ad3315dfb75bda334df35c6dd3aa42d40f58903814a660e14"
+    },
+    {
+      "path": "Runtime/Plugins/HDMotionEngine.Runtime.dll",
+      "size": 334848,
+      "sha256": "0e9ad3f48969832fd3e55b20ec8348fc81e51d3cce08680290680657c4446e21"
+    },
+    {
+      "path": "Runtime/Plugins/HDMotionEngine.Runtime.dll.meta",
+      "size": 59,
+      "sha256": "63e29dddab8a51dfd2fc414d95cb51268abe98664164ef2be87d544724becac9"
+    },
+    {
+      "path": "Runtime/Plugins/MediaPipe/mediapipe_c.dll",
+      "size": 16517120,
+      "sha256": "b9b620f2707dea371be3fcef9f2d05468ca1471faee3be6637bbd7da77e21c54"
+    },
+    {
+      "path": "Runtime/Plugins/MediaPipe/mediapipe_c.dll.meta",
+      "size": 990,
+      "sha256": "29adb02adad3233bb14a15852f7886319024433910ea86ddf29bd6759ac42afa"
+    },
+    {
+      "path": "Runtime/Plugins/MediaPipe/Protobuf/Google.Protobuf.dll",
+      "size": 408976,
+      "sha256": "113f6e227399a9e7932e397fb893713a27a41af7b774390d18eb2fb3413f438c"
+    },
+    {
+      "path": "Runtime/Plugins/MediaPipe/Protobuf/Google.Protobuf.dll.meta",
+      "size": 645,
+      "sha256": "2699e09f352ec1e7858f8923d17108a931b60d3ab5026958554a23c0e611af22"
+    },
+    {
+      "path": "Runtime/Plugins/MediaPipe/Protobuf/System.Runtime.CompilerServices.Unsafe.dll",
+      "size": 23600,
+      "sha256": "1ad2dd7225d5162a0fd3a3b337a1949448520e3130a4bc8e010ec02f76097500"
+    },
+    {
+      "path": "Runtime/Plugins/MediaPipe/Protobuf/System.Runtime.CompilerServices.Unsafe.dll.meta",
+      "size": 645,
+      "sha256": "b6eaaf6962211a4c6cbad395319da9bf5e4a3d0e223cfe614757f2505b66f2c8"
+    },
+    {
+      "path": "Runtime/Plugins/MediaPipe/Protobuf.meta",
+      "size": 172,
+      "sha256": "5334113d3353593bd6ff3fb07507b6aa6c2407f3c55026f350a2fcd462b41915"
+    },
+    {
+      "path": "Runtime/Plugins/MediaPipe.meta",
+      "size": 172,
+      "sha256": "8ed649a6765d43630d3bbb9fce2e7c26817f60aebac27069be60fbf3fd7ed859"
+    },
+    {
+      "path": "Runtime/Plugins/Mediapipe.Runtime.dll",
+      "size": 2277888,
+      "sha256": "63567ea46488492f971c875d4d62abbce11213d27ff63474065de68762d80996"
+    },
+    {
+      "path": "Runtime/Plugins/Mediapipe.Runtime.dll.meta",
+      "size": 59,
+      "sha256": "a224e164733ee7c2e0b047c9e4019ed66b705e162b49af7649bfd6bda04fc869"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/README.txt",
+      "size": 442,
+      "sha256": "39dd99ab16b3a9ebae93e2050b4c6c657b7956015cc65d02c00327eb83148a75"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/README.txt.meta",
+      "size": 165,
+      "sha256": "bb9e8cd47d5ae0c31fa8ac7e8b57a75e033904fb942de3370459e0c3b638afdb"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/golden_needle_openvino_pose.dll",
+      "size": 11194368,
+      "sha256": "f259186a84dd1762da99a02381cb8db7ec668f548054429476fb6bb5d580f550"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/golden_needle_openvino_pose.dll.meta",
+      "size": 704,
+      "sha256": "f4f9b2e89339d4a60eb6b4dc300743982c74ae40c4dcea88000bbe29abf3b1d8"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/openvino.dll",
+      "size": 16179984,
+      "sha256": "e6415645ab63a3adb3e257c91bd77f910fc36db64e4356d0c69da660e5863890"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/openvino.dll.meta",
+      "size": 704,
+      "sha256": "d933669e0970a8f3fe9b44998aea79e9a6c0983f5fbe208f1caad5301a5ec563"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/openvino_intel_cpu_plugin.dll",
+      "size": 46298384,
+      "sha256": "7757d2d496f02133f6660c4f5b478806902f8f71adb5d2e3ab30b9cd60c31f38"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/openvino_intel_cpu_plugin.dll.meta",
+      "size": 704,
+      "sha256": "b999af45d76807a4506cde213d3da946d3081a2293c24aa25d7db28f01423ac2"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/openvino_tensorflow_lite_frontend.dll",
+      "size": 1263376,
+      "sha256": "745114f91088940c54bd099ae588fc3527a353c875cbc8d77cb0b8e28892dbdd"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/openvino_tensorflow_lite_frontend.dll.meta",
+      "size": 704,
+      "sha256": "1ad76bc306d437f34dadb957fbd02c3786ebf3ee961691a2f5e1ee978fc1dc9b"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/plugins.xml",
+      "size": 110,
+      "sha256": "b44e609c9c1905461686c77c56e91cae6f5026d7b8bfe72c381ec88e846c81b7"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/plugins.xml.meta",
+      "size": 158,
+      "sha256": "140913edbd586d9b60ab3d56c09aca59b29c5680a96528a14e0118c605c6c66c"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/README.txt",
+      "size": 204,
+      "sha256": "984717ba35d10d4cc7f2a883cbc3c29330d7a394085063c89808b629d2619d19"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/README.txt.meta",
+      "size": 165,
+      "sha256": "0a56bbb1099a557b1c8ff3583837f877221db105654da95f64eb5ce219eebba2"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/tbb12.dll",
+      "size": 225552,
+      "sha256": "a8e69ff0f536c86e7b77a3289a842ff4ddff0050cd496970da3316ca233059d0"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/tbb12.dll.meta",
+      "size": 704,
+      "sha256": "a189ba9d37d7b3988aa2dac8f2d965993c3e86a3902020e4fa2955ffda216f3f"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/tbbbind_2_5.dll",
+      "size": 208656,
+      "sha256": "582fa06fdb6477f3515634bdd908c9efeb2a5cc58a52a3374cef84604bfc8880"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/tbbbind_2_5.dll.meta",
+      "size": 704,
+      "sha256": "edb8a11926ffb8940e1605213e0714ddd2b145b15cb745cd5512a41b4dcccae4"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/tbbmalloc.dll",
+      "size": 121104,
+      "sha256": "3c9f75836a4c23f01f7f3ea7b228551005d4bf9f18a8075dda9399798861b5c6"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64/tbbmalloc.dll.meta",
+      "size": 704,
+      "sha256": "1297dfc16298d67ed8bf95f29665bb58ea877653b43ef37b1dae9ca8e5f3b0aa"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose/x86_64.meta",
+      "size": 180,
+      "sha256": "dac299d2dfa4bf7e66e8c00f0c5083d4f519c5f9018d2f48f1e12bbcba099657"
+    },
+    {
+      "path": "Runtime/Plugins/OpenVinoPose.meta",
+      "size": 172,
+      "sha256": "580edfdf8c3cd7427484570dc0f1aaf131524ea0aa01a44450887d96585247b7"
+    },
+    {
+      "path": "Runtime/Plugins.meta",
+      "size": 172,
+      "sha256": "2c37d27bc85a6a6b8f981bcb3c9c9d1bdcb31e5d43110e569debc3663ff3fbc0"
+    },
+    {
+      "path": "Runtime.meta",
+      "size": 172,
+      "sha256": "079639e5ce12d76b477e545338402d70bdc68b3fe7cdd4e80c240d7e5d633886"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/pose_detector.tflite",
+      "size": 2959078,
+      "sha256": "46837eb883e6ec75b52c5f5ff6a9b78bd35e66c13f95e8c3566c582d146cb1d9"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/pose_detector.tflite.meta",
+      "size": 155,
+      "sha256": "23118b737c7147812919cd7ad52062108a71d402d95f6e019c9d8d5d51a99ad3"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/pose_landmarks_detector.tflite",
+      "size": 2818390,
+      "sha256": "ad6cfd3c903eb31a4ee788b809e45ecf9fa69923b69b9f3f2d9ae616ff433e58"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/OpenVinoPoseModels/pose_landmarks_detector.tflite.meta",
+      "size": 155,
+      "sha256": "35e6088e19898f7466429635b54bc5105944e3e305fb1dda53e474acc283ca6e"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/OpenVinoPoseModels.meta",
+      "size": 172,
+      "sha256": "a2c6406641a3a425a04a4efc5367e7df98fa2a7981f2990a450ae5ec47b2a3df"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task",
+      "size": 7819105,
+      "sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task.meta",
+      "size": 162,
+      "sha256": "c27cb43491319cfd39faa88890662ebe323f443fbf8880f63c5d0969400b6fe2"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task.source.txt",
+      "size": 1646,
+      "sha256": "c347597583b8e64b115ba4b7e0c10076456f102ea25623763c1c0bf19a275a7b"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task.source.txt.meta",
+      "size": 165,
+      "sha256": "6206032c24b868797ce0dddb5413f3fe969df24e5829b25b0e398e912ce7a173"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes",
+      "size": 5777746,
+      "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes.meta",
+      "size": 155,
+      "sha256": "2c7ac3b283d731419cb7f4d34038c3f2d60fc629a6e617f7eada2548f2c7d4b9"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models.meta",
+      "size": 172,
+      "sha256": "dc6291bf3cb97459ae7c0d55c207d18a19fbf3d6d737e2f2f230c71c3713a9a0"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle/PoseTrackingSpike.meta",
+      "size": 172,
+      "sha256": "3158cccc2d020ced1dcb6e6b1519452d3fe6c543b0c812a49ada2aab74abffd9"
+    },
+    {
+      "path": "RuntimeAssets~/StreamingAssets/GoldenNeedle.meta",
+      "size": 172,
+      "sha256": "6489991cd5348840cfe2b57a197beecd00f5ebe04641148ec3c5fbfb1596317a"
+    }
+  ],
+  "package_version": "0.1.0-preview.2",
+  "unity": "6000.5.0f1",
+  "archive_sha256": "f3fec3e5e55355d936d4eebe54d715a2806845243968d7495ed13659fa3da859",
+  "runtime_target": "StandaloneWindows64 / ScriptCompilationOptions.None",
+  "verification": {
+    "source_tests": {
+      "passed": 243,
+      "failed": 0,
+      "skipped": 0
+    },
+    "compiled_player_sdk_tests": {
+      "passed": 243,
+      "failed": 0,
+      "skipped": 0
+    },
+    "product_tests": {
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0,
+      "runner_shutdown": "Initial CLI timed out after PASS XML; clean rerun delegated to USER"
+    },
+    "player_prefab": {
+      "serialized_engine_fields_preserved": 633,
+      "compared_to": "untouched authored GoldenNeedle prefab"
+    },
+    "enabled_scenes_missing_scripts": 0,
+    "native_backend": "OPENVINO_CPU_FP32; blank frame timestamp 1 PASS",
+    "runtime_editor_assembly_references": 0,
+    "windows_build": {
+      "result": "Succeeded",
+      "errors": 0,
+      "warnings": 504,
+      "bytes": 1124093058
+    },
+    "user_game_qa": "PENDING",
+    "windows_payload": {
+      "passed": false,
+      "native_library_hashes_verified": 8,
+      "model_hashes_verified": 4,
+      "development_assemblies_found": [
+        "Microsoft.CodeAnalysis.CSharp.dll",
+        "Microsoft.CodeAnalysis.dll",
+        "Unity.Pipeline.dll"
+      ],
+      "source_fix": "IFilterBuildAssemblies exclusion added; compiled against installed Unity Editor APIs PASS",
+      "rebuild": "USER OWNED / PENDING"
+    },
+    "long_running_checks": "USER owns full Windows builds and similar long-running tasks; do not launch or wait for them in Codex"
+  }
+}
