@@ -103,3 +103,53 @@ Manual QA sequence is in `Docs/current-state.md`.
 - `ProjectSettings/EditorBuildSettings.asset`
 
 Treat `Docs/current-state.md` as the status authority rather than reconstructing state from old worker briefs.
+
+
+---
+
+## 2026-10-02 superseding strategic handoff note
+
+This section supersedes the **immediate next action** above while preserving that earlier handoff as historical evidence of the prior QA stage.
+
+### New USER direction
+
+The Motion Engine V1 plus the current Mocap Adventure foundation are considered sufficiently stable for the next planning phase. The next strategic task is to determine how to separate the Motion Engine into an independent reusable software product.
+
+The intended product boundary is:
+
+```text
+independently owned reusable Motion Engine
+            |
+            | permanent licence
+            v
+      Mocap Adventure
+      (SIH team product)
+
+The same Motion Engine may later be licensed separately to other applications,
+including the proposed rehabilitation application.
+```
+
+The Motion Engine was developed during this project. Do **not** rewrite history or describe it as pre-existing background IP. The USER states that they solely developed the Motion Engine, with AI-assisted development, and that teammates did not contribute to it. The intended ownership/licensing structure still requires the appropriate acknowledgement/legal documentation; do not treat this repository note as a substitute for executed agreements.
+
+### Mandatory first action for the next Orchestrator
+
+1. Verify the live `gameplay/foundation` and `main` refs.
+2. Read `Docs/current-state.md`.
+3. Read `Docs/motion-engine-product-separation.md`.
+4. Read `Docs/decisions.md` and `Docs/architecture.md`.
+5. Independently inspect the current repository and perform a **read-only boundary audit** covering:
+   - reusable Motion Engine code;
+   - Mocap Adventure/game-specific code;
+   - mixed/integration/adaptor code;
+   - third-party dependencies, licences, models, and native components.
+6. Present separation approaches and trade-offs to the USER for discussion.
+7. **Do not implement the separation until the USER explicitly approves an approach.**
+
+### Hard boundaries for this phase
+
+- Documentation/history must be preserved rather than rewritten.
+- Do not move/delete code, create a new engine repository, extract a DLL/package, change Unity dependencies, or alter runtime behavior during the initial audit.
+- Do not reopen accepted Motion Engine algorithms merely because productization is being considered.
+- Do not merge to `main` without explicit USER approval.
+- Do not claim ownership of third-party components.
+- Do not imply that technical separation alone settles legal ownership; legal/team/SIH/funding agreements are separate from the engineering work.

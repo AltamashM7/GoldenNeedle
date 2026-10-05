@@ -112,3 +112,23 @@ Historical comparison points used during diagnosis:
 - Hub environment integration: `3fb68ecfe245ff36c16a7752108248c1c433734c`.
 
 Current status: **MOTION ENGINE V1 ACCEPTED / GAMEPLAY FOUNDATION NEXT / BOXING ENVIRONMENT MERGE PENDING**.
+
+
+---
+
+## 2026-10-02 product/IP boundary decisions
+
+The table above is preserved as the historical/current technical decision record. The following decisions add the new Motion Engine product-separation direction.
+
+| Decision | Current status | Current meaning |
+|---|---|---|
+| SIH product identity | **MOCAP ADVENTURE** | The SIH product is the Unity fitness game/application. The Motion Engine is underlying technology used by that product. |
+| Motion Engine productization | **APPROVED STRATEGIC DIRECTION / NOT YET IMPLEMENTED** | Separate the accepted Motion Engine into an independently maintainable reusable software product after a read-only boundary audit and USER-approved plan. |
+| Motion Engine development chronology | **LOCKED TRUTHFUL RECORD** | The Motion Engine was created during the Golden Needle/Mocap Adventure project. Do not retroactively characterize it as pre-existing/historical background IP. |
+| Motion Engine contribution statement | **USER-ASSERTED / TO BE FORMALIZED** | The USER states that they solely developed the Motion Engine using AI-assisted development tools and that teammates did not contribute to the engine. Team/legal acknowledgement is to formalize this understanding. |
+| Intended Motion Engine ownership | **USER-DIRECTED STRUCTURE / FORMALIZATION PENDING** | The separated Motion Engine is intended to remain under the USER's individual ownership rather than become team-owned Mocap Adventure IP. |
+| Mocap Adventure Motion Engine rights | **PERMANENT LICENCE INTENT** | Mocap Adventure is intended to use the separated Motion Engine under a permanent licence. Exact legal scope and terms must be documented separately. |
+| Other products | **SEPARATE LICENCES** | Other applications, including the proposed rehabilitation application, may license the Motion Engine independently of Mocap Adventure. |
+| Third-party dependencies | **EXCLUDED FROM PROPRIETARY OWNERSHIP CLAIMS** | Unity, MediaPipe/Homuler, OpenVINO, models, and other third-party components remain governed by their respective licences. |
+| Git/document history | **PRESERVE** | Do not rewrite history to make the Motion Engine appear older or separately packaged earlier than it actually was. Preserve historical docs and commits as evidence of development chronology. |
+| Separation implementation | **NOT AUTHORIZED YET** | Documentation only at this checkpoint. A new Orchestrator must audit and discuss technical options with the USER before any extraction/code changes. |
