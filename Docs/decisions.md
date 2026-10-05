@@ -4,7 +4,7 @@ Current authority: `Docs/current-state.md`.
 
 Gameplay architecture authority: `Docs/gameplay-foundation-plan.md`.
 
-Historical foundation design remains in `Docs/pre-phase5a-foundations.md`; optimization chronology remains in `Docs/optimization-orchestrator-handoff.md`. Historical evidence may explain regressions but does not override current decisions below.
+Historical engine foundation/optimization plans are preserved in the private engine repository under `Docs/HistoricalGoldenNeedle`. The lineage below is historical evidence; current product boundaries and acceptance are in `Docs/current-state.md` and `Docs/motion-sdk-integration.md`.
 
 | Decision | Current status | Current meaning |
 |---|---|---|
@@ -132,3 +132,7 @@ The table above is preserved as the historical/current technical decision record
 | Third-party dependencies | **EXCLUDED FROM PROPRIETARY OWNERSHIP CLAIMS** | Unity, MediaPipe/Homuler, OpenVINO, models, and other third-party components remain governed by their respective licences. |
 | Git/document history | **PRESERVE** | Do not rewrite history to make the Motion Engine appear older or separately packaged earlier than it actually was. Preserve historical docs and commits as evidence of development chronology. |
 | Separation implementation | **NOT AUTHORIZED YET** | Documentation only at this checkpoint. A new Orchestrator must audit and discuss technical options with the USER before any extraction/code changes. |
+
+## 2026-10-05 implemented SDK separation
+
+The private engine source and Unity Lab are maintained in hd-motion-engine. Mocap Adventure consumes the compiled SDK preview 2, accepted by the USER in Unity and Windows. Engine source, embedded vendor source, research tools and obsolete engine CI are absent from the active game tree. Product integration, scene rules and command vocabulary/context remain here. Historical source/Git chronology is preserved. The USER authorizes promotion/publication on gameplay/foundation; main integration and licensing/activation design remain separate.

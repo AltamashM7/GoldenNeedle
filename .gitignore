@@ -73,3 +73,7 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+
+# Runtime model payloads are restored from the compiled SDK; preserve .meta files.
+/Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task
+/Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes

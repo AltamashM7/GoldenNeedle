@@ -1,3 +1,5 @@
+> Current status (2026-10-05): separation is implemented and the compiled SDK game is USER accepted in Unity and Windows. Read current-state.md and motion-sdk-integration.md. The original 2026-10-02 direction below is retained as chronology, not an instruction to restart the audit.
+
 # Golden Needle — Motion Engine Product Separation Direction
 
 Recorded: 2026-10-02

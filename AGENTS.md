@@ -1,98 +1,28 @@
-# Golden Needle agent instructions
+# Mocap Adventure agent instructions
 
-Golden Needle is a Unity 6.5 / URP gamified embodied-fitness application for Smart India Hackathon 2026. Its product direction is full-body webcam-driven control of a 3D avatar, not merely a small set of gesture-triggered buttons.
+Mocap Adventure (GoldenNeedle) is the Unity 6.5 / URP embodied-fitness product for SIH 2026. It consumes the owner's separately maintained HD Motion Engine as a compiled SDK.
 
-## Before changing the repository
+## Before repository changes
 
-- Inspect the repository root, current Git status, active branch, remotes, tracked files, and relevant existing assets.
-- Verify `ProjectSettings/ProjectVersion.txt`, `Packages/manifest.json`, `Packages/packages-lock.json`, URP configuration, `.gitignore`, and `.gitattributes` instead of trusting a task description.
-- Read the relevant files in `Docs/` before implementing work. Treat `Docs/current-state.md` as the durable project snapshot, and treat `Docs/openvino-unity-integration-checkpoints.md` as the authoritative execution plan for the current OpenVINO Unity integration experiment.
-- Always verify the current remote `engine/pose-tracking-spike` HEAD before new work because documentation and checkpoint commits may advance it.
-- Check for pre-existing work that may affect the requested scope. Do not silently upgrade or downgrade Unity, change the render pipeline, or perform destructive Git operations.
+- Inspect root, Git status, active branch, remotes, relevant tracked assets and current remote gameplay/foundation HEAD. Read Docs/current-state.md, Docs/architecture.md and Docs/motion-sdk-integration.md.
+- Verify ProjectSettings/ProjectVersion.txt, Packages/manifest.json, Packages/packages-lock.json, URP, .gitignore and .gitattributes. Current baseline: Unity 6000.5.0f1, URP 17.5.0. Do not upgrade dependencies/render pipeline without authorization.
+- Preserve existing user edits. Normal working branch is gameplay/foundation; codex/motion-sdk-integration records the accepted migration. Git mutations require authorization for the task. Never reset/rebase/force-push, rewrite shared history or merge main/PRs without explicit user approval.
 
-## Current phase / experiment status
+## Product boundary
 
-- Phase 1 — MediaPipe provider/raw overlays: **PASS WITH NOTES**.
-- Phase 2 — canonical skeleton/debug: **PASS**.
-- Phase 3 — stabilization/confidence: **PASS**.
-- Phase 4 — humanoid retargeting/calibration/orientation: **USER ACCEPTED — PASS**.
-- Phase 5A — support-foot locomotion / Lab-Game presentation: **IMPLEMENTED / NOT USER ACCEPTED**.
-- Phase 6: **NOT STARTED**.
-- Gate A OpenVINO exact-model compatibility: **PASS**.
-- Gate B current-MediaPipe/OpenVINO recorded-sequence semantic proof: **PASS WITH NOTES**.
-- Unity/OpenVINO practical integration: **AUTHORIZED AS A CHECKPOINTED EXPERIMENT**, not yet production accepted.
+- Motion Engine source, Lab, provider implementation, algorithms, native builds and engine regression tests belong in the private hd-motion-engine repository. Do not restore Core/Motion, embedded MediaPipe source, engine debug/Lab assets or old native research tooling here.
+- Install the versioned compiled SDK from Packages/HDMotionEngine through UPM. Product developers do not need the private source URL or credentials. Run python Tools/verify_motion_sdk_boundary.py for the repository boundary check.
+- Products own player/session lifetime, health, scenes, spawning, terrain grounding, portals/courses, camera/UI presentation, command vocabulary/context and game rules. Use MotionEngineController and the product facade; gameplay must not implement or depend on MediaPipe inference internals.
+- Legacy GoldenNeedle engine namespaces/type names and model paths remain inside the SDK for compatibility. They are not permission to recreate its implementation in the product. POSE != LOCOMOTION.
+- Preserve accepted full-body/partial-body control, CPU-first webcam operation and the OpenVINO/TFLite fallback behavior when updating the SDK. SDK updates are deliberate, versioned and verified in the private Lab before product acceptance.
+- The SDK Editor installer restores runtime models. Preserve tracked model metadata; duplicate model binaries are ignored generated payloads. Third-party notices remain intact.
 
-Gate B evidence on the USER's 363-frame recorded motion sequence:
-- official Tasks reference and custom TFLite graph completed and matched exactly;
-- OpenVINO CPU FP32 graph completed all frames;
-- offline steady graph capacity improved from roughly 35.6/s TFLite to 71.3/s OpenVINO;
-- pose-presence agreement vs reference was 362/363 (~99.7245%);
-- normalized XYZ RMS ~0.01113 and world Euclidean 3D RMS ~0.02188 m;
-- these are offline VIDEO-mode graph-capacity results, **not** Unity LIVE_STREAM end-to-end latency.
+## Unity and verification
 
-## Architectural boundaries
-
-- Preserve the replaceable Pose Provider boundary and the engine-owned canonical skeleton direction.
-- Keep pose reproduction separate from locomotion: **POSE != LOCOMOTION**.
-- Keep Motion Engine concerns separate from Player, Hub, course, environment, UI, and cinematic content.
-- Course code must not depend on MediaPipe-specific structures or internals.
-- Prefer narrow phases and stable abstractions; do not freeze speculative APIs or interfaces before prototypes justify them.
-- Reuse mature MediaPipe semantics for preprocessing, detector decode/NMS, ROI generation/tracking, landmark refinement, visibility/presence, world landmarks and projection. Do not manually recreate those semantics in C# merely to integrate OpenVINO.
-- For the current experiment, replace only the proven inference seam where practical. The accepted downstream canonical/stabilization/calibration/retarget/locomotion behavior is not the target of the experiment.
-- Do not refactor the current fixed 33-landmark provider frame or 20-joint canonical topology during this performance spike.
-
-## Product and performance constraints
-
-- CPU-first operation without a required dedicated GPU is a product requirement.
-- An ordinary integrated laptop webcam is a supported baseline input device; an external, depth, or dedicated tracking camera must not be required.
-- Partial-body tracking is valid: upper-body landmarks may remain usable when the lower body is outside the frame, with trust evaluated per landmark rather than by rejecting the entire pose.
-- Avoid expensive processing, unnecessary frame copies, and unbounded queues unless the cost is justified and measured.
-- Current production scheduling semantics are: at most one active readback, one replaceable prepared frame and one outstanding inference; latest useful frame wins; no backlog/history/replay/catch-up queue.
-- Current body-only inference input is 320x240 while camera/display remain native resolution. Keep this unchanged for the initial OpenVINO A/B integration test.
-- Current accepted production observations are approximately camera 29–30 FPS, fresh pose results 10–12/s, readback 55–65 ms and frame-to-result 110–140 ms depending on load. The OpenVINO Unity experiment must be evaluated against real end-to-end measurements, not the offline Gate B 71/s rate.
-- Do not casually add packages. MediaPipe and future runtime tooling require explicit authorization. The installed Unity Pipeline/MCP integration is development-only and must never become a shipped runtime dependency.
-
-## OpenVINO Unity experiment constraints
-
-- The existing MediaPipe/TFLite CPU path is the known-safe fallback and must remain functional.
-- OpenVINO CPU FP32 begins as an experimental/selectable backend, not an unconditional replacement.
-- Do not ship the Gate B shadow-TFLite/raw-parity diagnostic in the Unity runtime path.
-- Do not densify or convert the detector.
-- Do not force D3D12 globally.
-- Explicit benchmark requests for OpenVINO must not silently fall back while reporting themselves as OpenVINO; backend identity/failure must be visible in diagnostics.
-- Windows x86_64 native dependencies must be packaged narrowly and documented, including third-party/license implications.
-- Follow `Docs/openvino-unity-integration-checkpoints.md` as **durable recovery markers**, not as mandatory stop-and-wait gates. Continue from one checkpoint into the next in the same worker run whenever possible. Pause only for genuine blockers, required USER hardware/visual QA, or execution-limit risk.
-- Maintain `Docs/openvino-unity-integration-progress.md` as the rolling handoff. Update it at every checkpoint and before any anticipated execution-limit stop so another Web Builder can resume from the latest durable state without reconstructing the whole session.
-
-## Unity development tooling
-
-- When the official Unity CLI, Unity Pipeline, and Codex MCP integration are configured, use live Unity tooling for Editor-state inspection, compilation/console checks, scene or hierarchy interaction, and supported Editor actions when it materially improves correctness.
-- Do not invoke MCP mechanically for every trivial text edit; filesystem and ordinary source editing remain appropriate for code changes.
-- Treat GitHub/Git as authoritative for durable code review and the USER as the authority for visual or physical gameplay acceptance.
-
-## Unity and asset safety
-
-- Preserve Unity `.meta` files belonging to tracked assets.
-- Never intentionally commit Unity cache or generated directories such as `Library/`, `Temp/`, `Obj/`, `Build/`, `Builds/`, `Logs/`, or `UserSettings/`.
-- Do not manually rewrite serialized scene or prefab YAML, regenerate assets without reason, or edit another developer's owned scene/content merely for convenience.
-- Scene/content ownership is the primary defense against Unity YAML merge conflicts.
-- Known USER-local dirty files have repeatedly included `Assets/GoldenNeedle/Debug/PoseTrackingSpike/PoseTrackingSpike.unity`, `GoldenNeedle.slnx`, and `ProjectSettings/SceneTemplateSettings.json`. Never clean, revert, stage, or overwrite these casually. Package-lock changes can also be legitimate; inspect before touching them.
-
-## Git governance
-
-- GitHub Desktop is normally used by the USER for Git mutations.
-- Future Codex tasks may explicitly authorize Git operations, but agents must follow the governance of the current Orchestrator brief rather than assuming permission.
-- Core Motion Engine work remains on the long-lived `engine/pose-tracking-spike` branch. Do not merge intermediate checkpoints into `main`, and do not assume a merge is appropriate without explicit USER approval.
-- The current OpenVINO Unity integration handoff explicitly authorizes checkpoint commits and pushes to `engine/pose-tracking-spike`; it does **not** authorize merges to `main`, force-pushes, rebases/resets, or PR merges.
-- Preserve valid Git LFS configuration. Do not disable LFS or perform Git LFS history migration unless explicitly directed.
-- Do not invent large sets of speculative LFS patterns.
-
-## Verification and reporting
-
-- Perform proportionate verification for each change; avoid excessive low-value testing.
-- Report failures and uncertainties truthfully.
-- Never claim physical or visual Unity QA has passed unless the USER actually performed it.
-- Distinguish implementation completion from USER acceptance.
-- Distinguish offline graph capacity from Unity LIVE_STREAM end-to-end performance.
-- Never merge a PR without explicit USER approval.
-- For the current OpenVINO Unity experiment, each durable checkpoint should record in the rolling progress file: exact starting/ending SHA, files changed, work completed, verification, remaining work, blockers/risks, and the next concrete action. The worker should then continue immediately when feasible rather than waiting for a new Orchestrator assignment.
+- Preserve tracked .meta files and serialized references. Use Unity Editor APIs for scene/prefab changes; do not hand-edit serialized YAML or overwrite another developer's content for convenience.
+- Never commit Library, Temp, Obj, Build/Builds, Logs, UserSettings, recovery scenes or development symbols. Keep valid Git LFS settings; do not invent broad LFS patterns.
+- Unity Pipeline/MCP is development-only. Retain ExcludeDevelopmentToolingFromPlayer; never ship Pipeline/Roslyn, engine Editor, Lab or test assemblies.
+- Use configured Unity tooling when it materially improves correctness. Do not invoke it mechanically for text changes.
+- Full Windows builds and similarly long-running checks belong to the USER. Do not launch or repeatedly poll them. Perform proportionate bounded checks and inspect USER results.
+- USER reports both Unity Editor and Windows SDK gameplay worked (2026-10-05). Do not claim additional physical QA, measured latency or successful test-runner shutdown without evidence.
+- Maintain Docs/current-state.md and the product SDK handoff when boundaries or acceptance change. Private engine checkpoint history is maintained there. Licensing/activation design remains deferred until requested.

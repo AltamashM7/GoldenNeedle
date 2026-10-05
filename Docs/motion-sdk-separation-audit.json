@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-05",
+  "scope": "SDK-only product current tree; Git history retained",
+  "engine_documents_archived": 28,
+  "obsolete_workflows_archived": 16,
+  "temporary_verifier_and_orphan_metadata_retired": [
+    "Assets/Editor.meta",
+    "Assets/Editor/SDKMigration.meta",
+    "Assets/Editor/SDKMigration/GameSdkVerification.cs",
+    "Assets/Editor/SDKMigration/GameSdkVerification.cs.meta",
+    "Assets/GoldenNeedle/Core.meta"
+  ],
+  "generated_models_removed_from_tracking": [
+    {
+      "path": "Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/hand_landmarker.task",
+      "sha256": "fbc2a30080c3c557093b5ddfc334698132eb341044ccee322ccf8bcf3607cde1"
+    },
+    {
+      "path": "Assets/StreamingAssets/GoldenNeedle/PoseTrackingSpike/Models/pose_landmarker_lite.bytes",
+      "sha256": "59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a"
+    }
+  ],
+  "removed_engine_script_guids_checked": 92,
+  "tracked_asset_references_to_removed_engine_scripts": 0,
+  "runtime_sdk_changed": false,
+  "builds_or_test_suites_started": 0
+}
