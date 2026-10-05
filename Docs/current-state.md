@@ -2,7 +2,7 @@
 
 Authoritative refresh: 2026-10-05.
 
-Repository: AltamashM7/GoldenNeedle. Working branch: gameplay/foundation. Main remains at its existing integration checkpoint; no main merge is part of this separation.
+Repository: AltamashM7/GoldenNeedle. Working branch: gameplay/foundation. The USER explicitly approved merging the verified SDK separation into main. Main and gameplay/foundation receive the same separated product tree; the original checkout stays on gameplay/foundation.
 
 ## Accepted engine connection
 
@@ -10,7 +10,7 @@ Mocap Adventure consumes HD Motion Engine 0.1.0-preview.2 as a compiled, source-
 
 USER ACCEPTED — PASS: the USER tested the isolated project in Unity, built Downloads/GoldenNeedle_MotionSDK and tested that executable; everything worked in both. Read motion-sdk-user-acceptance.json. Read-only payload inspection matched both runtime DLLs, all eight native DLLs and four models against the SDK, with no Pipeline/Roslyn/engine Editor/Lab/test assemblies. No new measured latency or BuildReport is claimed.
 
-The accepted migration is 522e29a0de8b07e59639136600233742afd6a08d. The newer team direction commit 643d57a46177f14c8fd477522aa89ef8f0e63c3e is preserved through merge 0dd4bde5dc1a024e2459904f2a9f8e1e836a6d53. The USER now authorizes publishing and applying this separation to the original working repository.
+The accepted migration is 522e29a0de8b07e59639136600233742afd6a08d. The newer team direction commit 643d57a46177f14c8fd477522aa89ef8f0e63c3e is preserved through merge 0dd4bde5dc1a024e2459904f2a9f8e1e836a6d53. The USER authorizes publication/application in the original repository and explicitly approves main promotion. The working-branch SDK boundary CI at 160560f completed successfully: [run 37312826569](https://github.com/AltamashM7/GoldenNeedle/actions/runs/37312826569).
 
 ## Boundaries and setup
 

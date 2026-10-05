@@ -23,5 +23,11 @@
   "removed_engine_script_guids_checked": 92,
   "tracked_asset_references_to_removed_engine_scripts": 0,
   "runtime_sdk_changed": false,
-  "builds_or_test_suites_started": 0
+  "builds_or_test_suites_started": 0,
+  "main_promotion": "USER explicitly approved: Merge the separation into main.",
+  "working_branch_boundary_ci": {
+    "run_id": 37312826569,
+    "head_sha": "160560f61f7a2e11a449ee12137152c9836cb705",
+    "conclusion": "success"
+  }
 }
